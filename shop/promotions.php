@@ -60,11 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 // Get categories
 $categories = [];
-$catTable = 'item_categories';
+$catTable = 'product_categories';
 try {
-    try { $db->query("SELECT 1 FROM item_categories LIMIT 1"); } 
-    catch (Exception $e) { $catTable = 'business_categories'; }
-    $stmt = $db->query("SELECT * FROM $catTable WHERE is_active = 1 ORDER BY id");
+    try { $db->query("SELECT 1 FROM product_categories LIMIT 1"); } 
+    catch (Exception $e) { 
+        try { $db->query("SELECT 1 FROM item_categories LIMIT 1"); $catTable = 'item_categories'; }
+        catch (Exception $e2) { $catTable = 'business_categories'; }
+    }
+    $stmt = $db->query("SELECT * FROM $catTable ORDER BY id");
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
