@@ -698,12 +698,18 @@ let soundEnabled = localStorage.getItem('inboxSoundEnabled') !== 'false'; // def
 document.addEventListener('DOMContentLoaded', () => {
     updateSoundIcon();
     scrollToBottom();
-    if (userId) {
-        pollingInterval = setInterval(pollMessages, 2000);
-    }
+    
+    // Start polling
+    startPolling();
+    
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
+    }
+    
+    // Initial poll
+    if (userId) {
+        setTimeout(pollMessages, 500);
     }
 });
 
@@ -803,26 +809,41 @@ function formatThaiTimeJS(date) {
 }
 
 // ===== Real-time Polling =====
+let pollErrorCount = 0;
+let lastPollTime = Date.now();
+
 async function pollMessages() {
     if (!userId || isPolling) return;
     isPolling = true;
     
+    // Update live indicator
+    const indicator = document.getElementById('liveIndicator');
+    if (indicator) indicator.style.background = '#FCD34D'; // yellow = polling
+    
     try {
-        const res = await fetch(`api/messages.php?action=poll&user_id=${userId}&last_id=${lastMessageId}`);
+        const res = await fetch(`api/messages.php?action=poll&user_id=${userId}&last_id=${lastMessageId}&_t=${Date.now()}`);
+        
+        if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+        }
+        
         const data = await res.json();
         
         if (data.success) {
-            // Add new messages (skip ones we already added locally)
+            pollErrorCount = 0;
+            lastPollTime = Date.now();
+            if (indicator) indicator.style.background = '#86EFAC'; // green = success
+            
+            // Add new messages
             if (data.messages && data.messages.length > 0) {
+                console.log('📨 New messages:', data.messages.length);
                 data.messages.forEach(msg => {
                     const msgId = parseInt(msg.id);
                     const isIncoming = msg.direction === 'incoming';
                     
-                    // Skip if already displayed or if we just sent it
                     if (msgId > lastMessageId && !sentMessageIds.has(msgId) && !document.querySelector(`[data-msg-id="${msgId}"]`)) {
                         appendMessage(msg);
                         
-                        // Show notification for incoming messages
                         if (isIncoming) {
                             showNotification(
                                 currentUserName || 'ลูกค้า',
@@ -839,34 +860,62 @@ async function pollMessages() {
                 scrollToBottom();
             }
             
-            // Update sidebar unread counts and show notifications for other users
+            // Update sidebar
             if (data.unread_users) {
-                data.unread_users.forEach(u => {
-                    updateUserUnread(u.id, u.unread);
-                });
+                data.unread_users.forEach(u => updateUserUnread(u.id, u.unread));
             }
             
-            // Show notifications for updated conversations (other users)
+            // Notifications for other users
             if (data.updated_conversations) {
                 data.updated_conversations.forEach(conv => {
                     if (conv.id != userId && conv.last_message) {
-                        // Show notification for messages from other users
-                        showNotification(
-                            conv.display_name || 'ลูกค้า',
-                            conv.last_message,
-                            conv.picture_url,
-                            conv.id
-                        );
+                        showNotification(conv.display_name || 'ลูกค้า', conv.last_message, conv.picture_url, conv.id);
                     }
                 });
             }
         }
     } catch (err) {
-        console.error('Poll error:', err);
+        pollErrorCount++;
+        console.error('Poll error:', err, 'Count:', pollErrorCount);
+        if (indicator) indicator.style.background = '#FCA5A5'; // red = error
+        
+        // If too many errors, slow down polling
+        if (pollErrorCount > 5) {
+            console.warn('Too many poll errors, slowing down...');
+        }
     }
     
     isPolling = false;
 }
+
+// Start polling with visibility check
+function startPolling() {
+    if (pollingInterval) clearInterval(pollingInterval);
+    if (userId) {
+        // Poll every 1.5 seconds for faster updates
+        pollingInterval = setInterval(pollMessages, 1500);
+        console.log('🟢 Polling started');
+    }
+}
+
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('🔴 Polling stopped');
+    }
+}
+
+// Pause polling when tab is hidden
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopPolling();
+    } else {
+        startPolling();
+        // Immediate poll when tab becomes visible
+        pollMessages();
+    }
+});
 
 function appendMessage(msg) {
     const chatBox = document.getElementById('chatBox');
