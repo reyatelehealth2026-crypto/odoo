@@ -492,6 +492,7 @@ document.addEventListener('DOMContentLoaded', initLiff);
 
 async function initLiff() {
     if (!CONFIG.LIFF_ID) {
+        console.log('No LIFF ID configured');
         showGuestCard();
         hideLoading();
         loadAvailablePharmacists();
@@ -500,16 +501,26 @@ async function initLiff() {
     
     try {
         await liff.init({ liffId: CONFIG.LIFF_ID });
+        console.log('LIFF initialized, isLoggedIn:', liff.isLoggedIn(), 'isInClient:', liff.isInClient());
         
         if (!liff.isLoggedIn()) {
-            // Support external browser - redirect to LINE Login
-            liff.login();
+            // ถ้าอยู่ใน LINE app ให้ login อัตโนมัติ
+            if (liff.isInClient()) {
+                liff.login();
+                return;
+            }
+            // ถ้าอยู่ใน browser ปกติ ให้แสดง Guest Card แทน (ไม่ auto login)
+            console.log('Not logged in, showing guest card');
+            showGuestCard();
+            hideLoading();
+            loadAvailablePharmacists();
             return;
         }
         
         // Get profile
         liffProfile = await liff.getProfile();
         userId = liffProfile.userId;
+        console.log('Got profile:', liffProfile.displayName);
         
         // Load member data
         await loadMemberData();
@@ -813,10 +824,15 @@ function openRegister() {
 }
 
 function liffLogin() {
-    if (typeof liff !== 'undefined') {
-        liff.login();
+    console.log('liffLogin called, LIFF_ID:', CONFIG.LIFF_ID);
+    if (typeof liff !== 'undefined' && CONFIG.LIFF_ID) {
+        // ใช้ redirectUri กลับมาหน้าเดิม
+        const redirectUri = window.location.href.split('?')[0] + '?account=' + CONFIG.ACCOUNT_ID;
+        console.log('Redirecting to:', redirectUri);
+        liff.login({ redirectUri: redirectUri });
     } else {
-        window.location.href = `https://liff.line.me/${CONFIG.LIFF_ID}`;
+        // Fallback: เปิด LIFF URL โดยตรง
+        window.location.href = `https://liff.line.me/${CONFIG.LIFF_ID}?account=${CONFIG.ACCOUNT_ID}`;
     }
 }
 
