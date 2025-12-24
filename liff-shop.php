@@ -405,14 +405,21 @@ function buildPageUrl($page, $userId, $lineAccountId, $filterCategory, $filterSe
         
         .cart-badge { position: absolute; top: -5px; right: -5px; background: #EF4444; color: white; font-size: 10px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
         
-        /* Banner Carousel */
+        /* Banner Carousel - Responsive */
         .banner-carousel { position: relative; overflow: hidden; border-radius: 16px; }
-        .banner-track { display: flex; transition: transform 0.3s ease; }
+        .banner-track { display: flex; transition: transform 0.4s ease-out; }
         .banner-slide { flex-shrink: 0; width: 100%; }
-        .banner-slide img { width: 100%; height: 140px; object-fit: cover; border-radius: 16px; }
-        .banner-dots { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
-        .banner-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.5); cursor: pointer; }
-        .banner-dot.active { background: white; }
+        .banner-slide img { width: 100%; height: 160px; object-fit: cover; border-radius: 16px; }
+        @media (min-width: 640px) {
+            .banner-slide img { height: 200px; }
+        }
+        .banner-dots { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+        .banner-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.5); cursor: pointer; transition: all 0.2s; }
+        .banner-dot.active { background: white; width: 24px; border-radius: 4px; }
+        .banner-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; background: rgba(255,255,255,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.2s; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        .banner-carousel:hover .banner-nav { opacity: 1; }
+        .banner-nav.prev { left: 12px; }
+        .banner-nav.next { right: 12px; }
         
         /* Pagination */
         .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 16px; }
@@ -483,21 +490,36 @@ function buildPageUrl($page, $userId, $lineAccountId, $filterCategory, $filterSe
                 <div class="banner-slide">
                     <?php if (!empty($banner['link'])): ?>
                     <a href="<?= htmlspecialchars($banner['link']) ?>">
-                        <img src="<?= htmlspecialchars($banner['image']) ?>" alt="<?= htmlspecialchars($banner['title'] ?? 'โปรโมชั่น') ?>">
+                        <img src="<?= htmlspecialchars($banner['image']) ?>" alt="<?= htmlspecialchars($banner['title'] ?? 'โปรโมชั่น') ?>" loading="lazy">
                     </a>
                     <?php else: ?>
-                    <img src="<?= htmlspecialchars($banner['image']) ?>" alt="<?= htmlspecialchars($banner['title'] ?? 'โปรโมชั่น') ?>">
+                    <img src="<?= htmlspecialchars($banner['image']) ?>" alt="<?= htmlspecialchars($banner['title'] ?? 'โปรโมชั่น') ?>" loading="lazy">
                     <?php endif; ?>
                 </div>
                 <?php endforeach; ?>
             </div>
             <?php if (count($banners) > 1): ?>
+            <div class="banner-nav prev" onclick="prevSlide()"><i class="fas fa-chevron-left text-gray-600"></i></div>
+            <div class="banner-nav next" onclick="nextSlide()"><i class="fas fa-chevron-right text-gray-600"></i></div>
             <div class="banner-dots">
                 <?php for ($i = 0; $i < count($banners); $i++): ?>
                 <div class="banner-dot <?= $i === 0 ? 'active' : '' ?>" onclick="goToSlide(<?= $i ?>)"></div>
                 <?php endfor; ?>
             </div>
             <?php endif; ?>
+        </div>
+    </div>
+    <?php elseif (!$isFiltered): ?>
+    <!-- Default Banner if no banners configured -->
+    <div class="px-4 mb-4">
+        <div class="bg-gradient-to-r from-teal-500 to-teal-600 rounded-2xl p-5 text-white">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="font-bold text-lg mb-1">🎉 ยินดีต้อนรับ!</h2>
+                    <p class="text-sm text-teal-100">ส่งฟรีเมื่อซื้อครบ ฿<?= number_format($freeShippingMin) ?></p>
+                </div>
+                <div class="text-4xl">💊</div>
+            </div>
         </div>
     </div>
     <?php endif; ?>
@@ -747,34 +769,88 @@ function buildPageUrl($page, $userId, $lineAccountId, $filterCategory, $filterSe
         </a>
     </nav>
 
-    <!-- Product Detail Modal -->
-    <div id="productModal" class="fixed inset-0 bg-black/50 z-50 hidden overflow-y-auto">
-        <div class="min-h-screen flex items-start justify-center p-4 pt-8 pb-24">
-            <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-                <div class="relative">
-                    <button onclick="closeModal()" class="absolute top-3 right-3 z-20 w-8 h-8 bg-black/30 rounded-full flex items-center justify-center text-white">
-                        <i class="fas fa-times"></i>
+    <!-- Product Detail Modal - Full Responsive -->
+    <div id="productModal" class="fixed inset-0 bg-black/60 z-50 hidden overflow-y-auto">
+        <div class="min-h-screen flex items-end sm:items-center justify-center">
+            <div class="bg-white w-full sm:max-w-lg sm:rounded-2xl sm:m-4 rounded-t-3xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col">
+                <!-- Modal Header -->
+                <div class="relative flex-shrink-0">
+                    <button onclick="closeModal()" class="absolute top-4 right-4 z-20 w-10 h-10 bg-black/40 backdrop-blur rounded-full flex items-center justify-center text-white hover:bg-black/60 transition">
+                        <i class="fas fa-times text-lg"></i>
                     </button>
-                    <div id="modalImage" class="aspect-square bg-gray-100"></div>
+                    <!-- Product Image -->
+                    <div id="modalImage" class="aspect-square bg-gray-100 w-full"></div>
                 </div>
-                <div class="p-4">
-                    <h2 id="modalName" class="font-bold text-lg text-gray-800 mb-2"></h2>
-                    <p id="modalSku" class="text-sm text-gray-500 mb-3"></p>
-                    <div id="modalDesc" class="text-sm text-gray-600 mb-4 hidden"></div>
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <span id="modalPrice" class="text-2xl font-bold text-teal-600"></span>
-                            <span id="modalOriginalPrice" class="text-sm text-gray-400 line-through ml-2 hidden"></span>
+                
+                <!-- Modal Content - Scrollable -->
+                <div class="flex-1 overflow-y-auto">
+                    <div class="p-4 sm:p-5">
+                        <!-- Product Name -->
+                        <h2 id="modalName" class="font-bold text-xl text-gray-800 mb-1 leading-tight"></h2>
+                        <p id="modalSku" class="text-sm text-gray-400 mb-3"></p>
+                        
+                        <!-- Price Section -->
+                        <div class="flex items-center gap-3 mb-4">
+                            <span id="modalPrice" class="text-2xl sm:text-3xl font-bold text-teal-600"></span>
+                            <span id="modalOriginalPrice" class="text-base text-gray-400 line-through hidden"></span>
+                            <span id="modalDiscount" class="px-2 py-0.5 bg-red-100 text-red-600 text-xs font-bold rounded hidden"></span>
                         </div>
-                        <div id="modalStock" class="text-sm text-gray-500"></div>
+                        
+                        <!-- Stock Info -->
+                        <div id="modalStock" class="flex items-center gap-2 text-sm text-gray-500 mb-4">
+                            <i class="fas fa-box"></i>
+                            <span></span>
+                        </div>
+                        
+                        <!-- Description -->
+                        <div id="modalDescSection" class="hidden mb-4">
+                            <h3 class="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                <i class="fas fa-info-circle text-teal-500"></i>รายละเอียด
+                            </h3>
+                            <p id="modalDesc" class="text-sm text-gray-600 leading-relaxed"></p>
+                        </div>
+                        
+                        <!-- Usage Instructions -->
+                        <div id="modalUsageSection" class="hidden mb-4">
+                            <h3 class="font-bold text-gray-700 mb-2 flex items-center gap-2">
+                                <i class="fas fa-clipboard-list text-teal-500"></i>วิธีใช้
+                            </h3>
+                            <p id="modalUsage" class="text-sm text-gray-600 leading-relaxed"></p>
+                        </div>
+                        
+                        <!-- Manufacturer -->
+                        <div id="modalManufacturerSection" class="hidden mb-4">
+                            <div class="flex items-center gap-2 text-sm text-gray-500">
+                                <i class="fas fa-industry"></i>
+                                <span id="modalManufacturer"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Generic Name -->
+                        <div id="modalGenericSection" class="hidden mb-4">
+                            <div class="flex items-center gap-2 text-sm text-gray-500">
+                                <i class="fas fa-pills"></i>
+                                <span id="modalGeneric"></span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-3 mb-4">
-                        <div class="flex items-center border rounded-lg">
-                            <button onclick="changeQty(-1)" class="px-3 py-2 text-gray-600 hover:bg-gray-100"><i class="fas fa-minus"></i></button>
-                            <span id="modalQty" class="px-4 py-2 font-medium">1</span>
-                            <button onclick="changeQty(1)" class="px-3 py-2 text-gray-600 hover:bg-gray-100"><i class="fas fa-plus"></i></button>
+                </div>
+                
+                <!-- Modal Footer - Fixed -->
+                <div class="flex-shrink-0 border-t bg-white p-4 sm:p-5">
+                    <div class="flex items-center gap-3">
+                        <!-- Quantity Selector -->
+                        <div class="flex items-center border-2 border-gray-200 rounded-xl overflow-hidden">
+                            <button onclick="changeQty(-1)" class="w-11 h-11 flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition">
+                                <i class="fas fa-minus"></i>
+                            </button>
+                            <span id="modalQty" class="w-12 text-center font-bold text-lg">1</span>
+                            <button onclick="changeQty(1)" class="w-11 h-11 flex items-center justify-center text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition">
+                                <i class="fas fa-plus"></i>
+                            </button>
                         </div>
-                        <button onclick="addToCart()" class="flex-1 py-3 bg-teal-500 text-white rounded-xl font-medium hover:bg-teal-600 transition">
+                        <!-- Add to Cart Button -->
+                        <button onclick="addToCart()" id="addToCartBtn" class="flex-1 py-3 bg-gradient-to-r from-teal-500 to-teal-600 text-white rounded-xl font-bold text-base shadow-lg hover:shadow-xl active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
                             <i class="fas fa-cart-plus mr-2"></i>เพิ่มลงตะกร้า
                         </button>
                     </div>
@@ -868,15 +944,20 @@ function buildPageUrl($page, $userId, $lineAccountId, $filterCategory, $filterSe
     }
 
     function showProduct(id) {
-        // Redirect to product detail page
-        window.location.href = `liff-product-detail.php?id=${id}&user=${userId}&account=${ACCOUNT_ID}`;
+        // Open modal instead of redirect
+        showProductModal(id);
     }
 
-    // Keep old modal function for backward compatibility
     async function showProductModal(id) {
         try {
+            // Show loading
+            document.getElementById('productModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            document.getElementById('modalImage').innerHTML = '<div class="w-full h-full flex items-center justify-center"><i class="fas fa-spinner fa-spin text-4xl text-gray-300"></i></div>';
+            
             const res = await fetch(`${BASE_URL}/api/shop-products.php?product_id=${id}&account=${ACCOUNT_ID}`);
             const data = await res.json();
+            
             if (data.success && data.product) {
                 currentProduct = data.product;
                 currentQty = 1;
@@ -885,38 +966,87 @@ function buildPageUrl($page, $userId, $lineAccountId, $filterCategory, $filterSe
                 document.getElementById('modalName').textContent = p.name;
                 document.getElementById('modalSku').textContent = p.sku ? `รหัส: ${p.sku}` : '';
                 
-                const price = p.sale_price || p.price;
-                document.getElementById('modalPrice').textContent = `฿${Number(price).toLocaleString()}`;
+                const price = parseFloat(p.sale_price || p.price);
+                const originalPrice = p.sale_price ? parseFloat(p.price) : null;
                 
-                if (p.sale_price && p.price > p.sale_price) {
-                    document.getElementById('modalOriginalPrice').textContent = `฿${Number(p.price).toLocaleString()}`;
+                document.getElementById('modalPrice').textContent = `฿${price.toLocaleString()}`;
+                
+                if (originalPrice && originalPrice > price) {
+                    document.getElementById('modalOriginalPrice').textContent = `฿${originalPrice.toLocaleString()}`;
                     document.getElementById('modalOriginalPrice').classList.remove('hidden');
+                    
+                    const discount = Math.round((1 - price / originalPrice) * 100);
+                    document.getElementById('modalDiscount').textContent = `-${discount}%`;
+                    document.getElementById('modalDiscount').classList.remove('hidden');
                 } else {
                     document.getElementById('modalOriginalPrice').classList.add('hidden');
+                    document.getElementById('modalDiscount').classList.add('hidden');
                 }
                 
-                document.getElementById('modalStock').textContent = `คงเหลือ: ${p.stock || 999}`;
+                // Stock
+                const stock = p.stock || 999;
+                const stockEl = document.getElementById('modalStock');
+                if (stock > 10) {
+                    stockEl.innerHTML = `<i class="fas fa-check-circle text-green-500"></i><span class="text-green-600">มีสินค้า</span>`;
+                } else if (stock > 0) {
+                    stockEl.innerHTML = `<i class="fas fa-exclamation-circle text-orange-500"></i><span class="text-orange-600">เหลือ ${stock} ชิ้น</span>`;
+                } else {
+                    stockEl.innerHTML = `<i class="fas fa-times-circle text-red-500"></i><span class="text-red-600">สินค้าหมด</span>`;
+                    document.getElementById('addToCartBtn').disabled = true;
+                }
+                
                 document.getElementById('modalQty').textContent = '1';
                 
+                // Description
                 if (p.description) {
                     document.getElementById('modalDesc').textContent = p.description;
-                    document.getElementById('modalDesc').classList.remove('hidden');
+                    document.getElementById('modalDescSection').classList.remove('hidden');
                 } else {
-                    document.getElementById('modalDesc').classList.add('hidden');
+                    document.getElementById('modalDescSection').classList.add('hidden');
                 }
                 
+                // Usage Instructions
+                if (p.usage_instructions) {
+                    document.getElementById('modalUsage').textContent = p.usage_instructions;
+                    document.getElementById('modalUsageSection').classList.remove('hidden');
+                } else {
+                    document.getElementById('modalUsageSection').classList.add('hidden');
+                }
+                
+                // Manufacturer
+                if (p.manufacturer) {
+                    document.getElementById('modalManufacturer').textContent = `ผู้ผลิต: ${p.manufacturer}`;
+                    document.getElementById('modalManufacturerSection').classList.remove('hidden');
+                } else {
+                    document.getElementById('modalManufacturerSection').classList.add('hidden');
+                }
+                
+                // Generic Name
+                if (p.generic_name) {
+                    document.getElementById('modalGeneric').textContent = `ชื่อสามัญ: ${p.generic_name}`;
+                    document.getElementById('modalGenericSection').classList.remove('hidden');
+                } else {
+                    document.getElementById('modalGenericSection').classList.add('hidden');
+                }
+                
+                // Image
                 const imgDiv = document.getElementById('modalImage');
                 if (p.image_url) {
-                    imgDiv.innerHTML = `<img src="${p.image_url}" class="w-full h-full object-cover">`;
+                    imgDiv.innerHTML = `<img src="${p.image_url}" class="w-full h-full object-contain bg-white" onerror="this.parentElement.innerHTML='<div class=\\'w-full h-full flex items-center justify-center bg-gray-100\\'><i class=\\'fas fa-image text-5xl text-gray-300\\'></i></div>'">`;
                 } else {
-                    imgDiv.innerHTML = '<div class="w-full h-full flex items-center justify-center"><i class="fas fa-image text-5xl text-gray-300"></i></div>';
+                    imgDiv.innerHTML = '<div class="w-full h-full flex items-center justify-center bg-gray-100"><i class="fas fa-image text-5xl text-gray-300"></i></div>';
                 }
                 
-                document.getElementById('productModal').classList.remove('hidden');
-                document.body.style.overflow = 'hidden';
+                // Enable add to cart button
+                document.getElementById('addToCartBtn').disabled = (stock <= 0);
+                
+            } else {
+                closeModal();
+                alert('ไม่พบข้อมูลสินค้า');
             }
         } catch (e) {
             console.error(e);
+            closeModal();
             alert('ไม่สามารถโหลดข้อมูลสินค้าได้');
         }
     }
@@ -1149,18 +1279,44 @@ function buildPageUrl($page, $userId, $lineAccountId, $filterCategory, $filterSe
     function goToSlide(index) {
         if (!bannerTrack || totalSlides === 0) return;
         currentSlide = index;
-        bannerTrack.style.transform = `translateX(-${index * 100}%)`;
+        if (currentSlide < 0) currentSlide = totalSlides - 1;
+        if (currentSlide >= totalSlides) currentSlide = 0;
+        bannerTrack.style.transform = `translateX(-${currentSlide * 100}%)`;
         bannerDots.forEach((dot, i) => {
-            dot.classList.toggle('active', i === index);
+            dot.classList.toggle('active', i === currentSlide);
         });
     }
     
-    // Auto slide every 4 seconds
+    function nextSlide() { goToSlide(currentSlide + 1); }
+    function prevSlide() { goToSlide(currentSlide - 1); }
+    
+    // Auto slide every 5 seconds
+    let autoSlideInterval;
     if (totalSlides > 1) {
-        setInterval(() => {
-            currentSlide = (currentSlide + 1) % totalSlides;
-            goToSlide(currentSlide);
-        }, 4000);
+        autoSlideInterval = setInterval(() => {
+            goToSlide(currentSlide + 1);
+        }, 5000);
+        
+        // Pause on hover
+        const carousel = document.getElementById('bannerCarousel');
+        if (carousel) {
+            carousel.addEventListener('mouseenter', () => clearInterval(autoSlideInterval));
+            carousel.addEventListener('mouseleave', () => {
+                autoSlideInterval = setInterval(() => goToSlide(currentSlide + 1), 5000);
+            });
+        }
+    }
+    
+    // Touch swipe support for banner
+    let touchStartX = 0;
+    let touchEndX = 0;
+    if (bannerTrack) {
+        bannerTrack.addEventListener('touchstart', e => { touchStartX = e.changedTouches[0].screenX; }, { passive: true });
+        bannerTrack.addEventListener('touchend', e => {
+            touchEndX = e.changedTouches[0].screenX;
+            if (touchStartX - touchEndX > 50) nextSlide();
+            if (touchEndX - touchStartX > 50) prevSlide();
+        }, { passive: true });
     }
     </script>
 </body>
