@@ -184,9 +184,9 @@ try {
                 throw new Exception('LINE API Error: ' . ($result['error'] ?? 'Unknown'));
             }
             
-            // Save to database
+            // Save to database - ใช้ username เป็นหลัก เพราะ display_name อาจว่าง
             $adminUser = $_SESSION['admin_user'] ?? [];
-            $adminName = $adminUser['display_name'] ?? $adminUser['username'] ?? $_SESSION['admin_name'] ?? 'Admin';
+            $adminName = !empty($adminUser['username']) ? $adminUser['username'] : (!empty($adminUser['display_name']) ? $adminUser['display_name'] : 'Admin');
             $sentBy = 'admin:' . $adminName;
             
             // Check if sent_by column exists

@@ -47,9 +47,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                 }
                 
                 if ($result['code'] === 200) {
-                    // Get admin name from session
-                    $adminUser = $_SESSION['admin_user'] ?? [];
-                    $adminName = $adminUser['display_name'] ?? $adminUser['username'] ?? $_SESSION['admin_name'] ?? 'Admin';
+                    // Get admin name from session - ใช้ username เป็นหลัก
+                    $adminUser = $_SESSION['admin_user'] ?? null;
+                    
+                    // Debug: Log session data
+                    error_log("INBOX DEBUG - admin_user: " . json_encode($adminUser));
+                    error_log("INBOX DEBUG - full session: " . json_encode(array_keys($_SESSION)));
+                    
+                    // ดึงชื่อจาก session
+                    $adminName = 'Admin'; // default
+                    if (is_array($adminUser)) {
+                        if (!empty($adminUser['username'])) {
+                            $adminName = $adminUser['username'];
+                        } elseif (!empty($adminUser['display_name'])) {
+                            $adminName = $adminUser['display_name'];
+                        }
+                    }
+                    
+                    error_log("INBOX DEBUG - Final adminName: " . $adminName);
                     $hasSentBy = false;
                     try {
                         $checkCol = $db->query("SHOW COLUMNS FROM messages LIKE 'sent_by'");
@@ -72,7 +87,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                         'time' => date('H:i'), 
                         'sent_by' => 'admin:' . $adminName, 
                         'method' => $method,
-                        'method_label' => $method === 'reply' ? '✓ Reply (ฟรี)' : '💰 Push'
+                        'method_label' => $method === 'reply' ? '✓ Reply (ฟรี)' : '💰 Push',
+                        '_debug' => [
+                            'session_id' => session_id(),
+                            'has_admin_user' => isset($_SESSION['admin_user']),
+                            'admin_username' => $adminUser['username'] ?? 'N/A',
+                            'admin_display' => $adminUser['display_name'] ?? 'N/A',
+                            'final_name' => $adminName
+                        ]
                     ]);
                 } else {
                     throw new Exception("LINE API Error");
@@ -120,6 +142,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                 $stmt = $db->prepare("INSERT INTO user_notes (user_id, note, created_at) VALUES (?, ?, NOW())");
                 $stmt->execute([$userId, $note]);
                 echo json_encode(['success' => true, 'id' => $db->lastInsertId()]);
+                break;
+            
+            case 'test_session':
+                // Debug: ทดสอบว่า session ถูกอ่านถูกต้องหรือไม่
+                $adminUser = $_SESSION['admin_user'] ?? null;
+                $adminName = 'Admin';
+                if (is_array($adminUser)) {
+                    if (!empty($adminUser['username'])) {
+                        $adminName = $adminUser['username'];
+                    } elseif (!empty($adminUser['display_name'])) {
+                        $adminName = $adminUser['display_name'];
+                    }
+                }
+                echo json_encode([
+                    'success' => true,
+                    'session_id' => session_id(),
+                    'has_admin_user' => isset($_SESSION['admin_user']),
+                    'admin_user' => $adminUser,
+                    'calculated_name' => $adminName,
+                    'sent_by' => 'admin:' . $adminName
+                ], JSON_UNESCAPED_UNICODE);
                 break;
                 
             default:
@@ -689,6 +732,11 @@ async function sendMessage(e) {
         });
         const data = await res.json();
         
+        // Debug: แสดง session info
+        if (data._debug) {
+            console.log('🔍 DEBUG Session:', data._debug);
+        }
+        
         if (data.success) {
             input.value = '';
             autoResize(input);
@@ -699,7 +747,7 @@ async function sendMessage(e) {
             
             // Show method used (reply = free, push = paid)
             if (data.method_label) {
-                console.log('📤 Sent via:', data.method_label);
+                console.log('📤 Sent via:', data.method_label, '| Sent by:', data.sent_by);
             }
             
             // Append immediately
