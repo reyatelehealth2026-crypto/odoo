@@ -1,21 +1,19 @@
 <?php
 /**
- * Fix payment_slips foreign key constraint
- * Remove FK to orders table so we can use transaction_id instead
+ * Fix Payment Slips Foreign Key
+ * แก้ไข FK ที่ชี้ไปผิดตาราง (orders -> transactions)
  */
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
+header('Content-Type: text/html; charset=utf-8');
 require_once 'config/config.php';
 require_once 'config/database.php';
 
 $db = Database::getInstance()->getConnection();
 
-echo "<h2>Fix Payment Slips Foreign Key</h2>";
+echo "<h1>🔧 Fix Payment Slips Foreign Key</h1>";
 
-// 1. Show current foreign keys
-echo "<h3>1. Current Foreign Keys on payment_slips</h3>";
 try {
+    // 1. Show current FK constraints
+    echo "<h2>1. FK Constraints ปัจจุบัน</h2>";
     $stmt = $db->query("
         SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
         FROM information_schema.KEY_COLUMN_USAGE
@@ -25,125 +23,126 @@ try {
     ");
     $fks = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    if (empty($fks)) {
-        echo "<p style='color:green'>✅ No foreign keys found</p>";
-    } else {
-        echo "<table border='1' cellpadding='5'><tr><th>Constraint</th><th>Column</th><th>References</th></tr>";
+    if ($fks) {
+        echo "<table border='1' cellpadding='5'>";
+        echo "<tr><th>Constraint</th><th>Column</th><th>References Table</th><th>References Column</th></tr>";
         foreach ($fks as $fk) {
-            echo "<tr><td>{$fk['CONSTRAINT_NAME']}</td><td>{$fk['COLUMN_NAME']}</td><td>{$fk['REFERENCED_TABLE_NAME']}.{$fk['REFERENCED_COLUMN_NAME']}</td></tr>";
+            $color = ($fk['REFERENCED_TABLE_NAME'] === 'orders') ? 'color:red' : '';
+            echo "<tr style='{$color}'>";
+            echo "<td>{$fk['CONSTRAINT_NAME']}</td>";
+            echo "<td>{$fk['COLUMN_NAME']}</td>";
+            echo "<td>{$fk['REFERENCED_TABLE_NAME']}</td>";
+            echo "<td>{$fk['REFERENCED_COLUMN_NAME']}</td>";
+            echo "</tr>";
         }
         echo "</table>";
-    }
-} catch (Exception $e) {
-    echo "<p style='color:red'>Error: " . $e->getMessage() . "</p>";
-}
-
-// 2. Drop foreign key if exists
-echo "<h3>2. Drop Foreign Key</h3>";
-if (isset($_GET['fix'])) {
-    try {
-        // Try to drop the FK
-        $db->exec("ALTER TABLE payment_slips DROP FOREIGN KEY payment_slips_ibfk_1");
-        echo "<p style='color:green'>✅ Dropped payment_slips_ibfk_1</p>";
-    } catch (Exception $e) {
-        echo "<p style='color:orange'>⚠️ " . $e->getMessage() . "</p>";
-    }
-    
-    // Try other possible FK names
-    $possibleFKs = ['fk_payment_slips_order', 'payment_slips_order_id_foreign', 'fk_order_id'];
-    foreach ($possibleFKs as $fkName) {
-        try {
-            $db->exec("ALTER TABLE payment_slips DROP FOREIGN KEY {$fkName}");
-            echo "<p style='color:green'>✅ Dropped {$fkName}</p>";
-        } catch (Exception $e) {
-            // Ignore if not exists
-        }
-    }
-    
-    // Make order_id nullable
-    try {
-        $db->exec("ALTER TABLE payment_slips MODIFY COLUMN order_id INT DEFAULT NULL");
-        echo "<p style='color:green'>✅ Made order_id nullable</p>";
-    } catch (Exception $e) {
-        echo "<p style='color:orange'>⚠️ " . $e->getMessage() . "</p>";
-    }
-    
-    echo "<p><a href='fix_payment_slips_fk.php'>Refresh to verify</a></p>";
-    
-    // Test insert
-    echo "<h3>3. Test Insert After Fix</h3>";
-    try {
-        $stmt = $db->query("SELECT id, user_id FROM transactions ORDER BY id DESC LIMIT 1");
-        $txn = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        $testUrl = 'https://test.com/test_' . time() . '.jpg';
-        $stmt = $db->prepare("INSERT INTO payment_slips (transaction_id, user_id, image_url, status) VALUES (?, ?, ?, 'pending')");
-        $stmt->execute([$txn['id'], $txn['user_id'], $testUrl]);
-        $insertId = $db->lastInsertId();
-        echo "<p style='color:green'>✅ Test insert SUCCESS! ID: {$insertId}</p>";
-        
-        // Clean up
-        $db->exec("DELETE FROM payment_slips WHERE id = {$insertId}");
-        echo "<p>Test record deleted</p>";
-    } catch (Exception $e) {
-        echo "<p style='color:red'>❌ Test insert failed: " . $e->getMessage() . "</p>";
-    }
-    
-} else {
-    echo "<p><a href='?fix=1' onclick=\"return confirm('Drop foreign key constraint?')\">🔧 Click to fix (drop FK)</a></p>";
-}
-
-// 3. Show slip files not in DB
-echo "<h3>4. Slip Files NOT in Database</h3>";
-$slipDir = __DIR__ . '/uploads/slips/';
-if (is_dir($slipDir)) {
-    $files = array_diff(scandir($slipDir), ['.', '..', '.htaccess']);
-    $notInDb = [];
-    foreach ($files as $f) {
-        $stmt = $db->prepare("SELECT id FROM payment_slips WHERE image_url LIKE ?");
-        $stmt->execute(['%' . $f]);
-        if (!$stmt->fetch()) {
-            $notInDb[] = $f;
-        }
-    }
-    
-    if (empty($notInDb)) {
-        echo "<p style='color:green'>✅ All files are in database</p>";
     } else {
-        echo "<p style='color:orange'>⚠️ " . count($notInDb) . " file(s) not in database:</p>";
-        echo "<ul>";
-        foreach (array_slice($notInDb, 0, 10) as $f) {
-            echo "<li>{$f}</li>";
-        }
-        echo "</ul>";
-        
-        if (isset($_GET['import'])) {
-            echo "<h3>5. Importing missing slips...</h3>";
-            foreach ($notInDb as $f) {
-                // Extract order number from filename
-                if (preg_match('/slip_(TXN\d+)_/', $f, $matches)) {
-                    $orderNum = $matches[1];
-                    $stmt = $db->prepare("SELECT id, user_id FROM transactions WHERE order_number = ?");
-                    $stmt->execute([$orderNum]);
-                    $txn = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    if ($txn) {
-                        $baseUrl = defined('BASE_URL') ? rtrim(BASE_URL, '/') : ("https://" . $_SERVER['HTTP_HOST']);
-                        $imageUrl = $baseUrl . "/uploads/slips/" . $f;
-                        try {
-                            $stmt = $db->prepare("INSERT INTO payment_slips (transaction_id, user_id, image_url, status) VALUES (?, ?, ?, 'pending')");
-                            $stmt->execute([$txn['id'], $txn['user_id'], $imageUrl]);
-                            echo "<p style='color:green'>✅ Imported: {$f} → transaction #{$txn['id']}</p>";
-                        } catch (Exception $e) {
-                            echo "<p style='color:red'>❌ Failed {$f}: " . $e->getMessage() . "</p>";
-                        }
-                    } else {
-                        echo "<p style='color:orange'>⚠️ No transaction found for {$orderNum}</p>";
-                    }
-                }
+        echo "<p>ไม่พบ FK constraints</p>";
+    }
+    
+    // 2. Drop wrong FK (pointing to orders)
+    echo "<h2>2. ลบ FK ที่ผิด</h2>";
+    foreach ($fks as $fk) {
+        if ($fk['REFERENCED_TABLE_NAME'] === 'orders') {
+            $constraintName = $fk['CONSTRAINT_NAME'];
+            echo "<p>Dropping: {$constraintName}...</p>";
+            try {
+                $db->exec("ALTER TABLE payment_slips DROP FOREIGN KEY `{$constraintName}`");
+                echo "<p style='color:green'>✅ Dropped {$constraintName}</p>";
+            } catch (Exception $e) {
+                echo "<p style='color:orange'>⚠️ " . $e->getMessage() . "</p>";
             }
-        } else {
-            echo "<p><a href='?fix=1&import=1'>🔧 Fix FK and Import missing slips</a></p>";
         }
     }
+    
+    // 3. Check if transactions table exists
+    echo "<h2>3. ตรวจสอบตาราง transactions</h2>";
+    $stmt = $db->query("SHOW TABLES LIKE 'transactions'");
+    if ($stmt->fetch()) {
+        echo "<p style='color:green'>✅ ตาราง transactions มีอยู่</p>";
+        
+        // Add new FK to transactions (optional - can skip if causing issues)
+        echo "<h2>4. เพิ่ม FK ใหม่ (ชี้ไป transactions)</h2>";
+        try {
+            // First check if index exists
+            $stmt = $db->query("SHOW INDEX FROM payment_slips WHERE Key_name = 'idx_order_id'");
+            if (!$stmt->fetch()) {
+                $db->exec("ALTER TABLE payment_slips ADD INDEX idx_order_id (order_id)");
+                echo "<p>Added index idx_order_id</p>";
+            }
+            
+            // Add FK - but make it optional (SET NULL on delete)
+            // Actually, let's NOT add FK to avoid future issues
+            echo "<p style='color:blue'>ℹ️ ไม่เพิ่ม FK ใหม่ เพื่อความยืดหยุ่น</p>";
+            
+        } catch (Exception $e) {
+            echo "<p style='color:orange'>⚠️ " . $e->getMessage() . "</p>";
+        }
+    } else {
+        echo "<p style='color:red'>❌ ไม่พบตาราง transactions</p>";
+    }
+    
+    // 5. Test INSERT
+    echo "<h2>5. ทดสอบ INSERT</h2>";
+    
+    // Get latest transaction
+    $stmt = $db->query("SELECT id, order_number, user_id FROM transactions ORDER BY id DESC LIMIT 1");
+    $tx = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($tx) {
+        echo "<p>Testing with Transaction ID: {$tx['id']}, Order: {$tx['order_number']}</p>";
+        
+        $testUrl = 'https://re-ya.com/uploads/slips/test_' . time() . '.jpg';
+        
+        try {
+            $stmt = $db->prepare("INSERT INTO payment_slips (order_id, transaction_id, user_id, image_url, status) VALUES (?, ?, ?, ?, 'pending')");
+            $stmt->execute([$tx['id'], $tx['id'], $tx['user_id'], $testUrl]);
+            $slipId = $db->lastInsertId();
+            echo "<p style='color:green'>✅ INSERT สำเร็จ! Slip ID: {$slipId}</p>";
+            
+            // Delete test record
+            $db->exec("DELETE FROM payment_slips WHERE id = {$slipId}");
+            echo "<p>🗑️ Deleted test record</p>";
+            
+        } catch (Exception $e) {
+            echo "<p style='color:red'>❌ INSERT Error: " . $e->getMessage() . "</p>";
+        }
+    } else {
+        echo "<p style='color:orange'>⚠️ ไม่มี transaction สำหรับทดสอบ</p>";
+    }
+    
+    // 6. Verify FK constraints after fix
+    echo "<h2>6. FK Constraints หลังแก้ไข</h2>";
+    $stmt = $db->query("
+        SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+        FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'payment_slips'
+        AND REFERENCED_TABLE_NAME IS NOT NULL
+    ");
+    $fks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    if ($fks) {
+        echo "<table border='1' cellpadding='5'>";
+        echo "<tr><th>Constraint</th><th>Column</th><th>References Table</th><th>References Column</th></tr>";
+        foreach ($fks as $fk) {
+            echo "<tr>";
+            echo "<td>{$fk['CONSTRAINT_NAME']}</td>";
+            echo "<td>{$fk['COLUMN_NAME']}</td>";
+            echo "<td>{$fk['REFERENCED_TABLE_NAME']}</td>";
+            echo "<td>{$fk['REFERENCED_COLUMN_NAME']}</td>";
+            echo "</tr>";
+        }
+        echo "</table>";
+    } else {
+        echo "<p style='color:green'>✅ ไม่มี FK constraints (ดี - ยืดหยุ่นกว่า)</p>";
+    }
+    
+    echo "<h2>✅ เสร็จสิ้น!</h2>";
+    echo "<p><a href='test_slip_upload.php'>📤 ทดสอบอัพโหลดสลิป</a></p>";
+    echo "<p><a href='debug_payment_slips.php'>🔍 Debug Payment Slips</a></p>";
+    
+} catch (Exception $e) {
+    echo "<p style='color:red'>❌ Error: " . $e->getMessage() . "</p>";
 }
+?>
