@@ -320,6 +320,48 @@ $shopName = $shopSettings['shop_name'] ?? 'ร้านยา';
     const productId = <?= $product['id'] ?>;
     const maxStock = <?= $product['stock'] ?>;
     
+    // Migrate old localStorage cart to database (one-time)
+    async function migrateLocalStorageCart() {
+        const oldCartKey = 'cart_' + lineAccountId;
+        const oldCart = localStorage.getItem(oldCartKey);
+        
+        if (oldCart && userId) {
+            try {
+                const cartData = JSON.parse(oldCart);
+                const productIds = Object.keys(cartData);
+                
+                if (productIds.length > 0) {
+                    console.log('Migrating localStorage cart to database:', cartData);
+                    
+                    // Add each item to database
+                    for (const pid of productIds) {
+                        const qty = cartData[pid];
+                        if (qty > 0) {
+                            await fetch('api/checkout.php', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    action: 'add_to_cart',
+                                    line_user_id: userId,
+                                    product_id: parseInt(pid),
+                                    quantity: qty
+                                })
+                            });
+                        }
+                    }
+                    
+                    console.log('Migration complete, clearing localStorage');
+                }
+                
+                // Clear old localStorage
+                localStorage.removeItem(oldCartKey);
+            } catch (e) {
+                console.error('Migration error:', e);
+                localStorage.removeItem(oldCartKey);
+            }
+        }
+    }
+    
     function goBack() {
         window.history.back();
     }
@@ -332,30 +374,65 @@ $shopName = $shopSettings['shop_name'] ?? 'ร้านยา';
         input.value = val;
     }
     
-    function addToCart(productId) {
+    async function addToCart(productId) {
         const qty = parseInt(document.getElementById('qty').value);
-        let cart = JSON.parse(localStorage.getItem('cart_' + lineAccountId) || '{}');
-        cart[productId] = (cart[productId] || 0) + qty;
-        localStorage.setItem('cart_' + lineAccountId, JSON.stringify(cart));
-        updateCartBadge();
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
         
-        // Show toast
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-20 left-1/2 -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50';
-        toast.innerHTML = '<i class="fas fa-check mr-2"></i>เพิ่มลงตะกร้าแล้ว';
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2000);
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>กำลังเพิ่ม...';
+        
+        try {
+            const res = await fetch('api/checkout.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'add_to_cart',
+                    line_user_id: userId,
+                    product_id: productId,
+                    quantity: qty
+                })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                // Update badge with server count
+                updateCartBadgeCount(data.cart_count);
+                showToast('<i class="fas fa-check mr-2"></i>เพิ่มลงตะกร้าแล้ว', 'success');
+            } else {
+                showToast(data.message || 'เกิดข้อผิดพลาด', 'error');
+            }
+        } catch (e) {
+            console.error('Add to cart error:', e);
+            showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
     }
     
-    function updateCartBadge() {
-        const cart = JSON.parse(localStorage.getItem('cart_' + lineAccountId) || '{}');
-        const count = Object.values(cart).reduce((a, b) => a + b, 0);
+    function updateCartBadgeCount(count) {
         const badge = document.getElementById('cartBadge');
         if (count > 0) {
             badge.textContent = count > 99 ? '99+' : count;
             badge.classList.remove('hidden');
         } else {
             badge.classList.add('hidden');
+        }
+    }
+    
+    async function loadCartCount() {
+        if (!userId) return;
+        try {
+            const res = await fetch(`api/checkout.php?action=cart&line_user_id=${userId}`);
+            const data = await res.json();
+            if (data.success) {
+                // Count total quantity
+                const count = data.items.reduce((sum, item) => sum + item.quantity, 0);
+                updateCartBadgeCount(count);
+            }
+        } catch (e) {
+            console.error('Load cart error:', e);
         }
     }
     
@@ -428,7 +505,9 @@ $shopName = $shopSettings['shop_name'] ?? 'ร้านยา';
     }
     
     // Init
-    updateCartBadge();
+    migrateLocalStorageCart().then(() => {
+        loadCartCount();
+    });
     checkWishlist();
     </script>
 </body>

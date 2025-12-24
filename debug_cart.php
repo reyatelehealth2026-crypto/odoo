@@ -1,180 +1,193 @@
 <?php
 /**
- * Debug Cart - ตรวจสอบตะกร้าสินค้า
+ * Debug Cart Issues
+ * ตรวจสอบปัญหาตะกร้าว่างเปล่า
  */
+header('Content-Type: text/html; charset=utf-8');
 require_once 'config/config.php';
 require_once 'config/database.php';
 
-header('Content-Type: text/html; charset=utf-8');
-
 $db = Database::getInstance()->getConnection();
 
+// Test user
+$testLineUserId = $_GET['line_user_id'] ?? 'U95415c96eab157bdb8ee550b3280be85';
+
 echo "<h1>🛒 Debug Cart</h1>";
-echo "<style>body{font-family:sans-serif;padding:20px;} table{border-collapse:collapse;margin:10px 0;} th,td{border:1px solid #ddd;padding:8px;} th{background:#f5f5f5;} .ok{color:green;} .error{color:red;}</style>";
+echo "<p><strong>Testing line_user_id:</strong> <code>{$testLineUserId}</code></p>";
+echo "<p><strong>Length:</strong> " . strlen($testLineUserId) . " (should be 33)</p>";
 
-$lineUserId = $_GET['user'] ?? null;
+// 1. Check if user exists
+echo "<h2>1. ตรวจสอบ User</h2>";
+$stmt = $db->prepare("SELECT id, line_account_id, line_user_id, display_name, created_at FROM users WHERE line_user_id = ?");
+$stmt->execute([$testLineUserId]);
+$user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-echo "<h2>1. Parameters</h2>";
-echo "<p>LINE User ID: <strong>" . ($lineUserId ?: 'ไม่ระบุ (ใส่ ?user=Uxxxx)') . "</strong></p>";
-
-if (!$lineUserId) {
-    echo "<p class='error'>กรุณาระบุ user เช่น ?user=U1234567890</p>";
+if ($user) {
+    echo "<p style='color:green'>✅ พบ User</p>";
+    echo "<ul>";
+    echo "<li><strong>User ID:</strong> {$user['id']}</li>";
+    echo "<li><strong>Line Account ID:</strong> {$user['line_account_id']}</li>";
+    echo "<li><strong>Display Name:</strong> {$user['display_name']}</li>";
+    echo "<li><strong>Created:</strong> {$user['created_at']}</li>";
+    echo "</ul>";
+    
+    $userId = $user['id'];
+} else {
+    echo "<p style='color:red'>❌ ไม่พบ User ในระบบ</p>";
+    
+    // Check similar users
+    echo "<h3>Users ที่คล้ายกัน:</h3>";
+    $stmt = $db->prepare("SELECT id, line_user_id, display_name FROM users WHERE line_user_id LIKE ? LIMIT 10");
+    $stmt->execute(['%' . substr($testLineUserId, 0, 10) . '%']);
+    $similar = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    if ($similar) {
+        echo "<table border='1' cellpadding='5'>";
+        echo "<tr><th>ID</th><th>line_user_id</th><th>display_name</th></tr>";
+        foreach ($similar as $s) {
+            echo "<tr><td>{$s['id']}</td><td>{$s['line_user_id']}</td><td>{$s['display_name']}</td></tr>";
+        }
+        echo "</table>";
+    }
     exit;
 }
 
-// Find user in DB
-echo "<h2>2. ค้นหา User ในระบบ</h2>";
-try {
-    $stmt = $db->prepare("SELECT * FROM users WHERE line_user_id = ?");
-    $stmt->execute([$lineUserId]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($user) {
-        echo "<p class='ok'>✅ พบ User</p>";
-        echo "<ul>";
-        echo "<li>DB User ID: <strong>{$user['id']}</strong></li>";
-        echo "<li>LINE User ID: {$user['line_user_id']}</li>";
-        echo "<li>Display Name: {$user['display_name']}</li>";
-        echo "<li>Line Account ID: {$user['line_account_id']}</li>";
-        echo "</ul>";
-        $dbUserId = $user['id'];
-    } else {
-        echo "<p class='error'>❌ ไม่พบ User ในระบบ</p>";
-        echo "<p>User จะถูกสร้างอัตโนมัติเมื่อเพิ่มสินค้าลงตะกร้า</p>";
-        $dbUserId = null;
+// 2. Check cart_items table
+echo "<h2>2. ตรวจสอบ cart_items</h2>";
+$stmt = $db->prepare("SELECT * FROM cart_items WHERE user_id = ?");
+$stmt->execute([$userId]);
+$cartItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+echo "<p><strong>จำนวน items ในตะกร้า:</strong> " . count($cartItems) . "</p>";
+
+if ($cartItems) {
+    echo "<table border='1' cellpadding='5'>";
+    echo "<tr><th>ID</th><th>Product ID</th><th>Quantity</th><th>Created</th></tr>";
+    foreach ($cartItems as $item) {
+        echo "<tr>";
+        echo "<td>{$item['id']}</td>";
+        echo "<td>{$item['product_id']}</td>";
+        echo "<td>{$item['quantity']}</td>";
+        echo "<td>" . ($item['created_at'] ?? 'N/A') . "</td>";
+        echo "</tr>";
     }
-} catch (Exception $e) {
-    echo "<p class='error'>Error: " . $e->getMessage() . "</p>";
-    $dbUserId = null;
+    echo "</table>";
+} else {
+    echo "<p style='color:orange'>⚠️ ตะกร้าว่างเปล่า</p>";
 }
 
-// Check cart_items table
-echo "<h2>3. ตาราง cart_items</h2>";
+// 3. Check products
+echo "<h2>3. ตรวจสอบ Products ที่อยู่ในตะกร้า</h2>";
+if ($cartItems) {
+    $productIds = array_column($cartItems, 'product_id');
+    $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+    
+    $stmt = $db->prepare("SELECT id, name, price, is_active, stock FROM products WHERE id IN ({$placeholders})");
+    $stmt->execute($productIds);
+    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo "<table border='1' cellpadding='5'>";
+    echo "<tr><th>ID</th><th>Name</th><th>Price</th><th>Active</th><th>Stock</th></tr>";
+    foreach ($products as $p) {
+        $activeColor = $p['is_active'] ? 'green' : 'red';
+        echo "<tr>";
+        echo "<td>{$p['id']}</td>";
+        echo "<td>{$p['name']}</td>";
+        echo "<td>฿" . number_format($p['price'], 2) . "</td>";
+        echo "<td style='color:{$activeColor}'>" . ($p['is_active'] ? 'Yes' : 'No') . "</td>";
+        echo "<td>{$p['stock']}</td>";
+        echo "</tr>";
+    }
+    echo "</table>";
+    
+    // Check for missing products
+    $foundIds = array_column($products, 'id');
+    $missingIds = array_diff($productIds, $foundIds);
+    if ($missingIds) {
+        echo "<p style='color:red'>❌ Products ที่หายไป: " . implode(', ', $missingIds) . "</p>";
+    }
+    
+    // Check for inactive products
+    $inactiveProducts = array_filter($products, fn($p) => !$p['is_active']);
+    if ($inactiveProducts) {
+        echo "<p style='color:orange'>⚠️ Products ที่ถูกปิดใช้งาน: " . implode(', ', array_column($inactiveProducts, 'id')) . "</p>";
+    }
+}
+
+// 4. Test API call
+echo "<h2>4. ทดสอบ API Call</h2>";
+$apiUrl = BASE_URL . "/api/checkout.php?action=cart&line_user_id=" . urlencode($testLineUserId);
+echo "<p><strong>API URL:</strong> <a href='{$apiUrl}' target='_blank'>{$apiUrl}</a></p>";
+
+// Make internal call
+$ch = curl_init($apiUrl);
+curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_TIMEOUT => 10
+]);
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+echo "<p><strong>HTTP Code:</strong> {$httpCode}</p>";
+echo "<p><strong>Response:</strong></p>";
+echo "<pre style='background:#f5f5f5;padding:10px;overflow:auto;max-height:300px'>" . htmlspecialchars($response) . "</pre>";
+
+// 5. Check cart_items table structure
+echo "<h2>5. โครงสร้างตาราง cart_items</h2>";
 try {
     $stmt = $db->query("DESCRIBE cart_items");
-    $columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
-    echo "<p>Columns: " . implode(', ', $columns) . "</p>";
+    $columns = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo "<table border='1' cellpadding='5'>";
+    echo "<tr><th>Field</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th></tr>";
+    foreach ($columns as $col) {
+        echo "<tr>";
+        echo "<td>{$col['Field']}</td>";
+        echo "<td>{$col['Type']}</td>";
+        echo "<td>{$col['Null']}</td>";
+        echo "<td>{$col['Key']}</td>";
+        echo "<td>{$col['Default']}</td>";
+        echo "</tr>";
+    }
+    echo "</table>";
 } catch (Exception $e) {
-    echo "<p class='error'>❌ ตาราง cart_items ไม่มี: " . $e->getMessage() . "</p>";
+    echo "<p style='color:red'>Error: " . $e->getMessage() . "</p>";
 }
 
-// Show cart items
-echo "<h2>4. สินค้าในตะกร้า</h2>";
-if ($dbUserId) {
-    try {
-        $stmt = $db->prepare("
-            SELECT c.*, p.name, p.price, p.sale_price, p.image_url
-            FROM cart_items c
-            LEFT JOIN business_items p ON c.product_id = p.id
-            WHERE c.user_id = ?
-        ");
-        $stmt->execute([$dbUserId]);
-        $cartItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        echo "<p>พบ <strong>" . count($cartItems) . "</strong> รายการในตะกร้า</p>";
-        
-        if ($cartItems) {
-            echo "<table><tr><th>Cart ID</th><th>Product ID</th><th>Name</th><th>Price</th><th>Sale Price</th><th>Qty</th><th>Subtotal</th></tr>";
-            $total = 0;
-            foreach ($cartItems as $item) {
-                $price = $item['sale_price'] ?? $item['price'];
-                $subtotal = $price * $item['quantity'];
-                $total += $subtotal;
-                echo "<tr>
-                    <td>{$item['id']}</td>
-                    <td>{$item['product_id']}</td>
-                    <td>" . ($item['name'] ?: '<span class="error">สินค้าไม่พบ!</span>') . "</td>
-                    <td>฿" . number_format($item['price'] ?? 0) . "</td>
-                    <td>" . ($item['sale_price'] ? '฿' . number_format($item['sale_price']) : '-') . "</td>
-                    <td>{$item['quantity']}</td>
-                    <td>฿" . number_format($subtotal) . "</td>
-                </tr>";
-            }
-            echo "<tr><td colspan='6'><strong>รวม</strong></td><td><strong>฿" . number_format($total) . "</strong></td></tr>";
-            echo "</table>";
-        }
-    } catch (Exception $e) {
-        echo "<p class='error'>Error: " . $e->getMessage() . "</p>";
-    }
-} else {
-    echo "<p>ไม่มี User ID - ไม่สามารถดูตะกร้าได้</p>";
-}
-
-// Test API
-echo "<h2>5. ทดสอบ API</h2>";
-echo "<p>API URL: <a href='api/checkout.php?action=cart&line_user_id={$lineUserId}' target='_blank'>api/checkout.php?action=cart&line_user_id={$lineUserId}</a></p>";
-
-// Test add to cart
-if (isset($_GET['add']) && $dbUserId) {
-    $productId = intval($_GET['add']);
-    echo "<h3>🛒 ทดสอบเพิ่มสินค้า ID: {$productId}</h3>";
-    try {
-        $stmt = $db->prepare("
-            INSERT INTO cart_items (user_id, product_id, quantity) 
-            VALUES (?, ?, 1)
-            ON DUPLICATE KEY UPDATE quantity = quantity + 1
-        ");
-        $stmt->execute([$dbUserId, $productId]);
-        echo "<p class='ok'>✅ เพิ่มสินค้าสำเร็จ! <a href='debug_cart.php?user={$lineUserId}'>Refresh</a></p>";
-    } catch (Exception $e) {
-        echo "<p class='error'>❌ Error: " . $e->getMessage() . "</p>";
-    }
-}
-
-// Show available products to add
-echo "<h3>สินค้าที่สามารถเพิ่มได้:</h3>";
-try {
-    $stmt = $db->query("SELECT id, name, price FROM business_items WHERE is_active = 1 LIMIT 5");
-    $availableProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    if ($availableProducts) {
-        echo "<ul>";
-        foreach ($availableProducts as $p) {
-            echo "<li>{$p['name']} (฿{$p['price']}) - <a href='debug_cart.php?user={$lineUserId}&add={$p['id']}'>เพิ่มลงตะกร้า</a></li>";
-        }
-        echo "</ul>";
-    } else {
-        echo "<p class='error'>ไม่มีสินค้าในระบบ</p>";
-    }
-} catch (Exception $e) {
-    echo "<p class='error'>Error: " . $e->getMessage() . "</p>";
-}
-
-// Show all cart items in system
-echo "<h2>6. ตะกร้าทั้งหมดในระบบ (ล่าสุด 20 รายการ)</h2>";
+// 6. Recent cart activity
+echo "<h2>6. กิจกรรมตะกร้าล่าสุด (ทุก user)</h2>";
 try {
     $stmt = $db->query("
         SELECT c.*, u.line_user_id, u.display_name, p.name as product_name
         FROM cart_items c
         LEFT JOIN users u ON c.user_id = u.id
-        LEFT JOIN business_items p ON c.product_id = p.id
+        LEFT JOIN products p ON c.product_id = p.id
         ORDER BY c.id DESC
         LIMIT 20
     ");
-    $allCarts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $recentCarts = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    if ($allCarts) {
-        echo "<table><tr><th>ID</th><th>User ID</th><th>LINE User</th><th>Display Name</th><th>Product</th><th>Qty</th></tr>";
-        foreach ($allCarts as $c) {
-            echo "<tr>
-                <td>{$c['id']}</td>
-                <td>{$c['user_id']}</td>
-                <td>" . substr($c['line_user_id'] ?? '', 0, 10) . "...</td>
-                <td>{$c['display_name']}</td>
-                <td>{$c['product_name']}</td>
-                <td>{$c['quantity']}</td>
-            </tr>";
+    if ($recentCarts) {
+        echo "<table border='1' cellpadding='5'>";
+        echo "<tr><th>Cart ID</th><th>User ID</th><th>LINE User</th><th>Product</th><th>Qty</th></tr>";
+        foreach ($recentCarts as $rc) {
+            $highlight = ($rc['user_id'] == $userId) ? "style='background:#ffffcc'" : "";
+            echo "<tr {$highlight}>";
+            echo "<td>{$rc['id']}</td>";
+            echo "<td>{$rc['user_id']}</td>";
+            echo "<td>" . substr($rc['line_user_id'] ?? '', 0, 15) . "...</td>";
+            echo "<td>{$rc['product_name']}</td>";
+            echo "<td>{$rc['quantity']}</td>";
+            echo "</tr>";
         }
         echo "</table>";
     } else {
-        echo "<p>ไม่มีสินค้าในตะกร้าทั้งระบบ</p>";
+        echo "<p>ไม่มีข้อมูลในตาราง cart_items</p>";
     }
 } catch (Exception $e) {
-    echo "<p class='error'>Error: " . $e->getMessage() . "</p>";
+    echo "<p style='color:red'>Error: " . $e->getMessage() . "</p>";
 }
 
 echo "<hr>";
-echo "<p>Links:</p>";
-echo "<ul>";
-echo "<li><a href='liff-shop.php?user={$lineUserId}&debug=1'>LIFF Shop (debug)</a></li>";
-echo "<li><a href='liff-checkout.php?user={$lineUserId}&action=address'>LIFF Checkout</a></li>";
-echo "</ul>";
+echo "<p><a href='debug_cart.php?line_user_id={$testLineUserId}'>🔄 Refresh</a></p>";

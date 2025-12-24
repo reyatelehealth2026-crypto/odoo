@@ -337,6 +337,14 @@ function handleGetCart() {
     $userId = $_GET['user_id'] ?? null;
     $lineUserId = $_GET['line_user_id'] ?? null;
     
+    // Debug logging
+    $debug = isset($_GET['debug']);
+    $debugInfo = [
+        'input_user_id' => $userId,
+        'input_line_user_id' => $lineUserId,
+        'line_user_id_length' => strlen($lineUserId ?? '')
+    ];
+    
     // Get user ID and line_account_id from LINE user ID
     $lineAccountId = null;
     if ($lineUserId) {
@@ -346,7 +354,10 @@ function handleGetCart() {
         if ($user) {
             $userId = $user['id'];
             $lineAccountId = $user['line_account_id'];
+            $debugInfo['user_found'] = true;
+            $debugInfo['db_user_id'] = $userId;
         } else {
+            $debugInfo['user_found'] = false;
             // Auto-create user
             $stmt = $db->query("SELECT id FROM line_accounts WHERE is_active = 1 ORDER BY is_default DESC LIMIT 1");
             $account = $stmt->fetch();
@@ -355,10 +366,15 @@ function handleGetCart() {
             $stmt = $db->prepare("INSERT INTO users (line_account_id, line_user_id, display_name) VALUES (?, ?, 'LIFF User')");
             $stmt->execute([$lineAccountId, $lineUserId]);
             $userId = $db->lastInsertId();
+            $debugInfo['user_created'] = true;
+            $debugInfo['new_user_id'] = $userId;
         }
     }
     
     if (!$userId) {
+        if ($debug) {
+            jsonResponse(false, 'User not found', ['debug' => $debugInfo]);
+        }
         jsonResponse(false, 'User not found');
     }
     
@@ -373,13 +389,24 @@ function handleGetCart() {
     $stmt->execute([$userId]);
     $allItems = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
+    $debugInfo['raw_cart_count'] = count($allItems);
+    
     // Filter out items where product doesn't exist or is inactive
     $items = [];
+    $filteredOut = [];
     foreach ($allItems as $item) {
         if ($item['name'] && $item['is_active']) {
             $items[] = $item;
+        } else {
+            $filteredOut[] = [
+                'product_id' => $item['product_id'],
+                'reason' => !$item['name'] ? 'product_deleted' : 'product_inactive'
+            ];
         }
     }
+    
+    $debugInfo['filtered_cart_count'] = count($items);
+    $debugInfo['filtered_out'] = $filteredOut;
     
     // Calculate totals
     $subtotal = 0;
@@ -407,14 +434,20 @@ function handleGetCart() {
     
     $total = $subtotal + $shippingFee;
     
-    jsonResponse(true, '', [
+    $response = [
         'items' => $items,
         'subtotal' => $subtotal,
         'shipping_fee' => $shippingFee,
         'free_shipping_min' => $freeShippingMin,
         'total' => $total,
         'item_count' => count($items)
-    ]);
+    ];
+    
+    if ($debug) {
+        $response['debug'] = $debugInfo;
+    }
+    
+    jsonResponse(true, '', $response);
 }
 
 /**
