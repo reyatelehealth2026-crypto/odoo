@@ -55,10 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                     } catch (Exception $e) {}
                     
                     if ($hasSentBy) {
-                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, sent_by, created_at, is_read) VALUES (?, ?, 'outgoing', 'text', ?, ?, NOW(), 1)");
+                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, sent_by, created_at, is_read) VALUES (?, ?, 'outgoing', 'text', ?, ?, NOW(), 0)");
                         $stmt->execute([$user['line_account_id'], $userId, $message, 'admin:' . $adminName]);
                     } else {
-                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, created_at, is_read) VALUES (?, ?, 'outgoing', 'text', ?, NOW(), 1)");
+                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, created_at, is_read) VALUES (?, ?, 'outgoing', 'text', ?, NOW(), 0)");
                         $stmt->execute([$user['line_account_id'], $userId, $message]);
                     }
                     $msgId = $db->lastInsertId();
@@ -171,6 +171,21 @@ function getMessagePreview($content, $type) {
     if ($type === 'flex') return '📋 Flex';
     return mb_strlen($content) > 30 ? mb_substr($content, 0, 30) . '...' : $content;
 }
+
+function getSenderBadge($sentBy) {
+    if (empty($sentBy)) return '';
+    if (strpos($sentBy, 'admin:') === 0) {
+        $name = substr($sentBy, 6);
+        return '<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ' . htmlspecialchars($name) . '</span>';
+    }
+    if ($sentBy === 'ai' || strpos($sentBy, 'ai:') === 0) {
+        return '<span class="sender-badge ai"><i class="fas fa-robot"></i> AI</span>';
+    }
+    if ($sentBy === 'bot' || strpos($sentBy, 'bot:') === 0 || strpos($sentBy, 'system:') === 0) {
+        return '<span class="sender-badge bot"><i class="fas fa-cog"></i> Bot</span>';
+    }
+    return '<span class="sender-badge">' . htmlspecialchars($sentBy) . '</span>';
+}
 ?>
 
 <style>
@@ -193,6 +208,40 @@ function getMessagePreview($content, $type) {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .new-message-flash { animation: flash 0.5s ease-out; }
 @keyframes flash { 0% { background: #FEF3C7; } 100% { background: transparent; } }
+
+/* Sender Badge Styles */
+.sender-badge { 
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 10px; padding: 2px 6px; border-radius: 4px; 
+    font-weight: 600; margin-left: 6px;
+}
+.sender-badge.admin { background: #DBEAFE; color: #1E40AF; }
+.sender-badge.ai { background: #E0E7FF; color: #4338CA; }
+.sender-badge.bot { background: #FEE2E2; color: #991B1B; }
+
+/* Read Status */
+.read-status { font-size: 11px; margin-left: 4px; }
+.read-status.sent { color: #94A3B8; }
+.read-status.delivered { color: #94A3B8; }
+.read-status.read { color: #10B981; }
+
+/* Message Meta */
+.msg-meta { 
+    display: flex; align-items: center; gap: 4px; 
+    font-size: 10px; color: rgba(255,255,255,0.7); 
+    margin-top: 4px; 
+}
+.msg-meta.incoming { color: #64748B; }
+
+/* Unread Divider */
+.unread-divider {
+    display: flex; align-items: center; gap: 10px;
+    color: #EF4444; font-size: 12px; font-weight: 500;
+    margin: 16px 0;
+}
+.unread-divider::before, .unread-divider::after {
+    content: ''; flex: 1; height: 1px; background: #EF4444;
+}
 </style>
 
 <div class="h-[calc(100vh-80px)] flex bg-white rounded-xl shadow-lg border overflow-hidden">
@@ -278,10 +327,14 @@ function getMessagePreview($content, $type) {
 
         <!-- Chat Messages -->
         <div id="chatBox" class="flex-1 overflow-y-auto p-4 space-y-3 chat-scroll">
-            <?php foreach ($messages as $msg): 
+            <?php 
+            $hasUnread = false;
+            foreach ($messages as $msg): 
                 $isMe = ($msg['direction'] === 'outgoing');
                 $content = $msg['content'];
                 $type = $msg['message_type'];
+                $sentBy = $msg['sent_by'] ?? '';
+                $isRead = $msg['is_read'] ?? 0;
             ?>
             <div class="message-item flex <?= $isMe ? 'justify-end' : 'justify-start' ?> group" data-msg-id="<?= $msg['id'] ?>">
                 <?php if (!$isMe): ?>
@@ -315,10 +368,17 @@ function getMessagePreview($content, $type) {
                     <?php else: ?>
                         <div class="bg-white rounded-lg border p-3 text-xs text-gray-500"><i class="fas fa-file-alt mr-1"></i><?= ucfirst($type) ?></div>
                     <?php endif; ?>
-                    <div class="text-[10px] text-gray-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <?= date('H:i', strtotime($msg['created_at'])) ?>
-                        <?php if ($isMe && !empty($msg['sent_by'])): ?>
-                        <span class="ml-1"><?= htmlspecialchars($msg['sent_by']) ?></span>
+                    
+                    <!-- Message Meta: Time + Sender + Read Status -->
+                    <div class="msg-meta <?= $isMe ? '' : 'incoming' ?>">
+                        <span><?= date('H:i', strtotime($msg['created_at'])) ?></span>
+                        <?php if ($isMe): ?>
+                            <?= getSenderBadge($sentBy) ?>
+                            <?php if ($isRead): ?>
+                                <span class="read-status read" title="อ่านแล้ว">✓✓</span>
+                            <?php else: ?>
+                                <span class="read-status sent" title="ส่งแล้ว">✓</span>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
                 </div>
@@ -390,7 +450,6 @@ function getMessagePreview($content, $type) {
             </div>
         </div>
         <div class="flex-1 overflow-y-auto p-4 space-y-4 chat-scroll">
-            <!-- Tags -->
             <div>
                 <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">Tags</h4>
                 <div id="tagList" class="flex flex-wrap gap-1">
@@ -400,8 +459,6 @@ function getMessagePreview($content, $type) {
                     <button onclick="showTagModal()" class="text-xs text-emerald-600 hover:text-emerald-700">+ เพิ่ม</button>
                 </div>
             </div>
-            
-            <!-- Quick Info -->
             <div>
                 <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">ข้อมูล</h4>
                 <div class="space-y-2 text-sm">
@@ -409,8 +466,6 @@ function getMessagePreview($content, $type) {
                     <div class="flex justify-between"><span class="text-gray-500">แต้มสะสม</span><span class="font-medium text-emerald-600"><?= number_format($selectedUser['loyalty_points'] ?? 0) ?></span></div>
                 </div>
             </div>
-            
-            <!-- Notes -->
             <div>
                 <h4 class="text-xs font-semibold text-gray-500 uppercase mb-2">บันทึก</h4>
                 <textarea id="noteInput" class="w-full p-2 border rounded-lg text-sm" rows="2" placeholder="เพิ่มบันทึก..."></textarea>
@@ -442,6 +497,7 @@ const userId = <?= $selectedUser ? $selectedUser['id'] : 'null' ?>;
 let lastMessageId = <?= !empty($messages) ? end($messages)['id'] ?? 0 : 0 ?>;
 let pollingInterval = null;
 let isPolling = false;
+let sentMessageIds = new Set(); // Track messages we sent to prevent duplicates
 
 // ===== Real-time Polling =====
 async function pollMessages() {
@@ -453,12 +509,16 @@ async function pollMessages() {
         const data = await res.json();
         
         if (data.success) {
-            // Add new messages
+            // Add new messages (skip ones we already added locally)
             if (data.messages && data.messages.length > 0) {
                 data.messages.forEach(msg => {
-                    if (msg.id > lastMessageId) {
-                        lastMessageId = msg.id;
+                    const msgId = parseInt(msg.id);
+                    // Skip if already displayed or if we just sent it
+                    if (msgId > lastMessageId && !sentMessageIds.has(msgId) && !document.querySelector(`[data-msg-id="${msgId}"]`)) {
                         appendMessage(msg);
+                    }
+                    if (msgId > lastMessageId) {
+                        lastMessageId = msgId;
                     }
                 });
                 scrollToBottom();
@@ -468,13 +528,6 @@ async function pollMessages() {
             if (data.unread_users) {
                 data.unread_users.forEach(u => {
                     updateUserUnread(u.id, u.unread);
-                });
-            }
-            
-            // Update conversations order
-            if (data.updated_conversations) {
-                data.updated_conversations.forEach(conv => {
-                    updateConversation(conv);
                 });
             }
         }
@@ -489,6 +542,11 @@ function appendMessage(msg) {
     const chatBox = document.getElementById('chatBox');
     const typingIndicator = document.getElementById('typingIndicator');
     const isMe = msg.direction === 'outgoing';
+    
+    // Check if message already exists
+    if (document.querySelector(`[data-msg-id="${msg.id}"]`)) {
+        return;
+    }
     
     const div = document.createElement('div');
     div.className = `message-item flex ${isMe ? 'justify-end' : 'justify-start'} group new-message-flash`;
@@ -524,14 +582,40 @@ function appendMessage(msg) {
     }
     
     const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'}) : '';
-    const sentBy = msg.sent_by ? `<span class="ml-1">${escapeHtml(msg.sent_by)}</span>` : '';
+    const sentBy = msg.sent_by || '';
+    const isRead = msg.is_read == 1;
+    
+    // Build sender badge
+    let senderBadge = '';
+    if (isMe && sentBy) {
+        if (sentBy.startsWith('admin:')) {
+            const name = sentBy.substring(6);
+            senderBadge = `<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ${escapeHtml(name)}</span>`;
+        } else if (sentBy === 'ai' || sentBy.startsWith('ai:')) {
+            senderBadge = `<span class="sender-badge ai"><i class="fas fa-robot"></i> AI</span>`;
+        } else if (sentBy === 'bot' || sentBy.startsWith('bot:') || sentBy.startsWith('system:')) {
+            senderBadge = `<span class="sender-badge bot"><i class="fas fa-cog"></i> Bot</span>`;
+        } else {
+            senderBadge = `<span class="sender-badge">${escapeHtml(sentBy)}</span>`;
+        }
+    }
+    
+    // Read status
+    let readStatus = '';
+    if (isMe) {
+        readStatus = isRead 
+            ? '<span class="read-status read" title="อ่านแล้ว">✓✓</span>'
+            : '<span class="read-status sent" title="ส่งแล้ว">✓</span>';
+    }
     
     div.innerHTML = `
         ${!isMe ? `<img src="<?= $selectedUser ? ($selectedUser['picture_url'] ?: 'https://via.placeholder.com/28') : '' ?>" class="w-7 h-7 rounded-full self-end mr-2">` : ''}
         <div class="flex flex-col ${isMe ? 'items-end' : 'items-start'}" style="max-width:70%">
             ${contentHtml}
-            <div class="text-[10px] text-gray-400 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                ${time}${isMe ? sentBy : ''}
+            <div class="msg-meta ${isMe ? '' : 'incoming'}">
+                <span>${time}</span>
+                ${senderBadge}
+                ${readStatus}
             </div>
         </div>
     `;
@@ -559,27 +643,6 @@ function updateUserUnread(uid, count) {
         item.classList.add('new-message-flash');
     } else if (badge) {
         badge.remove();
-    }
-}
-
-function updateConversation(conv) {
-    const item = document.querySelector(`[data-user-id="${conv.id}"]`);
-    if (!item) return;
-    
-    const lastMsg = item.querySelector('.last-msg');
-    const lastTime = item.querySelector('.last-time');
-    
-    if (lastMsg && conv.last_message) {
-        lastMsg.textContent = conv.last_message.length > 30 ? conv.last_message.substring(0, 30) + '...' : conv.last_message;
-    }
-    if (lastTime && conv.last_time) {
-        lastTime.textContent = new Date(conv.last_time).toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'});
-    }
-    
-    // Move to top
-    const list = document.getElementById('userList');
-    if (list.firstChild !== item) {
-        list.insertBefore(item, list.firstChild);
     }
 }
 
@@ -611,13 +674,18 @@ async function sendMessage(e) {
             input.value = '';
             autoResize(input);
             
+            const msgId = data.message_id || Date.now();
+            sentMessageIds.add(msgId); // Track this message
+            lastMessageId = Math.max(lastMessageId, msgId);
+            
             // Append immediately
             appendMessage({
-                id: data.message_id || Date.now(),
+                id: msgId,
                 direction: 'outgoing',
                 message_type: 'text',
                 content: data.content,
                 sent_by: data.sent_by,
+                is_read: 0,
                 created_at: new Date().toISOString()
             });
             scrollToBottom();
@@ -787,10 +855,9 @@ function playNotificationSound() {
 document.addEventListener('DOMContentLoaded', () => {
     scrollToBottom();
     
-    // Start polling every 1.5 seconds for real-time feel
+    // Start polling every 2 seconds
     if (userId) {
-        pollingInterval = setInterval(pollMessages, 1500);
-        pollMessages(); // Initial poll
+        pollingInterval = setInterval(pollMessages, 2000);
     }
 });
 
