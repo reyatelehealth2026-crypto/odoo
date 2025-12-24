@@ -1,14 +1,15 @@
-# LINE CRM - Apache Configuration for /v1 subdirectory
-# อัพโหลดไฟล์นี้ไปที่ /v1/.htaccess
+# LINE CRM - Apache Configuration for re-ya.com
+# Clean URLs without .php extension
 
 # Enable RewriteEngine
 RewriteEngine On
 
-# สำคัญ! กำหนด Base ให้เป็น /v1/ เพื่อ override .htaccess ของ root
-RewriteBase /v1/
+# Base path - root domain (re-ya.com)
+RewriteBase /
 
 # =====================================================
-# Clean URLs - ไม่ต้องพิมพ์ .php หรือ .html
+# Clean URLs - ไม่ต้องพิมพ์ .php
+# เช่น /broadcast แทน /broadcast.php
 # =====================================================
 
 # ถ้าไม่ใช่ไฟล์หรือโฟลเดอร์จริง ให้ลองหา .php
@@ -17,22 +18,17 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
 RewriteRule ^([^/]+)/?$ $1.php [L]
 
-# ถ้าไม่ใช่ไฟล์หรือโฟลเดอร์จริง ให้ลองหา .html
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME}.html -f
-RewriteRule ^([^/]+)/?$ $1.html [L]
-
-# รองรับ subdirectory เช่น /shop/products, /api/member
+# รองรับ subdirectory เช่น /shop/products, /api/checkout
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
 RewriteRule ^([^/]+)/([^/]+)/?$ $1/$2.php [L]
 
+# รองรับ 3 levels เช่น /api/shop/products
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME}.html -f
-RewriteRule ^([^/]+)/([^/]+)/?$ $1/$2.html [L]
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)/([^/]+)/([^/]+)/?$ $1/$2/$3.php [L]
 
 # =====================================================
 
@@ -60,11 +56,6 @@ Options -Indexes
     Deny from all
 </FilesMatch>
 
-# ไม่ต้อง redirect ไป install อัตโนมัติ (ให้ user เข้าเอง)
-# RewriteCond %{REQUEST_URI} !^/v1/install
-# RewriteCond %{DOCUMENT_ROOT}/v1/config/installed.lock !-f
-# RewriteRule ^(.*)$ /v1/install/ [R=302,L]
-
 # Security Headers
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options nosniff
@@ -72,7 +63,7 @@ Options -Indexes
     Header always set X-XSS-Protection "1; mode=block"
 </IfModule>
 
-# PHP Settings
+# PHP Settings (for mod_php)
 <IfModule mod_php.c>
     php_flag display_errors off
     php_flag log_errors on

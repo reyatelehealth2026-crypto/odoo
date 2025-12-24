@@ -1,4 +1,4 @@
-<?php
+ๆ<?php
 /**
  * Header & Sidebar Component - Modern Admin Dashboard V3.0
  * Unified Shop System
@@ -11,12 +11,18 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/auth_check.php';
 
+// Helper function to generate clean URLs (without .php)
+function cleanUrl($url) {
+    // Remove .php extension for clean URLs
+    return preg_replace('/\.php$/', '', $url);
+}
+
 // ถ้าเป็น User ทั่วไป ให้ redirect ไปหน้า User Dashboard
 if (isUser()) {
     if (empty($currentUser['line_account_id'])) {
-        header('Location: auth/setup-account.php');
+        header('Location: /auth/setup-account');
     } else {
-        header('Location: user/dashboard.php');
+        header('Location: /user/dashboard');
     }
     exit;
 }
@@ -27,6 +33,7 @@ $currentPath = $_SERVER['PHP_SELF'];
 // Detect folder
 $isShop = strpos($currentPath, '/shop/') !== false;
 $baseUrl = $isShop ? '../' : '';
+
 
 // Handle bot switching
 if (isset($_GET['switch_bot'])) {
@@ -99,25 +106,25 @@ try {
 } catch (Exception $e) {}
 
 // ==================== Quick Access - User Customizable ====================
-// Available quick access menus
+// Available quick access menus (using clean URLs without .php)
 $quickAccessMenus = [
-    'messages' => ['icon' => 'fa-comments', 'label' => 'แชท', 'url' => 'messages.php', 'page' => 'messages', 'badge' => $unreadMessages, 'color' => 'green'],
-    'orders' => ['icon' => 'fa-receipt', 'label' => 'ออเดอร์', 'url' => 'shop/orders.php', 'page' => 'orders', 'badge' => $pendingOrders, 'badgeColor' => 'yellow', 'color' => 'orange'],
-    'products' => ['icon' => 'fa-box-open', 'label' => 'สินค้า', 'url' => 'shop/products.php', 'page' => 'products', 'color' => 'blue'],
-    'broadcast' => ['icon' => 'fa-paper-plane', 'label' => 'บรอดแคสต์', 'url' => 'broadcast-catalog-v2.php', 'page' => 'broadcast-catalog-v2', 'color' => 'purple'],
-    'users' => ['icon' => 'fa-users', 'label' => 'ลูกค้า', 'url' => 'users.php', 'page' => 'users', 'color' => 'cyan'],
-    'auto-reply' => ['icon' => 'fa-robot', 'label' => 'ตอบอัตโนมัติ', 'url' => 'auto-reply.php', 'page' => 'auto-reply', 'color' => 'pink'],
-    'analytics' => ['icon' => 'fa-chart-pie', 'label' => 'สถิติ', 'url' => 'analytics.php', 'page' => 'analytics', 'color' => 'indigo'],
-    'rich-menu' => ['icon' => 'fa-th-large', 'label' => 'Rich Menu', 'url' => 'rich-menu.php', 'page' => 'rich-menu', 'color' => 'teal'],
-    'appointments' => ['icon' => 'fa-calendar-check', 'label' => 'นัดหมาย', 'url' => 'appointments-admin.php', 'page' => 'appointments-admin', 'color' => 'amber'],
-    'pharmacist' => ['icon' => 'fa-user-md', 'label' => 'เภสัชกร', 'url' => 'pharmacist-dashboard.php', 'page' => 'pharmacist-dashboard', 'color' => 'emerald'],
-    'sync' => ['icon' => 'fa-sync', 'label' => 'Sync สินค้า', 'url' => 'sync-dashboard.php', 'page' => 'sync-dashboard', 'color' => 'sky'],
-    'ai-settings' => ['icon' => 'fa-brain', 'label' => 'AI Settings', 'url' => 'ai-pharmacy-settings.php', 'page' => 'ai-pharmacy-settings', 'color' => 'violet'],
-    'members' => ['icon' => 'fa-id-card', 'label' => 'สมาชิก', 'url' => 'members.php', 'page' => 'members', 'color' => 'rose'],
-    'rewards' => ['icon' => 'fa-gift', 'label' => 'ของรางวัล', 'url' => 'rewards.php', 'page' => 'rewards', 'color' => 'fuchsia'],
-    'categories' => ['icon' => 'fa-folder', 'label' => 'หมวดหมู่', 'url' => 'shop/categories.php', 'page' => 'categories', 'color' => 'lime'],
-    'templates' => ['icon' => 'fa-file-alt', 'label' => 'Templates', 'url' => 'templates.php', 'page' => 'templates', 'color' => 'slate'],
-    'scheduled-reports' => ['icon' => 'fa-calendar-alt', 'label' => 'รายงานอัตโนมัติ', 'url' => 'scheduled-reports.php', 'page' => 'scheduled-reports', 'color' => 'amber'],
+    'messages' => ['icon' => 'fa-comments', 'label' => 'แชท', 'url' => '/messages', 'page' => 'messages', 'badge' => $unreadMessages, 'color' => 'green'],
+    'orders' => ['icon' => 'fa-receipt', 'label' => 'ออเดอร์', 'url' => '/shop/orders', 'page' => 'orders', 'badge' => $pendingOrders, 'badgeColor' => 'yellow', 'color' => 'orange'],
+    'products' => ['icon' => 'fa-box-open', 'label' => 'สินค้า', 'url' => '/shop/products', 'page' => 'products', 'color' => 'blue'],
+    'broadcast' => ['icon' => 'fa-paper-plane', 'label' => 'บรอดแคสต์', 'url' => '/broadcast-catalog-v2', 'page' => 'broadcast-catalog-v2', 'color' => 'purple'],
+    'users' => ['icon' => 'fa-users', 'label' => 'ลูกค้า', 'url' => '/users', 'page' => 'users', 'color' => 'cyan'],
+    'auto-reply' => ['icon' => 'fa-robot', 'label' => 'ตอบอัตโนมัติ', 'url' => '/auto-reply', 'page' => 'auto-reply', 'color' => 'pink'],
+    'analytics' => ['icon' => 'fa-chart-pie', 'label' => 'สถิติ', 'url' => '/analytics', 'page' => 'analytics', 'color' => 'indigo'],
+    'rich-menu' => ['icon' => 'fa-th-large', 'label' => 'Rich Menu', 'url' => '/rich-menu', 'page' => 'rich-menu', 'color' => 'teal'],
+    'appointments' => ['icon' => 'fa-calendar-check', 'label' => 'นัดหมาย', 'url' => '/appointments-admin', 'page' => 'appointments-admin', 'color' => 'amber'],
+    'pharmacist' => ['icon' => 'fa-user-md', 'label' => 'เภสัชกร', 'url' => '/pharmacist-dashboard', 'page' => 'pharmacist-dashboard', 'color' => 'emerald'],
+    'sync' => ['icon' => 'fa-sync', 'label' => 'Sync สินค้า', 'url' => '/sync-dashboard', 'page' => 'sync-dashboard', 'color' => 'sky'],
+    'ai-settings' => ['icon' => 'fa-brain', 'label' => 'AI Settings', 'url' => '/ai-pharmacy-settings', 'page' => 'ai-pharmacy-settings', 'color' => 'violet'],
+    'members' => ['icon' => 'fa-id-card', 'label' => 'สมาชิก', 'url' => '/members', 'page' => 'members', 'color' => 'rose'],
+    'rewards' => ['icon' => 'fa-gift', 'label' => 'ของรางวัล', 'url' => '/rewards', 'page' => 'rewards', 'color' => 'fuchsia'],
+    'categories' => ['icon' => 'fa-folder', 'label' => 'หมวดหมู่', 'url' => '/shop/categories', 'page' => 'categories', 'color' => 'lime'],
+    'templates' => ['icon' => 'fa-file-alt', 'label' => 'Templates', 'url' => '/templates', 'page' => 'templates', 'color' => 'slate'],
+    'scheduled-reports' => ['icon' => 'fa-calendar-alt', 'label' => 'รายงานอัตโนมัติ', 'url' => '/scheduled-reports', 'page' => 'scheduled-reports', 'color' => 'amber'],
 ];
 
 // Get user's quick access preferences
@@ -155,7 +162,7 @@ $menuSections = [
     'main' => [
         'title' => '',
         'items' => [
-            ['icon' => 'fa-th-large', 'label' => 'Dashboard', 'url' => 'index.php', 'page' => 'index'],
+            ['icon' => 'fa-th-large', 'label' => 'Dashboard', 'url' => '/', 'page' => 'index'],
         ]
     ],
     'messaging' => [
@@ -163,9 +170,9 @@ $menuSections = [
         'icon' => 'fa-comments',
         'collapsible' => true,
         'items' => [
-            ['icon' => 'fa-inbox', 'label' => 'กล่องข้อความ', 'url' => 'messages.php', 'page' => 'messages', 'badge' => $unreadMessages],
-            ['icon' => 'fa-users', 'label' => 'รายชื่อลูกค้า', 'url' => 'users.php', 'page' => 'users'],
-            ['icon' => 'fa-robot', 'label' => 'ตอบอัตโนมัติ', 'url' => 'auto-reply.php', 'page' => 'auto-reply'],
+            ['icon' => 'fa-inbox', 'label' => 'กล่องข้อความ', 'url' => '/messages', 'page' => 'messages', 'badge' => $unreadMessages],
+            ['icon' => 'fa-users', 'label' => 'รายชื่อลูกค้า', 'url' => '/users', 'page' => 'users'],
+            ['icon' => 'fa-robot', 'label' => 'ตอบอัตโนมัติ', 'url' => '/auto-reply', 'page' => 'auto-reply'],
         ]
     ],
     'broadcast' => [
@@ -173,10 +180,10 @@ $menuSections = [
         'icon' => 'fa-bullhorn',
         'collapsible' => true,
         'items' => [
-            ['icon' => 'fa-paper-plane', 'label' => 'ส่งข้อความ', 'url' => 'broadcast.php', 'page' => 'broadcast'],
-            ['icon' => 'fa-layer-group', 'label' => 'แคตตาล็อก', 'url' => 'broadcast-catalog-v2.php', 'page' => 'broadcast-catalog-v2'],
-            ['icon' => 'fa-box', 'label' => 'สินค้าโปรโมท', 'url' => 'broadcast-products.php', 'page' => 'broadcast-products'],
-            ['icon' => 'fa-chart-bar', 'label' => 'สถิติ', 'url' => 'broadcast-stats.php', 'page' => 'broadcast-stats'],
+            ['icon' => 'fa-paper-plane', 'label' => 'ส่งข้อความ', 'url' => '/broadcast', 'page' => 'broadcast'],
+            ['icon' => 'fa-layer-group', 'label' => 'แคตตาล็อก', 'url' => '/broadcast-catalog-v2', 'page' => 'broadcast-catalog-v2'],
+            ['icon' => 'fa-box', 'label' => 'สินค้าโปรโมท', 'url' => '/broadcast-products', 'page' => 'broadcast-products'],
+            ['icon' => 'fa-chart-bar', 'label' => 'สถิติ', 'url' => '/broadcast-stats', 'page' => 'broadcast-stats'],
         ]
     ],
     'shop' => [
@@ -184,16 +191,16 @@ $menuSections = [
         'icon' => 'fa-store',
         'collapsible' => true,
         'items' => array_filter([
-            ['icon' => 'fa-tachometer-alt', 'label' => 'ภาพรวม', 'url' => 'shop/index.php', 'page' => 'index', 'folder' => 'shop'],
-            ['icon' => 'fa-receipt', 'label' => 'ออเดอร์', 'url' => 'shop/orders.php', 'page' => 'orders', 'badge' => $pendingOrders, 'badgeColor' => 'yellow'],
-            $pendingSlips > 0 ? ['icon' => 'fa-file-invoice', 'label' => 'รอตรวจสลิป', 'url' => 'shop/orders.php?pending_slip=1', 'page' => '', 'badge' => $pendingSlips, 'badgeColor' => 'orange'] : null,
-            ['icon' => 'fa-box', 'label' => 'สินค้า', 'url' => 'shop/products.php', 'page' => 'products'],
-            ['icon' => 'fa-star', 'label' => 'สินค้าเด่น', 'url' => 'shop/promotions.php', 'page' => 'promotions'],
-            ['icon' => 'fa-folder', 'label' => 'หมวดหมู่', 'url' => 'shop/categories.php', 'page' => 'categories'],
-            ['icon' => 'fa-store', 'label' => 'ตั้งค่าหน้าร้าน LIFF', 'url' => 'shop/liff-shop-settings.php', 'page' => 'liff-shop-settings'],
-            ['icon' => 'fa-file-import', 'label' => 'นำเข้าสินค้า', 'url' => 'shop/import-products.php', 'page' => 'import-products'],
-            ['icon' => 'fa-coins', 'label' => 'แต้มสะสม', 'url' => 'loyalty-points.php', 'page' => 'loyalty-points'],
-            ['icon' => 'fa-cog', 'label' => 'ตั้งค่าร้าน', 'url' => 'shop/settings.php', 'page' => 'settings', 'folder' => 'shop'],
+            ['icon' => 'fa-tachometer-alt', 'label' => 'ภาพรวม', 'url' => '/shop', 'page' => 'index', 'folder' => 'shop'],
+            ['icon' => 'fa-receipt', 'label' => 'ออเดอร์', 'url' => '/shop/orders', 'page' => 'orders', 'badge' => $pendingOrders, 'badgeColor' => 'yellow'],
+            $pendingSlips > 0 ? ['icon' => 'fa-file-invoice', 'label' => 'รอตรวจสลิป', 'url' => '/shop/orders?pending_slip=1', 'page' => '', 'badge' => $pendingSlips, 'badgeColor' => 'orange'] : null,
+            ['icon' => 'fa-box', 'label' => 'สินค้า', 'url' => '/shop/products', 'page' => 'products'],
+            ['icon' => 'fa-star', 'label' => 'สินค้าเด่น', 'url' => '/shop/promotions', 'page' => 'promotions'],
+            ['icon' => 'fa-folder', 'label' => 'หมวดหมู่', 'url' => '/shop/categories', 'page' => 'categories'],
+            ['icon' => 'fa-store', 'label' => 'ตั้งค่าหน้าร้าน LIFF', 'url' => '/shop/liff-shop-settings', 'page' => 'liff-shop-settings'],
+            ['icon' => 'fa-file-import', 'label' => 'นำเข้าสินค้า', 'url' => '/shop/import-products', 'page' => 'import-products'],
+            ['icon' => 'fa-coins', 'label' => 'แต้มสะสม', 'url' => '/loyalty-points', 'page' => 'loyalty-points'],
+            ['icon' => 'fa-cog', 'label' => 'ตั้งค่าร้าน', 'url' => '/shop/settings', 'page' => 'settings', 'folder' => 'shop'],
         ])
     ],
     'membership' => [
@@ -201,10 +208,10 @@ $menuSections = [
         'icon' => 'fa-id-card',
         'collapsible' => true,
         'items' => [
-            ['icon' => 'fa-users', 'label' => 'จัดการสมาชิก', 'url' => 'members.php', 'page' => 'members'],
-            ['icon' => 'fa-gift', 'label' => 'ของรางวัลแลกแต้ม', 'url' => 'rewards.php', 'page' => 'rewards'],
-            ['icon' => 'fa-calendar-check', 'label' => 'นัดหมาย', 'url' => 'appointments-admin.php', 'page' => 'appointments-admin'],
-            ['icon' => 'fa-user-md', 'label' => 'เภสัชกร', 'url' => 'pharmacists.php', 'page' => 'pharmacists'],
+            ['icon' => 'fa-users', 'label' => 'จัดการสมาชิก', 'url' => '/members', 'page' => 'members'],
+            ['icon' => 'fa-gift', 'label' => 'ของรางวัลแลกแต้ม', 'url' => '/rewards', 'page' => 'rewards'],
+            ['icon' => 'fa-calendar-check', 'label' => 'นัดหมาย', 'url' => '/appointments-admin', 'page' => 'appointments-admin'],
+            ['icon' => 'fa-user-md', 'label' => 'เภสัชกร', 'url' => '/pharmacists', 'page' => 'pharmacists'],
         ]
     ],
     'crm' => [
@@ -212,12 +219,12 @@ $menuSections = [
         'icon' => 'fa-users-cog',
         'collapsible' => true,
         'items' => [
-            ['icon' => 'fa-chart-pie', 'label' => 'วิเคราะห์ลูกค้า', 'url' => 'crm-analytics.php', 'page' => 'crm-analytics'],
-            ['icon' => 'fa-tags', 'label' => 'แท็กลูกค้า', 'url' => 'user-tags.php', 'page' => 'user-tags'],
-            ['icon' => 'fa-filter', 'label' => 'กลุ่มลูกค้า', 'url' => 'customer-segments.php', 'page' => 'customer-segments'],
-            ['icon' => 'fa-paper-plane', 'label' => 'Drip Campaign', 'url' => 'drip-campaigns.php', 'page' => 'drip-campaigns'],
-            ['icon' => 'fa-link', 'label' => 'ติดตามลิงก์', 'url' => 'link-tracking.php', 'page' => 'link-tracking'],
-            ['icon' => 'fa-users-rectangle', 'label' => 'กลุ่ม LINE', 'url' => 'line-groups.php', 'page' => 'line-groups'],
+            ['icon' => 'fa-chart-pie', 'label' => 'วิเคราะห์ลูกค้า', 'url' => '/crm-analytics', 'page' => 'crm-analytics'],
+            ['icon' => 'fa-tags', 'label' => 'แท็กลูกค้า', 'url' => '/user-tags', 'page' => 'user-tags'],
+            ['icon' => 'fa-filter', 'label' => 'กลุ่มลูกค้า', 'url' => '/customer-segments', 'page' => 'customer-segments'],
+            ['icon' => 'fa-paper-plane', 'label' => 'Drip Campaign', 'url' => '/drip-campaigns', 'page' => 'drip-campaigns'],
+            ['icon' => 'fa-link', 'label' => 'ติดตามลิงก์', 'url' => '/link-tracking', 'page' => 'link-tracking'],
+            ['icon' => 'fa-users-rectangle', 'label' => 'กลุ่ม LINE', 'url' => '/line-groups', 'page' => 'line-groups'],
         ]
     ],
     'tools' => [
@@ -225,14 +232,14 @@ $menuSections = [
         'icon' => 'fa-tools',
         'collapsible' => true,
         'items' => [
-            ['icon' => 'fa-video', 'label' => 'Video Call', 'url' => 'video-call-pro.php', 'page' => 'video-call-pro'],
-            ['icon' => 'fa-th-large', 'label' => 'Rich Menu', 'url' => 'rich-menu.php', 'page' => 'rich-menu'],
-            ['icon' => 'fa-layer-group', 'label' => 'Rich Menu สลับหน้า', 'url' => 'rich-menu-switch.php', 'page' => 'rich-menu-switch'],
-            ['icon' => 'fa-random', 'label' => 'Dynamic Rich Menu', 'url' => 'dynamic-rich-menu.php', 'page' => 'dynamic-rich-menu'],
-            ['icon' => 'fa-puzzle-piece', 'label' => 'Flex Builder', 'url' => 'flex-builder.php', 'page' => 'flex-builder'],
-            ['icon' => 'fa-hand-wave', 'label' => 'ข้อความต้อนรับ', 'url' => 'welcome-settings.php', 'page' => 'welcome-settings'],
-            ['icon' => 'fa-clock', 'label' => 'ตั้งเวลาส่ง', 'url' => 'scheduled.php', 'page' => 'scheduled'],
-            ['icon' => 'fa-calendar-alt', 'label' => 'รายงานอัตโนมัติ', 'url' => 'scheduled-reports.php', 'page' => 'scheduled-reports'],
+            ['icon' => 'fa-video', 'label' => 'Video Call', 'url' => '/video-call-pro', 'page' => 'video-call-pro'],
+            ['icon' => 'fa-th-large', 'label' => 'Rich Menu', 'url' => '/rich-menu', 'page' => 'rich-menu'],
+            ['icon' => 'fa-layer-group', 'label' => 'Rich Menu สลับหน้า', 'url' => '/rich-menu-switch', 'page' => 'rich-menu-switch'],
+            ['icon' => 'fa-random', 'label' => 'Dynamic Rich Menu', 'url' => '/dynamic-rich-menu', 'page' => 'dynamic-rich-menu'],
+            ['icon' => 'fa-puzzle-piece', 'label' => 'Flex Builder', 'url' => '/flex-builder', 'page' => 'flex-builder'],
+            ['icon' => 'fa-hand-wave', 'label' => 'ข้อความต้อนรับ', 'url' => '/welcome-settings', 'page' => 'welcome-settings'],
+            ['icon' => 'fa-clock', 'label' => 'ตั้งเวลาส่ง', 'url' => '/scheduled', 'page' => 'scheduled'],
+            ['icon' => 'fa-calendar-alt', 'label' => 'รายงานอัตโนมัติ', 'url' => '/scheduled-reports', 'page' => 'scheduled-reports'],
         ]
     ],
     'ai' => [
@@ -240,13 +247,13 @@ $menuSections = [
         'icon' => 'fa-robot',
         'collapsible' => true,
         'items' => [
-            ['icon' => 'fa-user-md', 'label' => '🏥 เภสัชกร Dashboard', 'url' => 'pharmacist-dashboard.php', 'page' => 'pharmacist-dashboard'],
-            ['icon' => 'fa-stethoscope', 'label' => 'Triage Analytics', 'url' => 'triage-analytics.php', 'page' => 'triage-analytics'],
-            ['icon' => 'fa-pills', 'label' => 'ยาตีกัน', 'url' => 'drug-interactions.php', 'page' => 'drug-interactions'],
-            ['icon' => 'fa-cog', 'label' => 'ตั้งค่า AI เภสัช', 'url' => 'ai-pharmacy-settings.php', 'page' => 'ai-pharmacy-settings'],
-            ['icon' => 'fa-comments', 'label' => 'AI ตอบแชท', 'url' => 'ai-chat-settings.php', 'page' => 'ai-chat-settings'],
-            ['icon' => 'fa-image', 'label' => 'AI สร้างรูป', 'url' => 'ai-image.php', 'page' => 'ai-image'],
-            ['icon' => 'fa-wand-magic-sparkles', 'label' => 'AI เขียนคอนเทนต์', 'url' => 'ai-studio.php', 'page' => 'ai-studio'],
+            ['icon' => 'fa-user-md', 'label' => '🏥 เภสัชกร Dashboard', 'url' => '/pharmacist-dashboard', 'page' => 'pharmacist-dashboard'],
+            ['icon' => 'fa-stethoscope', 'label' => 'Triage Analytics', 'url' => '/triage-analytics', 'page' => 'triage-analytics'],
+            ['icon' => 'fa-pills', 'label' => 'ยาตีกัน', 'url' => '/drug-interactions', 'page' => 'drug-interactions'],
+            ['icon' => 'fa-cog', 'label' => 'ตั้งค่า AI เภสัช', 'url' => '/ai-pharmacy-settings', 'page' => 'ai-pharmacy-settings'],
+            ['icon' => 'fa-comments', 'label' => 'AI ตอบแชท', 'url' => '/ai-chat-settings', 'page' => 'ai-chat-settings'],
+            ['icon' => 'fa-image', 'label' => 'AI สร้างรูป', 'url' => '/ai-image', 'page' => 'ai-image'],
+            ['icon' => 'fa-wand-magic-sparkles', 'label' => 'AI เขียนคอนเทนต์', 'url' => '/ai-studio', 'page' => 'ai-studio'],
         ]
     ],
     'settings' => [
@@ -254,14 +261,14 @@ $menuSections = [
         'icon' => 'fa-cog',
         'collapsible' => true,
         'items' => array_filter([
-            ['icon' => 'fa-chart-bar', 'label' => 'สถิติ', 'url' => 'analytics.php', 'page' => 'analytics'],
-            ['icon' => 'fa-chart-line', 'label' => 'วิเคราะห์ขั้นสูง', 'url' => 'advanced-analytics.php', 'page' => 'advanced-analytics'],
-            isSuperAdmin() ? ['icon' => 'fa-layer-group', 'label' => 'บัญชี LINE', 'url' => 'line-accounts.php', 'page' => 'line-accounts'] : null,
-            ['icon' => 'fa-mobile-screen', 'label' => 'ตั้งค่า LIFF', 'url' => 'liff-settings.php', 'page' => 'liff-settings'],
-            ['icon' => 'fa-shield-alt', 'label' => 'Consent/PDPA', 'url' => 'consent-management.php', 'page' => 'consent-management'],
-            ['icon' => 'fab fa-telegram', 'label' => 'Telegram', 'url' => 'telegram.php', 'page' => 'telegram'],
-            isSuperAdmin() ? ['icon' => 'fa-users-cog', 'label' => 'ผู้ใช้ระบบ', 'url' => 'admin-users.php', 'page' => 'admin-users'] : null,
-            ['icon' => 'fa-question-circle', 'label' => 'ช่วยเหลือ', 'url' => 'help.php', 'page' => 'help'],
+            ['icon' => 'fa-chart-bar', 'label' => 'สถิติ', 'url' => '/analytics', 'page' => 'analytics'],
+            ['icon' => 'fa-chart-line', 'label' => 'วิเคราะห์ขั้นสูง', 'url' => '/advanced-analytics', 'page' => 'advanced-analytics'],
+            isSuperAdmin() ? ['icon' => 'fa-layer-group', 'label' => 'บัญชี LINE', 'url' => '/line-accounts', 'page' => 'line-accounts'] : null,
+            ['icon' => 'fa-mobile-screen', 'label' => 'ตั้งค่า LIFF', 'url' => '/liff-settings', 'page' => 'liff-settings'],
+            ['icon' => 'fa-shield-alt', 'label' => 'Consent/PDPA', 'url' => '/consent-management', 'page' => 'consent-management'],
+            ['icon' => 'fab fa-telegram', 'label' => 'Telegram', 'url' => '/telegram', 'page' => 'telegram'],
+            isSuperAdmin() ? ['icon' => 'fa-users-cog', 'label' => 'ผู้ใช้ระบบ', 'url' => '/admin-users', 'page' => 'admin-users'] : null,
+            ['icon' => 'fa-question-circle', 'label' => 'ช่วยเหลือ', 'url' => '/help', 'page' => 'help'],
         ])
     ],
 ];
@@ -276,7 +283,14 @@ $menuSections = [
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#06C755">
     <meta name="base-url" content="<?= $baseUrl ?>">
-    <title><?= $pageTitle ?? APP_NAME ?></title>
+    <title>Re-ya Pharmachy</title>
+    
+    <!-- Favicon & Icons -->
+    <link rel="icon" type="image/png" href="/assets/images/3.png">
+    <link rel="shortcut icon" type="image/png" href="/assets/images/3.png">
+    <link rel="apple-touch-icon" href="/assets/images/3.png">
+    <link rel="apple-touch-icon-precomposed" href="/assets/images/3.png">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
