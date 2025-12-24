@@ -23,8 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
     
     if ($action === 'create') {
-        $stmt = $db->prepare("INSERT INTO {$categoriesTable} (line_account_id, name, sort_order, is_active) VALUES (?, ?, ?, 1)");
-        $stmt->execute([$currentBotId, trim($_POST['name']), intval($_POST['sort_order'] ?? 0)]);
+        $stmt = $db->prepare("INSERT INTO {$categoriesTable} (name, sort_order, is_active) VALUES (?, ?, 1)");
+        $stmt->execute([trim($_POST['name']), intval($_POST['sort_order'] ?? 0)]);
     } elseif ($action === 'update') {
         $stmt = $db->prepare("UPDATE {$categoriesTable} SET name = ?, sort_order = ?, is_active = ? WHERE id = ?");
         $stmt->execute([trim($_POST['name']), intval($_POST['sort_order']), isset($_POST['is_active']) ? 1 : 0, $_POST['id']]);
@@ -49,18 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// Get categories with product count
+// Get categories with product count (shared across all LINE accounts)
 $categories = [];
 try {
-    $stmt = $db->prepare("
+    $stmt = $db->query("
         SELECT c.*, COALESCE(COUNT(p.id), 0) as product_count 
         FROM {$categoriesTable} c 
-        LEFT JOIN {$productsTable} p ON c.id = p.category_id 
-        WHERE (c.line_account_id = ? OR c.line_account_id IS NULL) 
+        LEFT JOIN {$productsTable} p ON c.id = p.category_id AND p.is_active = 1
         GROUP BY c.id 
         ORDER BY c.sort_order ASC, c.name ASC
     ");
-    $stmt->execute([$currentBotId]);
     $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
