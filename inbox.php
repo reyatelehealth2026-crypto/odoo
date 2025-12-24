@@ -694,6 +694,9 @@ let isPolling = false;
 let sentMessageIds = new Set();
 let soundEnabled = localStorage.getItem('inboxSoundEnabled') !== 'false'; // default true
 
+// Debug: แสดงค่าเริ่มต้น
+console.log('🚀 Inbox initialized:', { userId, lastMessageId, currentUserName });
+
 // Update sound icon on load
 document.addEventListener('DOMContentLoaded', () => {
     updateSoundIcon();
@@ -707,9 +710,13 @@ document.addEventListener('DOMContentLoaded', () => {
         Notification.requestPermission();
     }
     
-    // Initial poll
+    // Initial poll - ทำทันที
     if (userId) {
-        setTimeout(pollMessages, 500);
+        console.log('📡 Starting initial poll for user:', userId);
+        pollMessages();
+    } else {
+        console.log('⚠️ No user selected, polling for sidebar only');
+        pollSidebar();
     }
 });
 
@@ -811,9 +818,13 @@ function formatThaiTimeJS(date) {
 // ===== Real-time Polling =====
 let pollErrorCount = 0;
 let lastPollTime = Date.now();
+let globalLastMsgId = <?= !empty($messages) ? end($messages)['id'] ?? 0 : 0 ?>; // Track globally for sidebar
 
 async function pollMessages() {
-    if (!userId || isPolling) return;
+    if (!userId || isPolling) {
+        console.log('⏭️ Skip poll:', { userId, isPolling });
+        return;
+    }
     isPolling = true;
     
     // Update live indicator
@@ -821,27 +832,34 @@ async function pollMessages() {
     if (indicator) indicator.style.background = '#FCD34D'; // yellow = polling
     
     try {
-        const res = await fetch(`api/messages.php?action=poll&user_id=${userId}&last_id=${lastMessageId}&_t=${Date.now()}`);
+        const url = `api/messages.php?action=poll&user_id=${userId}&last_id=${lastMessageId}&_t=${Date.now()}`;
+        console.log('📡 Polling:', url);
+        
+        const res = await fetch(url);
         
         if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);
         }
         
         const data = await res.json();
+        console.log('📥 Poll response:', data);
         
         if (data.success) {
             pollErrorCount = 0;
             lastPollTime = Date.now();
             if (indicator) indicator.style.background = '#86EFAC'; // green = success
             
-            // Add new messages
+            // Add new messages to chat
             if (data.messages && data.messages.length > 0) {
-                console.log('📨 New messages:', data.messages.length);
+                console.log('📨 New messages for current user:', data.messages.length);
                 data.messages.forEach(msg => {
                     const msgId = parseInt(msg.id);
                     const isIncoming = msg.direction === 'incoming';
                     
+                    console.log('Processing msg:', { msgId, lastMessageId, exists: !!document.querySelector(`[data-msg-id="${msgId}"]`) });
+                    
                     if (msgId > lastMessageId && !sentMessageIds.has(msgId) && !document.querySelector(`[data-msg-id="${msgId}"]`)) {
+                        console.log('✅ Appending message:', msgId);
                         appendMessage(msg);
                         
                         if (isIncoming) {
@@ -865,10 +883,15 @@ async function pollMessages() {
                 data.unread_users.forEach(u => updateUserUnread(u.id, u.unread));
             }
             
-            // Notifications for other users
+            // Notifications for other users + update sidebar
             if (data.updated_conversations) {
                 data.updated_conversations.forEach(conv => {
+                    // Update sidebar item
+                    updateSidebarUser(conv);
+                    
+                    // Show notification for other users
                     if (conv.id != userId && conv.last_message) {
+                        console.log('🔔 Notification for other user:', conv.display_name);
                         showNotification(conv.display_name || 'ลูกค้า', conv.last_message, conv.picture_url, conv.id);
                     }
                 });
@@ -891,10 +914,68 @@ async function pollMessages() {
 // Start polling with visibility check
 function startPolling() {
     if (pollingInterval) clearInterval(pollingInterval);
+    
+    // Poll every 1.5 seconds for faster updates
     if (userId) {
-        // Poll every 1.5 seconds for faster updates
         pollingInterval = setInterval(pollMessages, 1500);
-        console.log('🟢 Polling started');
+        console.log('🟢 Polling started for user:', userId);
+    } else {
+        // ถ้าไม่ได้เลือก user ก็ poll sidebar อย่างเดียว
+        pollingInterval = setInterval(pollSidebar, 3000);
+        console.log('🟢 Sidebar polling started');
+    }
+}
+
+// Poll sidebar only (when no user selected)
+async function pollSidebar() {
+    try {
+        const res = await fetch(`api/messages.php?action=get_conversations&_t=${Date.now()}`);
+        const data = await res.json();
+        
+        if (data.success && data.conversations) {
+            // Update sidebar with new data
+            data.conversations.forEach(conv => {
+                updateSidebarUser(conv);
+            });
+            
+            // Show notification for unread
+            if (data.total_unread > 0) {
+                document.getElementById('totalUnread').textContent = data.total_unread;
+            }
+        }
+    } catch (err) {
+        console.error('Sidebar poll error:', err);
+    }
+}
+
+// Update sidebar user item
+function updateSidebarUser(conv) {
+    const item = document.querySelector(`[data-user-id="${conv.id}"]`);
+    if (!item) return;
+    
+    // Update last message
+    const lastMsgEl = item.querySelector('.last-msg');
+    if (lastMsgEl && conv.last_message) {
+        let preview = conv.last_message;
+        if (conv.last_type === 'image') preview = '📷 รูปภาพ';
+        else if (conv.last_type === 'sticker') preview = '😊 สติกเกอร์';
+        else if (preview.length > 30) preview = preview.substring(0, 30) + '...';
+        lastMsgEl.textContent = preview;
+    }
+    
+    // Update time
+    const timeEl = item.querySelector('.last-time');
+    if (timeEl && conv.last_time) {
+        timeEl.textContent = formatThaiTimeJS(new Date(conv.last_time));
+    }
+    
+    // Update unread badge
+    updateUserUnread(conv.id, conv.unread_count || 0);
+    
+    // Flash animation
+    if (conv.unread_count > 0) {
+        item.classList.add('new-message-flash');
+        setTimeout(() => item.classList.remove('new-message-flash'), 1000);
     }
 }
 
