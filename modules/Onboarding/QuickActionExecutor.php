@@ -61,10 +61,10 @@ class QuickActionExecutor {
             'icon' => 'fas fa-bullhorn'
         ],
         'go_loyalty' => [
-            'label' => 'ไปตั้งค่าแต้มสะสม',
+            'label' => 'ไปจัดการรางวัลแลกแต้ม',
             'type' => 'navigate',
-            'url' => '/liff-redeem-points.php',
-            'icon' => 'fas fa-coins'
+            'url' => '/loyalty-rewards.php',
+            'icon' => 'fas fa-gift'
         ],
         'go_inbox' => [
             'label' => 'ไปดูข้อความ',

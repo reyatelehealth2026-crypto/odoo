@@ -123,8 +123,8 @@ $quickAccessMenus = [
     'ai-chat' => ['icon' => 'fa-comments', 'label' => 'AI แชท', 'url' => '/ai-chat-settings', 'page' => 'ai-chat-settings', 'color' => 'fuchsia'],
     'ai-studio' => ['icon' => 'fa-wand-magic-sparkles', 'label' => 'AI Studio', 'url' => '/ai-studio', 'page' => 'ai-studio', 'color' => 'rose'],
     'members' => ['icon' => 'fa-id-card', 'label' => 'สมาชิก', 'url' => '/members', 'page' => 'members', 'color' => 'rose'],
-    'rewards' => ['icon' => 'fa-gift', 'label' => 'ของรางวัล', 'url' => '/rewards', 'page' => 'rewards', 'color' => 'fuchsia'],
-    'loyalty' => ['icon' => 'fa-coins', 'label' => 'แต้มสะสม', 'url' => '/loyalty-points', 'page' => 'loyalty-points', 'color' => 'yellow'],
+    'rewards' => ['icon' => 'fa-gift', 'label' => 'รางวัลแลกแต้ม', 'url' => '/loyalty-rewards', 'page' => 'loyalty-rewards', 'color' => 'fuchsia'],
+    'loyalty' => ['icon' => 'fa-coins', 'label' => 'รางวัลแลกแต้ม', 'url' => '/loyalty-rewards', 'page' => 'loyalty-rewards', 'color' => 'yellow'],
     'categories' => ['icon' => 'fa-folder', 'label' => 'หมวดหมู่', 'url' => '/shop/categories', 'page' => 'categories', 'color' => 'lime'],
     'templates' => ['icon' => 'fa-file-alt', 'label' => 'Templates', 'url' => '/templates', 'page' => 'templates', 'color' => 'slate'],
     'scheduled-reports' => ['icon' => 'fa-calendar-alt', 'label' => 'รายงานอัตโนมัติ', 'url' => '/scheduled-reports', 'page' => 'scheduled-reports', 'color' => 'amber'],
@@ -218,8 +218,7 @@ $menuSections = [
         'collapsible' => true,
         'items' => [
             ['icon' => 'fa-users', 'label' => 'จัดการสมาชิก', 'url' => '/members', 'page' => 'members'],
-            ['icon' => 'fa-coins', 'label' => 'แต้มสะสม', 'url' => '/loyalty-points', 'page' => 'loyalty-points'],
-            ['icon' => 'fa-gift', 'label' => 'ของรางวัล', 'url' => '/rewards', 'page' => 'rewards'],
+            ['icon' => 'fa-gift', 'label' => 'รางวัลแลกแต้ม', 'url' => '/loyalty-rewards', 'page' => 'loyalty-rewards'],
             ['icon' => 'fa-calendar-check', 'label' => 'นัดหมาย', 'url' => '/appointments-admin', 'page' => 'appointments-admin'],
         ]
     ],

@@ -233,7 +233,7 @@ class OnboardingAssistant {
             
             'broadcast' => "**Broadcast** 📢\n\nส่งข้อความถึงลูกค้าหลายคนพร้อมกัน\n\n**วิธีส่ง:**\n1. ไปที่ Broadcast\n2. กด 'สร้าง Broadcast'\n3. เลือกกลุ่มเป้าหมาย\n4. สร้างข้อความ\n5. ส่งทันทีหรือตั้งเวลา\n\n👉 [ไปส่ง Broadcast](/broadcast.php)",
             
-            'loyalty' => "**ระบบแต้มสะสม (LIFF)** 🪙\n\nให้ลูกค้าสะสมแต้มเมื่อซื้อสินค้า ใช้งานผ่าน LINE LIFF\n\n**ฟีเจอร์:**\n• ดูแต้มสะสม - liff-points-history.php\n• แลกแต้ม - liff-redeem-points.php\n• บัตรสมาชิก - liff-member-card.php\n\n**วิธีตั้งค่า:**\n1. สร้าง LIFF App ใน LINE Console\n2. ตั้งค่า LIFF ID ในระบบ\n3. ตั้งค่าอัตราการได้รับแต้ม\n\n👉 [ดูแต้มสะสม (LIFF)](/liff-points-history.php)\n👉 [แลกแต้ม (LIFF)](/liff-redeem-points.php)",
+            'loyalty' => "**ระบบแต้มสะสม & รางวัล** 🪙\n\nให้ลูกค้าสะสมแต้มเมื่อซื้อสินค้า และแลกรางวัลผ่าน LINE LIFF\n\n**สำหรับ Admin:**\n• จัดการรางวัล - loyalty-rewards.php\n• ดูประวัติการแลก\n• ตั้งค่าระบบแต้ม\n\n**สำหรับลูกค้า (LIFF):**\n• ดูแต้มสะสม - liff-points-history.php\n• แลกแต้ม - liff-redeem-points.php\n• บัตรสมาชิก - liff-member-card.php\n\n**วิธีตั้งค่า:**\n1. ไปที่ รางวัลแลกแต้ม\n2. เพิ่มรางวัลที่ต้องการ\n3. ตั้งค่าแต้มที่ใช้แลก\n4. เปิดใช้งาน\n\n👉 [จัดการรางวัล (Admin)](/loyalty-rewards.php)\n👉 [แลกแต้ม (LIFF)](/liff-redeem-points.php)",
             
             'line_connection' => "**การเชื่อมต่อ LINE OA** 💚\n\n**วิธีเชื่อมต่อ:**\n1. ไปที่ LINE Developers Console\n2. เลือก Provider และ Channel\n3. ไปที่ Messaging API settings\n4. คัดลอก Channel Access Token\n5. คัดลอก Channel Secret\n6. นำมาใส่ในระบบ\n\n👉 [ไปตั้งค่า LINE Account](/line-accounts.php)",
             

@@ -77,10 +77,10 @@ class SetupStatusChecker {
                 'icon' => 'fas fa-bullhorn'
             ],
             'loyalty' => [
-                'label' => 'ตั้งค่าแต้มสะสม',
-                'description' => 'เปิดใช้ระบบแต้มสะสมสำหรับลูกค้า (LIFF)',
-                'url' => '/liff-redeem-points.php',
-                'icon' => 'fas fa-coins'
+                'label' => 'จัดการรางวัลแลกแต้ม',
+                'description' => 'เพิ่มรางวัลและจัดการระบบแต้มสะสม',
+                'url' => '/loyalty-rewards.php',
+                'icon' => 'fas fa-gift'
             ],
             'member_card' => [
                 'label' => 'ตั้งค่าบัตรสมาชิก',
