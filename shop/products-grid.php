@@ -80,7 +80,7 @@ $stmt->execute($params);
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get categories for filter - แสดงทั้งหมด ไม่ filter ตาม line_account_id
-$catSql = "SELECT id, name, (SELECT COUNT(*) FROM products WHERE category_id = pc.id) as product_count 
+$catSql = "SELECT id, name, (SELECT COUNT(*) FROM business_items WHERE category_id = pc.id) as product_count 
            FROM product_categories pc ORDER BY name";
 $stmt = $db->query($catSql);
 $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);

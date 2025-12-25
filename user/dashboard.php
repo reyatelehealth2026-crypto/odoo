@@ -43,7 +43,7 @@ try {
 // Products stats
 $stats['total_products'] = 0;
 try {
-    $stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE is_active = 1 AND line_account_id = ?");
+    $stmt = $db->prepare("SELECT COUNT(*) FROM business_items WHERE is_active = 1 AND line_account_id = ?");
     $stmt->execute([$currentBotId]);
     $stats['total_products'] = $stmt->fetchColumn();
 } catch (Exception $e) {}

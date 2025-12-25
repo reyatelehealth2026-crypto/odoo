@@ -93,10 +93,10 @@ try {
     $templates = $stmt->fetchAll();
 } catch (Exception $e) {}
 
-// Get products from products table
+// Get products from business_items table
 $products = [];
 try {
-    $stmt = $db->prepare("SELECT id, name, price, sale_price, image_url, description FROM products WHERE (line_account_id = ? OR line_account_id IS NULL) AND is_active = 1 ORDER BY name LIMIT 100");
+    $stmt = $db->prepare("SELECT id, name, price, sale_price, image_url, description FROM business_items WHERE (line_account_id = ? OR line_account_id IS NULL) AND is_active = 1 ORDER BY name LIMIT 100");
     $stmt->execute([$currentBotId]);
     $products = $stmt->fetchAll();
 } catch (Exception $e) {}

@@ -137,7 +137,7 @@ if (!empty($categoryOrder)) {
 // Count products per category
 $productCounts = [];
 try {
-    $stmt = $db->query("SELECT category_id, COUNT(*) as cnt FROM products WHERE is_active = 1 GROUP BY category_id");
+    $stmt = $db->query("SELECT category_id, COUNT(*) as cnt FROM business_items WHERE is_active = 1 GROUP BY category_id");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $productCounts[$row['category_id']] = $row['cnt'];
     }
@@ -146,7 +146,7 @@ try {
 // Count bestsellers per category
 $bestsellerCounts = [];
 try {
-    $stmt = $db->query("SELECT category_id, COUNT(*) as cnt FROM products WHERE is_active = 1 AND COALESCE(is_bestseller, 0) = 1 GROUP BY category_id");
+    $stmt = $db->query("SELECT category_id, COUNT(*) as cnt FROM business_items WHERE is_active = 1 AND COALESCE(is_bestseller, 0) = 1 GROUP BY category_id");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $bestsellerCounts[$row['category_id']] = $row['cnt'];
     }

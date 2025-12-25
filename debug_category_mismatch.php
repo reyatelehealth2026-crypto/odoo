@@ -12,7 +12,7 @@ $db = Database::getInstance()->getConnection();
 echo "<h2>🔍 Debug Category Mismatch</h2>";
 
 // 1. นับสินค้าทั้งหมด
-$total = $db->query("SELECT COUNT(*) FROM products")->fetchColumn();
+$total = $db->query("SELECT COUNT(*) FROM business_items")->fetchColumn();
 echo "<p>📦 สินค้าทั้งหมด: <strong>$total</strong></p>";
 
 // 2. นับหมวดหมู่ทั้งหมด
@@ -20,12 +20,12 @@ $catCount = $db->query("SELECT COUNT(*) FROM product_categories")->fetchColumn()
 echo "<p>📁 หมวดหมู่ทั้งหมด: <strong>$catCount</strong></p>";
 
 // 3. นับสินค้าที่มี category_id = NULL
-$nullCat = $db->query("SELECT COUNT(*) FROM products WHERE category_id IS NULL")->fetchColumn();
+$nullCat = $db->query("SELECT COUNT(*) FROM business_items WHERE category_id IS NULL")->fetchColumn();
 echo "<p>⚠️ สินค้าที่ไม่มีหมวดหมู่ (NULL): <strong>$nullCat</strong></p>";
 
 // 4. นับสินค้าที่ category_id ไม่ตรงกับ product_categories
 $orphan = $db->query("
-    SELECT COUNT(*) FROM products p 
+    SELECT COUNT(*) FROM business_items p 
     WHERE p.category_id IS NOT NULL 
     AND p.category_id NOT IN (SELECT id FROM product_categories)
 ")->fetchColumn();
@@ -35,7 +35,7 @@ echo "<p>❌ สินค้าที่ category_id ไม่มีในตา
 if ($orphan > 0) {
     $stmt = $db->query("
         SELECT DISTINCT p.category_id, COUNT(*) as cnt
-        FROM products p 
+        FROM business_items p 
         WHERE p.category_id IS NOT NULL 
         AND p.category_id NOT IN (SELECT id FROM product_categories)
         GROUP BY p.category_id
@@ -64,7 +64,7 @@ foreach ($cats as $c) {
 echo "</table>";
 
 // 7. นับสินค้าที่ is_active = 0
-$inactive = $db->query("SELECT COUNT(*) FROM products WHERE is_active = 0")->fetchColumn();
+$inactive = $db->query("SELECT COUNT(*) FROM business_items WHERE is_active = 0")->fetchColumn();
 echo "<p>🚫 สินค้าที่ปิดใช้งาน (is_active=0): <strong>$inactive</strong></p>";
 
 // 8. สรุป
@@ -77,7 +77,7 @@ echo "<p>สินค้าที่ควรแสดง: <strong style='color:
 if ($orphan > 0) {
     echo "<h3>🔧 วิธีแก้:</h3>";
     echo "<p>1. Set category_id เป็น NULL สำหรับสินค้าที่ category ไม่มี:</p>";
-    echo "<pre>UPDATE products SET category_id = NULL WHERE category_id NOT IN (SELECT id FROM product_categories);</pre>";
+    echo "<pre>UPDATE business_items SET category_id = NULL WHERE category_id NOT IN (SELECT id FROM product_categories);</pre>";
     
     echo "<p>2. หรือสร้าง category ใหม่ให้ตรงกับ ID เดิม</p>";
 }

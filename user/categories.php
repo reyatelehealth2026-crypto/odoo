@@ -6,7 +6,7 @@ $pageTitle = 'หมวดหมู่สินค้า';
 require_once '../includes/user_header.php';
 
 // Get categories - แสดงทั้งหมด ไม่ filter ตาม line_account_id
-$stmt = $db->query("SELECT c.*, (SELECT COUNT(*) FROM products WHERE category_id = c.id) as product_count FROM product_categories c ORDER BY c.sort_order ASC, c.id DESC");
+$stmt = $db->query("SELECT c.*, (SELECT COUNT(*) FROM business_items WHERE category_id = c.id) as product_count FROM product_categories c ORDER BY c.sort_order ASC, c.id DESC");
 $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 

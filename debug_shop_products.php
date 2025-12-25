@@ -36,10 +36,10 @@ if (file_exists('classes/UnifiedShop.php')) {
     echo "❌ UnifiedShop.php not found<br>";
 }
 
-// 3. Check products table structure
-echo "<h3>3. โครงสร้างตาราง products</h3>";
+// 3. Check business_items table structure
+echo "<h3>3. โครงสร้างตาราง business_items</h3>";
 try {
-    $stmt = $db->query("SHOW COLUMNS FROM products");
+    $stmt = $db->query("SHOW COLUMNS FROM business_items");
     $columns = $stmt->fetchAll(PDO::FETCH_COLUMN);
     echo "Columns: " . implode(', ', $columns) . "<br>";
 } catch (Exception $e) {
@@ -53,7 +53,7 @@ try {
         COUNT(*) as total,
         SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) as active,
         SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) as inactive
-        FROM products");
+        FROM business_items");
     $stats = $stmt->fetch(PDO::FETCH_ASSOC);
     echo "<table>";
     echo "<tr><td>สินค้าทั้งหมด</td><td><b>{$stats['total']}</b></td></tr>";
@@ -67,7 +67,7 @@ try {
 // 5. Sample products
 echo "<h3>5. ตัวอย่างสินค้า 10 รายการแรก</h3>";
 try {
-    $stmt = $db->query("SELECT id, name, price, stock, is_active, category_id FROM products ORDER BY id LIMIT 10");
+    $stmt = $db->query("SELECT id, name, price, stock, is_active, category_id FROM business_items ORDER BY id LIMIT 10");
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo "<table><tr><th>ID</th><th>Name</th><th>Price</th><th>Stock</th><th>Active</th><th>Category</th></tr>";
     foreach ($products as $p) {

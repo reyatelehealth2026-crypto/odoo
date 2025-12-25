@@ -27,7 +27,7 @@ $header = [];
 // Check if new columns exist
 $hasNewColumns = false;
 try {
-    $stmt = $db->query("SHOW COLUMNS FROM products LIKE 'barcode'");
+    $stmt = $db->query("SHOW COLUMNS FROM business_items LIKE 'barcode'");
     $hasNewColumns = $stmt->rowCount() > 0;
 } catch (Exception $e) {}
 
@@ -130,12 +130,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['csv_file']) && !isse
                     // Check if exists (shared products - no line_account_id filter)
                     $exists = false;
                     if ($sku) {
-                        $stmt = $db->prepare("SELECT id FROM products WHERE sku = ?");
+                        $stmt = $db->prepare("SELECT id FROM business_items WHERE sku = ?");
                         $stmt->execute([$sku]);
                         $exists = $stmt->fetch() !== false;
                     }
                     if (!$exists) {
-                        $stmt = $db->prepare("SELECT id FROM products WHERE name = ?");
+                        $stmt = $db->prepare("SELECT id FROM business_items WHERE name = ?");
                         $stmt->execute([$name]);
                         $exists = $stmt->fetch() !== false;
                     }
@@ -220,19 +220,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
             try {
                 $existing = null;
                 if ($sku) {
-                    $stmt = $db->prepare("SELECT id FROM products WHERE sku = ?");
+                    $stmt = $db->prepare("SELECT id FROM business_items WHERE sku = ?");
                     $stmt->execute([$sku]);
                     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
                 }
                 if (!$existing) {
-                    $stmt = $db->prepare("SELECT id FROM products WHERE name = ?");
+                    $stmt = $db->prepare("SELECT id FROM business_items WHERE name = ?");
                     $stmt->execute([$name]);
                     $existing = $stmt->fetch(PDO::FETCH_ASSOC);
                 }
                 
                 if ($existing && $updateExisting) {
                     if ($hasNewColumns) {
-                        $sql = "UPDATE products SET 
+                        $sql = "UPDATE business_items SET 
                                 description = ?, price = ?, sale_price = ?, stock = ?, 
                                 category_id = ?, image_url = ?, sku = ?, barcode = ?,
                                 manufacturer = ?, generic_name = ?, usage_instructions = ?, unit = ?,
@@ -240,7 +240,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
                         $stmt = $db->prepare($sql);
                         $stmt->execute([$description, $price, $salePrice, $stock, $categoryId, $imageUrl, $sku, $barcode, $manufacturer, $genericName, $usageInstructions, $unit, $existing['id']]);
                     } else {
-                        $sql = "UPDATE products SET 
+                        $sql = "UPDATE business_items SET 
                                 description = ?, price = ?, sale_price = ?, stock = ?, 
                                 category_id = ?, image_url = ?, sku = ?, updated_at = NOW() WHERE id = ?";
                         $stmt = $db->prepare($sql);
@@ -249,13 +249,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
                     $imported++;
                 } elseif (!$existing) {
                     if ($hasNewColumns) {
-                        $sql = "INSERT INTO products 
+                        $sql = "INSERT INTO business_items 
                                 (name, description, price, sale_price, stock, category_id, image_url, sku, barcode, manufacturer, generic_name, usage_instructions, unit, is_active, created_at) 
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())";
                         $stmt = $db->prepare($sql);
                         $stmt->execute([$name, $description, $price, $salePrice, $stock, $categoryId, $imageUrl, $sku, $barcode, $manufacturer, $genericName, $usageInstructions, $unit]);
                     } else {
-                        $sql = "INSERT INTO products 
+                        $sql = "INSERT INTO business_items 
                                 (name, description, price, sale_price, stock, category_id, image_url, sku, is_active, created_at) 
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, NOW())";
                         $stmt = $db->prepare($sql);
@@ -280,7 +280,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['confirm_import'])) {
 }
 
 // Get current products count
-$stmt = $db->query("SELECT COUNT(*) FROM products");
+$stmt = $db->query("SELECT COUNT(*) FROM business_items");
 $totalProducts = $stmt->fetchColumn();
 
 require_once __DIR__ . '/../includes/header.php';

@@ -24,7 +24,7 @@ $stmt->execute([$currentBotId]);
 $settings['shop'] = $stmt->fetch(PDO::FETCH_ASSOC);
 
 // 4. Products Count
-$stmt = $db->prepare("SELECT COUNT(*) as total, SUM(is_active) as active FROM products WHERE line_account_id = ?");
+$stmt = $db->prepare("SELECT COUNT(*) as total, SUM(is_active) as active FROM business_items WHERE line_account_id = ?");
 $stmt->execute([$currentBotId]);
 $settings['products'] = $stmt->fetch(PDO::FETCH_ASSOC);
 

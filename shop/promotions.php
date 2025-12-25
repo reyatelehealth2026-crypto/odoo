@@ -28,15 +28,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     try {
         switch ($action) {
             case 'toggle_featured':
-                $db->prepare("UPDATE products SET is_featured = NOT COALESCE(is_featured, 0) WHERE id = ?")->execute([$productId]);
-                $stmt = $db->prepare("SELECT COALESCE(is_featured, 0) as is_featured FROM products WHERE id = ?");
+                $db->prepare("UPDATE business_items SET is_featured = NOT COALESCE(is_featured, 0) WHERE id = ?")->execute([$productId]);
+                $stmt = $db->prepare("SELECT COALESCE(is_featured, 0) as is_featured FROM business_items WHERE id = ?");
                 $stmt->execute([$productId]);
                 echo json_encode(['success' => true, 'is_featured' => (int)$stmt->fetchColumn()]);
                 exit;
                 
             case 'toggle_bestseller':
-                $db->prepare("UPDATE products SET is_bestseller = NOT COALESCE(is_bestseller, 0) WHERE id = ?")->execute([$productId]);
-                $stmt = $db->prepare("SELECT COALESCE(is_bestseller, 0) as is_bestseller FROM products WHERE id = ?");
+                $db->prepare("UPDATE business_items SET is_bestseller = NOT COALESCE(is_bestseller, 0) WHERE id = ?")->execute([$productId]);
+                $stmt = $db->prepare("SELECT COALESCE(is_bestseller, 0) as is_bestseller FROM business_items WHERE id = ?");
                 $stmt->execute([$productId]);
                 echo json_encode(['success' => true, 'is_bestseller' => (int)$stmt->fetchColumn()]);
                 exit;
@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 if (!empty($productIds)) {
                     $placeholders = implode(',', array_fill(0, count($productIds), '?'));
-                    $db->prepare("UPDATE products SET $column = ? WHERE id IN ($placeholders)")->execute(array_merge([$value], $productIds));
+                    $db->prepare("UPDATE business_items SET $column = ? WHERE id IN ($placeholders)")->execute(array_merge([$value], $productIds));
                 }
                 echo json_encode(['success' => true, 'updated' => count($productIds)]);
                 exit;
@@ -112,7 +112,7 @@ if ($search) {
 $whereClause = implode(' AND ', $where);
 
 // Count total
-$stmt = $db->prepare("SELECT COUNT(*) FROM products WHERE $whereClause");
+$stmt = $db->prepare("SELECT COUNT(*) FROM business_items WHERE $whereClause");
 $stmt->execute($params);
 $totalProducts = (int)$stmt->fetchColumn();
 $totalPages = ceil($totalProducts / $perPage);
@@ -121,7 +121,7 @@ $totalPages = ceil($totalProducts / $perPage);
 $sql = "SELECT id, name, sku, price, sale_price, stock, image_url, category_id, 
                COALESCE(is_featured, 0) as is_featured,
                COALESCE(is_bestseller, 0) as is_bestseller
-        FROM products WHERE $whereClause
+        FROM business_items WHERE $whereClause
         ORDER BY is_featured DESC, is_bestseller DESC, id DESC
         LIMIT $perPage OFFSET $offset";
 $stmt = $db->prepare($sql);
@@ -129,12 +129,12 @@ $stmt->execute($params);
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Stats
-$featuredCount = $db->query("SELECT COUNT(*) FROM products WHERE is_active = 1 AND COALESCE(is_featured, 0) = 1")->fetchColumn();
-$bestsellerCount = $db->query("SELECT COUNT(*) FROM products WHERE is_active = 1 AND COALESCE(is_bestseller, 0) = 1")->fetchColumn();
+$featuredCount = $db->query("SELECT COUNT(*) FROM business_items WHERE is_active = 1 AND COALESCE(is_featured, 0) = 1")->fetchColumn();
+$bestsellerCount = $db->query("SELECT COUNT(*) FROM business_items WHERE is_active = 1 AND COALESCE(is_bestseller, 0) = 1")->fetchColumn();
 
 // Best Seller per category
 $bestsellerByCategory = [];
-$stmt = $db->query("SELECT category_id, COUNT(*) as cnt FROM products WHERE is_active = 1 AND COALESCE(is_bestseller, 0) = 1 GROUP BY category_id");
+$stmt = $db->query("SELECT category_id, COUNT(*) as cnt FROM business_items WHERE is_active = 1 AND COALESCE(is_bestseller, 0) = 1 GROUP BY category_id");
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 foreach ($rows as $row) {
     $bestsellerByCategory[$row['category_id']] = $row['cnt'];
