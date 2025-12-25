@@ -1,7 +1,6 @@
 <?php
 /**
- * Load Test Runner - Ultra Safe Version
- * ทดสอบแบบเบามากเพื่อไม่ให้ server ล่ม
+ * Load Test Runner - ทำการทดสอบจริง
  */
 
 error_reporting(0);
@@ -10,9 +9,8 @@ ini_set('display_errors', 0);
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-// Limit resources - very conservative
-set_time_limit(30);
-ini_set('memory_limit', '64M');
+set_time_limit(120);
+ini_set('memory_limit', '256M');
 
 // Error handlers
 set_error_handler(function($errno, $errstr, $errfile, $errline) {
@@ -35,9 +33,9 @@ try {
 
 $type = $_GET['type'] ?? 'database';
 
-// ULTRA SAFE LIMITS - ลดลงมากเพื่อป้องกัน server ล่ม
-$concurrentUsers = min(5, max(1, (int)($_GET['users'] ?? 3)));
-$requestsPerUser = min(3, max(1, (int)($_GET['requests'] ?? 2)));
+// Standard limits
+$concurrentUsers = min(100, max(1, (int)($_GET['users'] ?? 10)));
+$requestsPerUser = min(20, max(1, (int)($_GET['requests'] ?? 5)));
 
 $results = [
     'type' => $type,
@@ -171,8 +169,8 @@ for ($user = 0; $user < $concurrentUsers; $user++) {
             }
         }
         
-        // Longer delay to prevent overload - 100ms
-        usleep(100000);
+        // Small delay between requests
+        usleep(10000); // 10ms
     }
 }
 
