@@ -81,9 +81,11 @@ function handleGetRequest(string $action, OnboardingAssistant $assistant, string
         case 'welcome':
             // Get welcome message
             $message = $assistant->getWelcomeMessage($adminName);
+            $aiAvailable = $assistant->isAiAvailable();
             echo json_encode([
                 'success' => true,
-                'message' => $message
+                'message' => $message,
+                'ai_available' => $aiAvailable
             ]);
             break;
             

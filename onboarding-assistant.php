@@ -27,6 +27,7 @@ $pageTitle = 'Kiro Assistant';
                     <div>
                         <h5 class="font-semibold flex items-center gap-2">
                             <i class="fas fa-robot"></i>RE-YA  Assistant
+                            <span id="aiStatusBadge" class="text-xs px-2 py-0.5 rounded-full bg-orange-500">Fallback Mode</span>
                         </h5>
                         <small class="text-purple-200 text-xs">ผู้ช่วย AI สำหรับการตั้งค่าและใช้งานระบบ</small>
                     </div>
@@ -190,10 +191,26 @@ async function loadWelcomeMessage() {
         const response = await fetch(`${API_URL}?action=welcome`);
         const data = await response.json();
         document.getElementById('loadingIndicator').style.display = 'none';
-        if (data.success) addMessage(data.message, 'assistant');
+        if (data.success) {
+            addMessage(data.message, 'assistant');
+            // Update AI status badge
+            updateAiStatusBadge(data.ai_available);
+        }
     } catch (error) {
         console.error('Error:', error);
         document.getElementById('loadingIndicator').innerHTML = '<p class="text-red-500">เกิดข้อผิดพลาด</p>';
+    }
+}
+
+function updateAiStatusBadge(aiAvailable) {
+    const badge = document.getElementById('aiStatusBadge');
+    if (aiAvailable) {
+        badge.textContent = 'Gemini AI';
+        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-green-500';
+    } else {
+        badge.textContent = 'Fallback Mode';
+        badge.className = 'text-xs px-2 py-0.5 rounded-full bg-orange-500';
+        badge.title = 'ใส่ Gemini API Key ที่ AI Settings เพื่อเปิดใช้ AI';
     }
 }
 
@@ -272,7 +289,7 @@ async function sendMessage() {
         const data = await response.json();
         hideTypingIndicator();
         if (data.success) {
-            addMessage(data.message, 'assistant');
+            addMessage(data.message, 'assistant', data.ai_source);
             if (data.setup_status) renderChecklist({ status: data.setup_status });
             if (data.completion_percent !== undefined) updateProgress(data.completion_percent);
         } else {
@@ -286,14 +303,25 @@ async function sendMessage() {
     document.getElementById('sendBtn').disabled = false;
 }
 
-function addMessage(content, role) {
+function addMessage(content, role, aiSource = null) {
     const container = document.getElementById('chatMessages');
     content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="underline">$1</a>')
                      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
                      .replace(/\n/g, '<br>');
     const div = document.createElement('div');
     div.className = `message message-${role}`;
-    div.innerHTML = `<div class="message-content">${content}</div>`;
+    
+    // Add AI source indicator for assistant messages
+    let sourceIndicator = '';
+    if (role === 'assistant' && aiSource) {
+        if (aiSource === 'gemini') {
+            sourceIndicator = '<div class="text-xs text-green-600 mt-1 flex items-center gap-1"><i class="fas fa-robot"></i> Gemini AI</div>';
+        } else if (aiSource === 'fallback') {
+            sourceIndicator = '<div class="text-xs text-orange-500 mt-1 flex items-center gap-1"><i class="fas fa-book"></i> คำตอบสำเร็จรูป</div>';
+        }
+    }
+    
+    div.innerHTML = `<div class="message-content">${content}${sourceIndicator}</div>`;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }

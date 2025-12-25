@@ -120,17 +120,18 @@ class OnboardingAssistant {
         $userPrompt = $this->promptBuilder->buildUserPrompt($message, $relevantKnowledge);
         
         // Call Gemini AI
-        $aiResponse = $this->callGeminiAI($systemPrompt, $userPrompt);
+        $aiResult = $this->callGeminiAI($systemPrompt, $userPrompt);
         
         // Get suggested actions
         $suggestedActions = $this->actionExecutor->getSuggestedActions($setupStatus);
         
         // Save to conversation history
-        $this->saveConversation($message, $aiResponse);
+        $this->saveConversation($message, $aiResult['message']);
         
         return [
             'success' => true,
-            'message' => $aiResponse,
+            'message' => $aiResult['message'],
+            'ai_source' => $aiResult['source'], // 'gemini' or 'fallback'
             'intent' => $intent,
             'suggested_actions' => $suggestedActions,
             'setup_status' => $setupStatus,
@@ -141,9 +142,12 @@ class OnboardingAssistant {
     /**
      * Call Gemini AI
      */
-    private function callGeminiAI(string $systemPrompt, string $userPrompt): string {
+    private function callGeminiAI(string $systemPrompt, string $userPrompt): array {
         if (empty($this->geminiApiKey)) {
-            return $this->getFallbackResponse($userPrompt);
+            return [
+                'message' => $this->getFallbackResponse($userPrompt),
+                'source' => 'fallback'
+            ];
         }
         
         try {
@@ -179,12 +183,25 @@ class OnboardingAssistant {
             
             if ($httpCode === 200) {
                 $result = json_decode($response, true);
-                return $result['candidates'][0]['content']['parts'][0]['text'] ?? $this->getFallbackResponse($userPrompt);
+                $aiMessage = $result['candidates'][0]['content']['parts'][0]['text'] ?? null;
+                
+                if ($aiMessage) {
+                    return [
+                        'message' => $aiMessage,
+                        'source' => 'gemini'
+                    ];
+                }
             }
             
-            return $this->getFallbackResponse($userPrompt);
+            return [
+                'message' => $this->getFallbackResponse($userPrompt),
+                'source' => 'fallback'
+            ];
         } catch (\Exception $e) {
-            return $this->getFallbackResponse($userPrompt);
+            return [
+                'message' => $this->getFallbackResponse($userPrompt),
+                'source' => 'fallback'
+            ];
         }
     }
     
@@ -421,6 +438,13 @@ class OnboardingAssistant {
         } catch (\Exception $e) {
             return [];
         }
+    }
+    
+    /**
+     * Check if Gemini AI is available
+     */
+    public function isAiAvailable(): bool {
+        return !empty($this->geminiApiKey);
     }
     
     /**
