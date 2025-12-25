@@ -4,9 +4,7 @@
  */
 
 require_once 'config/config.php';
-require_once 'modules/Core/Database.php';
-
-use Modules\Core\Database;
+require_once 'config/database.php';
 
 echo "<h2>Running Onboarding Assistant Migration</h2>";
 echo "<pre>";
@@ -14,26 +12,45 @@ echo "<pre>";
 try {
     $db = Database::getInstance()->getConnection();
     
-    // Read migration file
-    $sql = file_get_contents(__DIR__ . '/database/migration_onboarding_assistant.sql');
+    echo "Database connected successfully\n\n";
     
-    // Split by semicolon and execute each statement
-    $statements = array_filter(array_map('trim', explode(';', $sql)));
+    // Create tables directly
+    echo "Creating onboarding_sessions table...\n";
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS onboarding_sessions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            line_account_id INT NOT NULL,
+            admin_user_id INT NOT NULL,
+            conversation_history JSON,
+            current_topic VARCHAR(100) DEFAULT NULL,
+            business_type VARCHAR(50) DEFAULT NULL,
+            setup_progress JSON,
+            last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_line_account (line_account_id),
+            INDEX idx_admin_user (admin_user_id),
+            INDEX idx_last_activity (last_activity)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    echo "✅ onboarding_sessions created\n";
     
-    foreach ($statements as $statement) {
-        if (empty($statement) || strpos($statement, '--') === 0) continue;
-        
-        try {
-            $db->exec($statement);
-            echo "✅ Executed: " . substr($statement, 0, 50) . "...\n";
-        } catch (PDOException $e) {
-            if (strpos($e->getMessage(), 'already exists') !== false) {
-                echo "⚠️ Table already exists, skipping...\n";
-            } else {
-                echo "❌ Error: " . $e->getMessage() . "\n";
-            }
-        }
-    }
+    echo "Creating setup_progress table...\n";
+    $db->exec("
+        CREATE TABLE IF NOT EXISTS setup_progress (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            line_account_id INT NOT NULL,
+            item_key VARCHAR(50) NOT NULL,
+            status ENUM('pending', 'in_progress', 'completed', 'skipped') DEFAULT 'pending',
+            completed_at TIMESTAMP NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_progress (line_account_id, item_key),
+            INDEX idx_line_account (line_account_id),
+            INDEX idx_status (status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ");
+    echo "✅ setup_progress created\n";
     
     echo "\n✅ Migration completed successfully!\n";
     
@@ -45,6 +62,10 @@ try {
         $stmt = $db->query("SHOW TABLES LIKE '$table'");
         if ($stmt->rowCount() > 0) {
             echo "✅ Table '$table' exists\n";
+            
+            // Show structure
+            $cols = $db->query("SHOW COLUMNS FROM $table")->fetchAll(PDO::FETCH_ASSOC);
+            echo "   Columns: " . implode(', ', array_column($cols, 'Field')) . "\n";
         } else {
             echo "❌ Table '$table' NOT found\n";
         }
@@ -52,6 +73,7 @@ try {
     
 } catch (Exception $e) {
     echo "❌ Migration failed: " . $e->getMessage() . "\n";
+    echo "Stack trace:\n" . $e->getTraceAsString() . "\n";
 }
 
 echo "</pre>";
