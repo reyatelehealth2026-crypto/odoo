@@ -255,7 +255,7 @@ PROMPT;
      */
     public function buildWelcomeMessage(string $userName, int $completionPercent, ?array $nextAction): string {
         $greeting = "สวัสดีครับ คุณ{$userName}! 👋\n\n";
-        $greeting .= "ยินดีต้อนรับสู่ระบบ LINE CRM ผมคือ Kiro Assistant พร้อมช่วยคุณตั้งค่าและใช้งานระบบครับ\n\n";
+        $greeting .= "ยินดีต้อนรับสู่ระบบLINECRM ผมคือ Re-Ya Assistant พร้อมช่วยคุณตั้งค่าและใช้งานระบบครับ\n\n";
         
         if ($completionPercent < 100) {
             $greeting .= "📊 ความคืบหน้าการตั้งค่า: {$completionPercent}%\n\n";
