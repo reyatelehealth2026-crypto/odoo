@@ -30,25 +30,18 @@ class GeminiAI {
     private function loadSettingsFromDB($db, $botId = null) {
         try {
             if ($botId) {
-                $stmt = $db->prepare("SELECT setting_key, setting_value FROM ai_settings WHERE line_account_id = ?");
+                $stmt = $db->prepare("SELECT * FROM ai_settings WHERE line_account_id = ? LIMIT 1");
                 $stmt->execute([$botId]);
             } else {
-                $stmt = $db->prepare("SELECT setting_key, setting_value FROM ai_settings WHERE line_account_id IS NULL");
+                $stmt = $db->prepare("SELECT * FROM ai_settings WHERE line_account_id IS NULL LIMIT 1");
                 $stmt->execute();
             }
             
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                switch ($row['setting_key']) {
-                    case 'gemini_api_key':
-                        $this->apiKey = $row['setting_value'];
-                        break;
-                    case 'default_model':
-                        $this->model = $row['setting_value'];
-                        break;
-                    case 'system_prompt':
-                        $this->systemPrompt = $row['setting_value'];
-                        break;
-                }
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $this->apiKey = $row['gemini_api_key'] ?? null;
+                $this->model = $row['model'] ?? 'gemini-2.0-flash';
+                $this->systemPrompt = $row['system_prompt'] ?? null;
             }
         } catch (Exception $e) {
             // ถ้าตารางไม่มี ก็ข้ามไป
@@ -68,10 +61,10 @@ class GeminiAI {
     public static function getApiKeyFromDB($db, $botId = null) {
         try {
             if ($botId) {
-                $stmt = $db->prepare("SELECT setting_value FROM ai_settings WHERE setting_key = 'gemini_api_key' AND line_account_id = ?");
+                $stmt = $db->prepare("SELECT gemini_api_key FROM ai_settings WHERE line_account_id = ? LIMIT 1");
                 $stmt->execute([$botId]);
             } else {
-                $stmt = $db->prepare("SELECT setting_value FROM ai_settings WHERE setting_key = 'gemini_api_key' AND line_account_id IS NULL");
+                $stmt = $db->prepare("SELECT gemini_api_key FROM ai_settings WHERE line_account_id IS NULL LIMIT 1");
                 $stmt->execute();
             }
             return $stmt->fetchColumn() ?: null;
