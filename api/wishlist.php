@@ -57,7 +57,7 @@ try {
             }
             
             // Get current price
-            $stmt = $db->prepare("SELECT price, sale_price FROM products WHERE id = ?");
+            $stmt = $db->prepare("SELECT price, sale_price FROM business_items WHERE id = ?");
             $stmt->execute([$productId]);
             $product = $stmt->fetch(PDO::FETCH_ASSOC);
             $currentPrice = $product['sale_price'] ?: $product['price'];
@@ -101,7 +101,7 @@ try {
                 $stmt->execute([$userId, $productId]);
                 echo json_encode(['success' => true, 'is_favorite' => false, 'message' => 'ลบออกจากรายการโปรดแล้ว']);
             } else {
-                $stmt = $db->prepare("SELECT price, sale_price FROM products WHERE id = ?");
+                $stmt = $db->prepare("SELECT price, sale_price FROM business_items WHERE id = ?");
                 $stmt->execute([$productId]);
                 $product = $stmt->fetch(PDO::FETCH_ASSOC);
                 $currentPrice = $product['sale_price'] ?: $product['price'];

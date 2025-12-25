@@ -290,7 +290,7 @@ try {
         case 'delete_product':
             $id = (int)$_POST['id'];
             if (!$id) throw new Exception('Missing product id');
-            $stmt = $db->prepare("DELETE FROM products WHERE id = ? AND line_account_id = ?");
+            $stmt = $db->prepare("DELETE FROM business_items WHERE id = ? AND line_account_id = ?");
             $stmt->execute([$id, $currentBotId]);
             echo json_encode(['success' => true, 'message' => 'ลบสินค้าสำเร็จ']);
             break;
@@ -505,7 +505,7 @@ try {
             // Get products for AI knowledge base
             $products = [];
             try {
-                $sql = "SELECT name, price, description FROM products WHERE is_active = 1";
+                $sql = "SELECT name, price, description FROM business_items WHERE is_active = 1";
                 $params = [];
                 
                 if ($currentBotId) {

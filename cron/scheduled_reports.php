@@ -268,7 +268,7 @@ function generateWeeklySummaryReport($db, $botId) {
 }
 
 function generateLowStockReport($db, $botId) {
-    $table = 'products';
+    $table = 'business_items';
     
     $stmt = $db->prepare("
         SELECT name, sku, stock 

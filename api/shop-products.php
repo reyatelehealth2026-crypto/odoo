@@ -15,7 +15,7 @@ $db = Database::getInstance()->getConnection();
 // Check columns exist
 $hasIsFeatured = $hasIsBestseller = false;
 try {
-    $cols = $db->query("SHOW COLUMNS FROM products")->fetchAll(PDO::FETCH_COLUMN);
+    $cols = $db->query("SHOW COLUMNS FROM business_items")->fetchAll(PDO::FETCH_COLUMN);
     $hasIsFeatured = in_array('is_featured', $cols);
     $hasIsBestseller = in_array('is_bestseller', $cols);
 } catch (Exception $e) {}
@@ -31,7 +31,7 @@ if ($productId) {
                        unit, manufacturer, generic_name, description, usage_instructions, category_id,
                        $featuredCol as is_featured,
                        $bestsellerCol as is_bestseller
-                FROM products WHERE id = ? AND is_active = 1";
+                FROM business_items WHERE id = ? AND is_active = 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([$productId]);
         $product = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -133,7 +133,7 @@ try {
     }
     
     // Count total
-    $countSql = "SELECT COUNT(*) FROM products WHERE {$whereClause}";
+    $countSql = "SELECT COUNT(*) FROM business_items WHERE {$whereClause}";
     $stmt = $db->prepare($countSql);
     $stmt->execute($params);
     $total = (int)$stmt->fetchColumn();
@@ -143,7 +143,7 @@ try {
                    unit, manufacturer, generic_name, description, usage_instructions, category_id,
                    $featuredCol as is_featured,
                    $bestsellerCol as is_bestseller
-            FROM products 
+            FROM business_items 
             WHERE {$whereClause}
             ORDER BY {$orderBy}
             LIMIT {$limit} OFFSET {$offset}";

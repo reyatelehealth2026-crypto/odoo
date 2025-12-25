@@ -718,7 +718,7 @@ class BusinessBot
         // Get product count
         $productCount = 0;
         try {
-            $stmt = $this->db->prepare("SELECT COUNT(*) FROM products WHERE is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL)");
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM business_items WHERE is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL)");
             $stmt->execute([$this->lineAccountId]);
             $productCount = $stmt->fetchColumn() ?: 0;
         } catch (Exception $e) {}

@@ -239,7 +239,7 @@ function processAdminQuery($db, $message, $botId) {
 // ==================== NEW: ค้นหาสินค้าแพง/ถูกที่สุด ====================
 
 function getMostExpensiveProducts($db, $botId) {
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         $stmt = $db->prepare("SELECT name, sku, price, stock FROM {$table} 
@@ -264,7 +264,7 @@ function getMostExpensiveProducts($db, $botId) {
 }
 
 function getCheapestProducts($db, $botId) {
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         $stmt = $db->prepare("SELECT name, sku, price, stock FROM {$table} 
@@ -393,7 +393,7 @@ function getOrdersReport($db, $msg, $botId) {
 }
 
 function getProductsReport($db, $msg, $botId) {
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         // Stats
@@ -858,7 +858,7 @@ function searchProduct($db, $keyword, $botId) {
         return ['text' => '❌ กรุณาระบุชื่อสินค้าที่ต้องการค้นหา', 'type' => 'error'];
     }
     
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         $stmt = $db->prepare("SELECT * FROM {$table} 
@@ -900,7 +900,7 @@ function getSystemStatus($db, $botId) {
     }
     
     // Tables check
-    $tables = ['users', 'messages', 'transactions', 'products', 'broadcasts'];
+    $tables = ['users', 'messages', 'transactions', 'business_items', 'broadcasts'];
     $text .= "\n📋 **ตารางข้อมูล:**\n";
     foreach ($tables as $table) {
         try {
@@ -1025,7 +1025,7 @@ function getProductContextForAI($db, $botId, $message) {
     $msg = mb_strtolower($message);
     $context = "\nข้อมูลสินค้า:\n";
     
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         // ถ้าถามสินค้าแพงสุด
@@ -1159,7 +1159,7 @@ function callGeminiAPI($apiKey, $systemPrompt, $userMessage) {
 // ==================== AI ACTIONS ====================
 
 function actionDisableOutOfStock($db, $botId) {
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         // Count first
@@ -1187,7 +1187,7 @@ function actionDisableOutOfStock($db, $botId) {
 }
 
 function actionEnableInStock($db, $botId) {
-    $table = 'products';
+    $table = 'business_items';
     
     try {
         // Count first
@@ -1513,7 +1513,7 @@ function getSmartAlerts($db, $botId) {
         }
         
         // 3. สินค้าหมดแต่ยังเปิดขาย
-        $table = 'products';
+        $table = 'business_items';
         
         $stmt = $db->prepare("SELECT COUNT(*) FROM {$table} WHERE stock <= 0 AND is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL)");
         $stmt->execute([$botId]);

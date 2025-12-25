@@ -316,7 +316,7 @@ class GeminiChat
     private function getTopProducts($limit = 10)
     {
         try {
-            $stmt = $this->db->prepare("SELECT name, price FROM products WHERE is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL) LIMIT ?");
+            $stmt = $this->db->prepare("SELECT name, price FROM business_items WHERE is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL) LIMIT ?");
             $stmt->execute([$this->lineAccountId, $limit]);
             $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
             $text = "";

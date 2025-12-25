@@ -86,7 +86,7 @@ function handleGetProducts() {
     try {
         $sql = "SELECT id, name, description, price, sale_price, image_url, stock, sku, barcode, 
                        manufacturer, generic_name, usage_instructions, unit, category_id
-                FROM products WHERE is_active = 1";
+                FROM business_items WHERE is_active = 1";
         $params = [];
         
         if ($lineAccountId) {
@@ -179,7 +179,7 @@ function handleAddToCart($data) {
     }
     
     // Check if product exists and is active
-    $stmt = $db->prepare("SELECT id, name, price, sale_price, stock FROM products WHERE id = ? AND is_active = 1");
+    $stmt = $db->prepare("SELECT id, name, price, sale_price, stock FROM business_items WHERE id = ? AND is_active = 1");
     $stmt->execute([$productId]);
     $product = $stmt->fetch(PDO::FETCH_ASSOC);
     
@@ -253,7 +253,7 @@ function handleUpdateCart($data) {
         $stmt->execute([$userId, $productId]);
     } else {
         // Check stock
-        $stmt = $db->prepare("SELECT stock FROM products WHERE id = ?");
+        $stmt = $db->prepare("SELECT stock FROM business_items WHERE id = ?");
         $stmt->execute([$productId]);
         $stock = $stmt->fetchColumn();
         

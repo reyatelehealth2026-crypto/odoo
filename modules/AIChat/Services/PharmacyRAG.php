@@ -254,11 +254,11 @@ class PharmacyRAG
             
             $whereClause = implode(' OR ', $conditions);
             
-            // ใช้ products table แทน business_items - ไม่ filter ตาม line_account_id
+            // ใช้ business_items table - ไม่ filter ตาม line_account_id
             $sql = "SELECT 
                         id, name, price, sale_price, generic_name, usage_instructions, 
                         sku, barcode, description, stock, unit, image_url
-                    FROM products 
+                    FROM business_items 
                     WHERE is_active = 1 AND ({$whereClause})
                     ORDER BY stock DESC, name
                     LIMIT ?";
@@ -292,11 +292,11 @@ class PharmacyRAG
     private function getPopularProducts(int $limit): array
     {
         try {
-            // ใช้ products table แทน business_items - ไม่ filter ตาม line_account_id
+            // ใช้ business_items table - ไม่ filter ตาม line_account_id
             $stmt = $this->db->prepare(
                 "SELECT id, name, price, sale_price, generic_name, usage_instructions, 
                         sku, barcode, stock, unit, image_url
-                 FROM products 
+                 FROM business_items 
                  WHERE is_active = 1 AND stock > 0
                  ORDER BY stock DESC, name
                  LIMIT ?"
@@ -428,10 +428,10 @@ class PharmacyRAG
     public function findBySku(string $sku): ?array
     {
         try {
-            // ใช้ products table แทน business_items
+            // ใช้ business_items table
             // ลองค้นหาตรงๆ ก่อน
             $stmt = $this->db->prepare(
-                "SELECT * FROM products WHERE (sku = ? OR barcode = ?) AND is_active = 1 LIMIT 1"
+                "SELECT * FROM business_items WHERE (sku = ? OR barcode = ?) AND is_active = 1 LIMIT 1"
             );
             $stmt->execute([$sku, $sku]);
             $result = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -443,7 +443,7 @@ class PharmacyRAG
             
             // ลองค้นหาแบบ LIKE (รองรับ SKU ที่มี leading zeros)
             $stmt = $this->db->prepare(
-                "SELECT * FROM products WHERE (sku LIKE ? OR barcode LIKE ?) AND is_active = 1 LIMIT 1"
+                "SELECT * FROM business_items WHERE (sku LIKE ? OR barcode LIKE ?) AND is_active = 1 LIMIT 1"
             );
             $stmt->execute(["%{$sku}%", "%{$sku}%"]);
             $result = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -457,7 +457,7 @@ class PharmacyRAG
             $skuNoZero = ltrim($sku, '0');
             if ($skuNoZero !== $sku) {
                 $stmt = $this->db->prepare(
-                    "SELECT * FROM products WHERE (sku LIKE ? OR barcode LIKE ?) AND is_active = 1 LIMIT 1"
+                    "SELECT * FROM business_items WHERE (sku LIKE ? OR barcode LIKE ?) AND is_active = 1 LIMIT 1"
                 );
                 $stmt->execute(["%{$skuNoZero}", "%{$skuNoZero}"]);
                 $result = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -487,10 +487,10 @@ class PharmacyRAG
             $searchName = trim($name);
             error_log("PharmacyRAG findByName: Searching for '{$searchName}'");
             
-            // ใช้ products table แทน business_items
+            // ใช้ business_items table
             // 1. ลองค้นหาตรงๆ ก่อน (exact match)
             $stmt = $this->db->prepare(
-                "SELECT * FROM products 
+                "SELECT * FROM business_items 
                  WHERE is_active = 1 AND (name = ? OR generic_name = ?)
                  LIMIT 1"
             );
@@ -511,7 +511,7 @@ class PharmacyRAG
                         WHEN generic_name LIKE ? THEN 3
                         ELSE 4
                     END as relevance
-                 FROM products 
+                 FROM business_items 
                  WHERE is_active = 1 AND (
                     name LIKE ? OR 
                     name LIKE ? OR 
@@ -562,13 +562,13 @@ class PharmacyRAG
         error_log("PharmacyRAG searchProductsForAI: query='{$query}', category='{$category}', limit={$limit}");
         
         try {
-            // ใช้ products table แทน business_items - ไม่ filter ตาม line_account_id
+            // ใช้ business_items table - ไม่ filter ตาม line_account_id
             // ถ้ามี category ให้ค้นหาตาม category ด้วย
             if ($category) {
                 $stmt = $this->db->prepare(
                     "SELECT id, name, price, sale_price, generic_name, usage_instructions, 
                             sku, barcode, description, stock, unit, image_url, category_id
-                     FROM products 
+                     FROM business_items 
                      WHERE is_active = 1 
                        AND (name LIKE ? OR generic_name LIKE ? OR description LIKE ?)
                      ORDER BY stock DESC, name
@@ -581,7 +581,7 @@ class PharmacyRAG
                 $stmt = $this->db->prepare(
                     "SELECT id, name, price, sale_price, generic_name, usage_instructions, 
                             sku, barcode, description, stock, unit, image_url, category_id
-                     FROM products 
+                     FROM business_items 
                      WHERE is_active = 1 
                        AND (name LIKE ? OR generic_name LIKE ? OR description LIKE ? OR sku LIKE ?)
                      ORDER BY 
@@ -696,10 +696,10 @@ class PharmacyRAG
             $whereClause = implode(' OR ', $conditions);
             $params[] = $limit;
             
-            // ใช้ products table แทน business_items
+            // ใช้ business_items table
             $sql = "SELECT id, name, price, sale_price, generic_name, usage_instructions, 
                            sku, barcode, stock, unit, image_url
-                    FROM products 
+                    FROM business_items 
                     WHERE is_active = 1 AND ({$whereClause})
                     ORDER BY stock DESC, name
                     LIMIT ?";
@@ -738,8 +738,8 @@ class PharmacyRAG
     public function getTotalProductCount(): int
     {
         try {
-            // ใช้ products table แทน business_items
-            $stmt = $this->db->query("SELECT COUNT(*) FROM products WHERE is_active = 1");
+            // ใช้ business_items table
+            $stmt = $this->db->query("SELECT COUNT(*) FROM business_items WHERE is_active = 1");
             return intval($stmt->fetchColumn() ?: 0);
         } catch (\Exception $e) {
             error_log("PharmacyRAG getTotalProductCount error: " . $e->getMessage());

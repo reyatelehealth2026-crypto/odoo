@@ -134,7 +134,7 @@ class PromptBuilder
             // ไม่ filter ตาม line_account_id - แสดงสินค้าทั้งหมด
             $products = $db->fetchAll("
                 SELECT name, price, generic_name, description
-                FROM products 
+                FROM business_items 
                 WHERE is_active = 1
                 ORDER BY name ASC 
                 LIMIT 50
@@ -210,7 +210,7 @@ class PromptBuilder
             $params[] = $limit;
             
             $sql = "SELECT name, price, generic_name 
-                    FROM products 
+                    FROM business_items 
                     WHERE is_active = 1 
                     AND (" . implode(' OR ', $conditions) . ")
                     LIMIT ?";

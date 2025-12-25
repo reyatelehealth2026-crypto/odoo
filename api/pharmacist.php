@@ -218,7 +218,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $stmt = $db->prepare("
                     SELECT id, name, price, generic_name, description, usage_instructions
-                    FROM products 
+                    FROM business_items 
                     WHERE is_active = 1 
                     AND (line_account_id = ? OR line_account_id IS NULL)
                     ORDER BY category_id, name

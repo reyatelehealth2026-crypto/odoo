@@ -64,12 +64,12 @@ foreach ($schedules as $schedule) {
                 $messageContent = $tpl['content'];
             }
         } elseif ($contentSource === 'product' && !empty($schedule['product_ids'])) {
-            // Build product carousel flex message from products
+            // Build product carousel flex message from business_items
             $productIds = array_map('trim', explode(',', $schedule['product_ids']));
             $placeholders = implode(',', array_fill(0, count($productIds), '?'));
             
-            // Use products table
-            $prodStmt = $db->prepare("SELECT * FROM products WHERE id IN ($placeholders)");
+            // Use business_items table
+            $prodStmt = $db->prepare("SELECT * FROM business_items WHERE id IN ($placeholders)");
             $prodStmt->execute($productIds);
             $products = $prodStmt->fetchAll();
             

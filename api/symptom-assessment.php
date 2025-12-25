@@ -186,9 +186,9 @@ class SymptomAssessmentEngine
                 $params[] = "%{$kw}%";
             }
             
-            // ค้นหาจากตาราง products แทน business_items
+            // ค้นหาจากตาราง business_items
             $sql = "SELECT id, sku, name, generic_name, price, description, usage_instructions
-                    FROM products 
+                    FROM business_items 
                     WHERE is_active = 1 AND (" . implode(' OR ', $conditions) . ")
                     ORDER BY price ASC
                     LIMIT 10";

@@ -619,8 +619,8 @@ PROMPT;
     public function getTotalProductCount(): int
     {
         try {
-            // ใช้ products table แทน business_items
-            $stmt = $this->db->query("SELECT COUNT(*) FROM products WHERE is_active = 1");
+            // ใช้ business_items table
+            $stmt = $this->db->query("SELECT COUNT(*) FROM business_items WHERE is_active = 1");
             return intval($stmt->fetchColumn() ?: 0);
         } catch (\Exception $e) {
             return 0;

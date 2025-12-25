@@ -475,11 +475,11 @@ class TriageEngine
             
             $placeholders = implode(',', array_fill(0, count($categories), '?'));
             
-            // ใช้ products table แทน business_items - ไม่ filter ตาม line_account_id
+            // ใช้ business_items table - ไม่ filter ตาม line_account_id
             $sql = "SELECT p.*, 
                            COALESCE(p.generic_name, '') as generic_name,
                            COALESCE(p.usage_instructions, '') as usage_instructions
-                    FROM products p
+                    FROM business_items p
                     WHERE p.is_active = 1 
                     AND (p.name LIKE CONCAT('%', ?, '%') OR p.description LIKE CONCAT('%', ?, '%'))
                     ORDER BY p.name ASC
