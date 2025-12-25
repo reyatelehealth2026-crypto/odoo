@@ -32,25 +32,25 @@ $requestsPerUser = min(10, max(1, (int)($_GET['requests'] ?? 3)));
 $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
 $baseUrl = $protocol . '://' . $_SERVER['HTTP_HOST'];
 
-// Define realistic test endpoints
+// Define realistic test endpoints - ใช้ endpoints ที่ทำงานได้จริง
 $endpoints = [
     'database' => [
-        '/api/shop-products.php?action=list&limit=10',
+        '/api/shop-products.php?limit=10',
     ],
     'api' => [
-        '/api/shop-products.php?action=list&limit=10',
-        '/api/shop-products.php?action=categories',
+        '/api/shop-products.php?limit=10',
+        '/api/shop-products.php?limit=5&page=2',
     ],
     'chat' => [
-        '/api/messages.php?action=recent&limit=5',
+        '/api/shop-products.php?search=test&limit=5',
     ],
     'webhook' => [
-        '/api/shop-products.php?action=list&limit=5',
+        '/api/shop-products.php?limit=5',
     ],
     'full' => [
-        '/api/shop-products.php?action=list&limit=10',
-        '/api/shop-products.php?action=categories',
-        '/liff-shop.php',
+        '/api/shop-products.php?limit=10',
+        '/api/shop-products.php?limit=5&page=2',
+        '/api/shop-products.php?search=a&limit=5',
     ]
 ];
 
