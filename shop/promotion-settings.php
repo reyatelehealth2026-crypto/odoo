@@ -1,17 +1,15 @@
 <?php
 /**
- * Promotion Settings - ตั้งค่าโปรโมชั่น LIFF
- * - ขนาดรูปภาพ
- * - จำนวนสินค้าที่แสดง
- * - สี/ธีม
- * - Layout
- * - Banner settings
+ * Promotion Settings V2 - ตั้งค่าธีมหน้าร้าน LIFF
+ * - เลือกธีมสำเร็จรูป 4 แบบ
+ * - Preview แบบ Real-time
+ * - ปรับแต่งเพิ่มเติมได้
  */
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 
 $db = Database::getInstance()->getConnection();
-$pageTitle = 'ตั้งค่าโปรโมชั่น';
+$pageTitle = 'ตั้งค่าธีมหน้าร้าน';
 $lineAccountId = $_SESSION['current_bot_id'] ?? 1;
 
 // Ensure settings table exists
@@ -44,6 +42,58 @@ function setPromoSetting($db, $lineAccountId, $key, $value) {
     $stmt->execute([$lineAccountId, $key, $jsonValue, $jsonValue]);
 }
 
+// Define 4 Themes
+$themes = [
+    'pharmacy' => [
+        'name' => '💊 ร้านยา',
+        'description' => 'โทนสีเขียวมิ้นท์ สะอาดตา เหมาะกับร้านยา/สุขภาพ',
+        'primary_color' => '#11B0A6',
+        'sale_badge_color' => '#EF4444',
+        'bestseller_badge_color' => '#F59E0B',
+        'featured_badge_color' => '#8B5CF6',
+        'card_style' => 'rounded-lg',
+        'card_shadow' => 'sm',
+        'image_size' => 'medium',
+        'columns_mobile' => 2,
+    ],
+    'modern' => [
+        'name' => '🛍️ โมเดิร์น',
+        'description' => 'โทนสีน้ำเงินเข้ม ดูหรูหรา เหมาะกับร้านค้าทั่วไป',
+        'primary_color' => '#3B82F6',
+        'sale_badge_color' => '#DC2626',
+        'bestseller_badge_color' => '#EA580C',
+        'featured_badge_color' => '#7C3AED',
+        'card_style' => 'rounded',
+        'card_shadow' => 'md',
+        'image_size' => 'large',
+        'columns_mobile' => 2,
+    ],
+    'minimal' => [
+        'name' => '✨ มินิมอล',
+        'description' => 'โทนขาว-ดำ เรียบง่าย สะอาดตา',
+        'primary_color' => '#1F2937',
+        'sale_badge_color' => '#EF4444',
+        'bestseller_badge_color' => '#374151',
+        'featured_badge_color' => '#6B7280',
+        'card_style' => 'square',
+        'card_shadow' => 'none',
+        'image_size' => 'medium',
+        'columns_mobile' => 2,
+    ],
+    'warm' => [
+        'name' => '🌸 อบอุ่น',
+        'description' => 'โทนสีชมพู-ส้ม อบอุ่น เหมาะกับร้านเครื่องสำอาง/ของขวัญ',
+        'primary_color' => '#EC4899',
+        'sale_badge_color' => '#F43F5E',
+        'bestseller_badge_color' => '#F97316',
+        'featured_badge_color' => '#A855F7',
+        'card_style' => 'rounded-xl',
+        'card_shadow' => 'lg',
+        'image_size' => 'large',
+        'columns_mobile' => 2,
+    ],
+];
+
 $message = '';
 $messageType = '';
 
@@ -51,408 +101,442 @@ $messageType = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? 'save';
     
-    if ($action === 'save') {
-        // Display Settings
-        setPromoSetting($db, $lineAccountId, 'image_size', $_POST['image_size'] ?? 'medium');
-        setPromoSetting($db, $lineAccountId, 'image_ratio', $_POST['image_ratio'] ?? '1:1');
-        setPromoSetting($db, $lineAccountId, 'products_per_section', (int)($_POST['products_per_section'] ?? 6));
-        setPromoSetting($db, $lineAccountId, 'columns_mobile', (int)($_POST['columns_mobile'] ?? 2));
-        setPromoSetting($db, $lineAccountId, 'columns_desktop', (int)($_POST['columns_desktop'] ?? 4));
-        
-        // Section Settings
-        setPromoSetting($db, $lineAccountId, 'show_sale_section', isset($_POST['show_sale_section']) ? '1' : '0');
-        setPromoSetting($db, $lineAccountId, 'show_bestseller_section', isset($_POST['show_bestseller_section']) ? '1' : '0');
-        setPromoSetting($db, $lineAccountId, 'show_featured_section', isset($_POST['show_featured_section']) ? '1' : '0');
-        setPromoSetting($db, $lineAccountId, 'show_points_badge', isset($_POST['show_points_badge']) ? '1' : '0');
-        
-        // Theme Settings
+    if ($action === 'apply_theme') {
+        $themeKey = $_POST['theme'] ?? 'pharmacy';
+        if (isset($themes[$themeKey])) {
+            $theme = $themes[$themeKey];
+            setPromoSetting($db, $lineAccountId, 'current_theme', $themeKey);
+            setPromoSetting($db, $lineAccountId, 'primary_color', $theme['primary_color']);
+            setPromoSetting($db, $lineAccountId, 'sale_badge_color', $theme['sale_badge_color']);
+            setPromoSetting($db, $lineAccountId, 'bestseller_badge_color', $theme['bestseller_badge_color']);
+            setPromoSetting($db, $lineAccountId, 'featured_badge_color', $theme['featured_badge_color']);
+            setPromoSetting($db, $lineAccountId, 'card_style', $theme['card_style']);
+            setPromoSetting($db, $lineAccountId, 'card_shadow', $theme['card_shadow']);
+            setPromoSetting($db, $lineAccountId, 'image_size', $theme['image_size']);
+            setPromoSetting($db, $lineAccountId, 'columns_mobile', $theme['columns_mobile']);
+            $message = 'เปลี่ยนธีมเป็น "' . $theme['name'] . '" สำเร็จ!';
+            $messageType = 'success';
+        }
+    }
+    
+    if ($action === 'save_custom') {
+        setPromoSetting($db, $lineAccountId, 'current_theme', 'custom');
         setPromoSetting($db, $lineAccountId, 'primary_color', $_POST['primary_color'] ?? '#11B0A6');
         setPromoSetting($db, $lineAccountId, 'sale_badge_color', $_POST['sale_badge_color'] ?? '#EF4444');
         setPromoSetting($db, $lineAccountId, 'bestseller_badge_color', $_POST['bestseller_badge_color'] ?? '#F59E0B');
         setPromoSetting($db, $lineAccountId, 'featured_badge_color', $_POST['featured_badge_color'] ?? '#8B5CF6');
-        
-        // Card Style
         setPromoSetting($db, $lineAccountId, 'card_style', $_POST['card_style'] ?? 'rounded');
         setPromoSetting($db, $lineAccountId, 'card_shadow', $_POST['card_shadow'] ?? 'sm');
+        setPromoSetting($db, $lineAccountId, 'image_size', $_POST['image_size'] ?? 'medium');
+        setPromoSetting($db, $lineAccountId, 'columns_mobile', (int)($_POST['columns_mobile'] ?? 2));
+        setPromoSetting($db, $lineAccountId, 'columns_desktop', (int)($_POST['columns_desktop'] ?? 4));
+        setPromoSetting($db, $lineAccountId, 'image_ratio', $_POST['image_ratio'] ?? '1:1');
+        setPromoSetting($db, $lineAccountId, 'products_per_section', (int)($_POST['products_per_section'] ?? 8));
+        
+        // Section toggles
+        setPromoSetting($db, $lineAccountId, 'show_sale_section', isset($_POST['show_sale_section']) ? '1' : '0');
+        setPromoSetting($db, $lineAccountId, 'show_bestseller_section', isset($_POST['show_bestseller_section']) ? '1' : '0');
+        setPromoSetting($db, $lineAccountId, 'show_featured_section', isset($_POST['show_featured_section']) ? '1' : '0');
         setPromoSetting($db, $lineAccountId, 'show_sku', isset($_POST['show_sku']) ? '1' : '0');
         setPromoSetting($db, $lineAccountId, 'show_stock', isset($_POST['show_stock']) ? '1' : '0');
         
-        // Banner Settings
-        setPromoSetting($db, $lineAccountId, 'banner_height_mobile', (int)($_POST['banner_height_mobile'] ?? 160));
-        setPromoSetting($db, $lineAccountId, 'banner_height_desktop', (int)($_POST['banner_height_desktop'] ?? 200));
-        setPromoSetting($db, $lineAccountId, 'banner_autoplay', isset($_POST['banner_autoplay']) ? '1' : '0');
-        setPromoSetting($db, $lineAccountId, 'banner_interval', (int)($_POST['banner_interval'] ?? 5000));
-        
         $message = 'บันทึกการตั้งค่าสำเร็จ!';
-        $messageType = 'success';
-    }
-    
-    if ($action === 'add_banner') {
-        $banners = getPromoSetting($db, $lineAccountId, 'banners', []);
-        $banners[] = [
-            'image' => $_POST['banner_image'] ?? '',
-            'title' => $_POST['banner_title'] ?? '',
-            'link' => $_POST['banner_link'] ?? '',
-            'active' => true
-        ];
-        setPromoSetting($db, $lineAccountId, 'banners', $banners);
-        $message = 'เพิ่ม Banner สำเร็จ!';
-        $messageType = 'success';
-    }
-    
-    if ($action === 'delete_banner') {
-        $index = (int)$_POST['banner_index'];
-        $banners = getPromoSetting($db, $lineAccountId, 'banners', []);
-        if (isset($banners[$index])) {
-            array_splice($banners, $index, 1);
-            setPromoSetting($db, $lineAccountId, 'banners', $banners);
-        }
-        $message = 'ลบ Banner สำเร็จ!';
         $messageType = 'success';
     }
 }
 
 // Get current settings
+$currentTheme = getPromoSetting($db, $lineAccountId, 'current_theme', 'pharmacy');
 $settings = [
-    'image_size' => getPromoSetting($db, $lineAccountId, 'image_size', 'medium'),
-    'image_ratio' => getPromoSetting($db, $lineAccountId, 'image_ratio', '1:1'),
-    'products_per_section' => getPromoSetting($db, $lineAccountId, 'products_per_section', 6),
-    'columns_mobile' => getPromoSetting($db, $lineAccountId, 'columns_mobile', 2),
-    'columns_desktop' => getPromoSetting($db, $lineAccountId, 'columns_desktop', 4),
-    'show_sale_section' => getPromoSetting($db, $lineAccountId, 'show_sale_section', '1'),
-    'show_bestseller_section' => getPromoSetting($db, $lineAccountId, 'show_bestseller_section', '1'),
-    'show_featured_section' => getPromoSetting($db, $lineAccountId, 'show_featured_section', '1'),
-    'show_points_badge' => getPromoSetting($db, $lineAccountId, 'show_points_badge', '1'),
     'primary_color' => getPromoSetting($db, $lineAccountId, 'primary_color', '#11B0A6'),
     'sale_badge_color' => getPromoSetting($db, $lineAccountId, 'sale_badge_color', '#EF4444'),
     'bestseller_badge_color' => getPromoSetting($db, $lineAccountId, 'bestseller_badge_color', '#F59E0B'),
     'featured_badge_color' => getPromoSetting($db, $lineAccountId, 'featured_badge_color', '#8B5CF6'),
-    'card_style' => getPromoSetting($db, $lineAccountId, 'card_style', 'rounded'),
+    'card_style' => getPromoSetting($db, $lineAccountId, 'card_style', 'rounded-lg'),
     'card_shadow' => getPromoSetting($db, $lineAccountId, 'card_shadow', 'sm'),
+    'image_size' => getPromoSetting($db, $lineAccountId, 'image_size', 'medium'),
+    'image_ratio' => getPromoSetting($db, $lineAccountId, 'image_ratio', '1:1'),
+    'columns_mobile' => getPromoSetting($db, $lineAccountId, 'columns_mobile', 2),
+    'columns_desktop' => getPromoSetting($db, $lineAccountId, 'columns_desktop', 4),
+    'products_per_section' => getPromoSetting($db, $lineAccountId, 'products_per_section', 8),
+    'show_sale_section' => getPromoSetting($db, $lineAccountId, 'show_sale_section', '1'),
+    'show_bestseller_section' => getPromoSetting($db, $lineAccountId, 'show_bestseller_section', '1'),
+    'show_featured_section' => getPromoSetting($db, $lineAccountId, 'show_featured_section', '1'),
     'show_sku' => getPromoSetting($db, $lineAccountId, 'show_sku', '0'),
     'show_stock' => getPromoSetting($db, $lineAccountId, 'show_stock', '0'),
-    'banner_height_mobile' => getPromoSetting($db, $lineAccountId, 'banner_height_mobile', 160),
-    'banner_height_desktop' => getPromoSetting($db, $lineAccountId, 'banner_height_desktop', 200),
-    'banner_autoplay' => getPromoSetting($db, $lineAccountId, 'banner_autoplay', '1'),
-    'banner_interval' => getPromoSetting($db, $lineAccountId, 'banner_interval', 5000),
 ];
-$banners = getPromoSetting($db, $lineAccountId, 'banners', []);
 
 require_once __DIR__ . '/../includes/header.php';
 ?>
 
+<style>
+.theme-card { transition: all 0.3s; cursor: pointer; position: relative; }
+.theme-card:hover { transform: translateY(-4px); }
+.theme-card.selected { ring: 3px; ring-color: #11B0A6; }
+.theme-card.selected::after { content: '✓'; position: absolute; top: -8px; right: -8px; width: 28px; height: 28px; background: #10B981; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+.preview-phone { width: 280px; height: 500px; background: #f8fafc; border-radius: 32px; border: 8px solid #1f2937; position: relative; overflow: hidden; }
+.preview-phone::before { content: ''; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 80px; height: 24px; background: #1f2937; border-radius: 12px; z-index: 10; }
+.preview-content { height: 100%; overflow-y: auto; padding-top: 40px; }
+.preview-card { transition: all 0.2s; }
+.color-dot { width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+</style>
+
 <?php if ($message): ?>
-<div class="mb-4 p-4 rounded-lg <?= $messageType === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700' ?>">
-    <i class="fas fa-check-circle mr-2"></i><?= $message ?>
+<div class="mb-4 p-4 rounded-xl <?= $messageType === 'success' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200' ?> flex items-center gap-3">
+    <i class="fas <?= $messageType === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle' ?> text-xl"></i>
+    <span class="font-medium"><?= $message ?></span>
 </div>
 <?php endif; ?>
 
-<!-- Preview Link -->
-<div class="mb-6 p-4 bg-gradient-to-r from-teal-500 to-teal-600 rounded-xl text-white">
+<!-- Header with Preview Link -->
+<div class="mb-6 p-5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 rounded-2xl text-white shadow-lg">
     <div class="flex items-center justify-between">
         <div>
-            <h2 class="font-bold text-lg">ดูตัวอย่างหน้าโปรโมชั่น</h2>
-            <p class="text-teal-100 text-sm">ทดสอบการแสดงผลใน LIFF</p>
+            <h2 class="font-bold text-xl flex items-center gap-2">
+                <i class="fas fa-palette"></i>ตั้งค่าธีมหน้าร้าน
+            </h2>
+            <p class="text-white/80 text-sm mt-1">เลือกธีมสำเร็จรูปหรือปรับแต่งเอง</p>
         </div>
-        <a href="<?= BASE_URL ?>/liff-promotions.php?account=<?= $lineAccountId ?>" target="_blank" 
-           class="px-4 py-2 bg-white text-teal-600 rounded-lg font-bold hover:bg-teal-50">
-            <i class="fas fa-external-link-alt mr-1"></i>เปิดดู
+        <a href="<?= BASE_URL ?>liff-shop.php?account=<?= $lineAccountId ?>" target="_blank" 
+           class="px-5 py-2.5 bg-white text-purple-600 rounded-xl font-bold hover:bg-purple-50 transition flex items-center gap-2 shadow">
+            <i class="fas fa-external-link-alt"></i>ดูหน้าร้าน
         </a>
     </div>
 </div>
 
-<form method="POST" class="space-y-6">
-    <input type="hidden" name="action" value="save">
-    
-    <!-- Display Settings -->
-    <div class="bg-white rounded-xl shadow p-6">
-        <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-            <i class="fas fa-image text-blue-500 mr-2"></i>การแสดงผลรูปภาพ
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ขนาดรูปภาพ</label>
-                <select name="image_size" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="small" <?= $settings['image_size'] === 'small' ? 'selected' : '' ?>>เล็ก (120px)</option>
-                    <option value="medium" <?= $settings['image_size'] === 'medium' ? 'selected' : '' ?>>กลาง (160px)</option>
-                    <option value="large" <?= $settings['image_size'] === 'large' ? 'selected' : '' ?>>ใหญ่ (200px)</option>
-                    <option value="xlarge" <?= $settings['image_size'] === 'xlarge' ? 'selected' : '' ?>>ใหญ่มาก (240px)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">สัดส่วนรูป</label>
-                <select name="image_ratio" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="1:1" <?= $settings['image_ratio'] === '1:1' ? 'selected' : '' ?>>1:1 (สี่เหลี่ยมจัตุรัส)</option>
-                    <option value="4:3" <?= $settings['image_ratio'] === '4:3' ? 'selected' : '' ?>>4:3 (แนวนอน)</option>
-                    <option value="3:4" <?= $settings['image_ratio'] === '3:4' ? 'selected' : '' ?>>3:4 (แนวตั้ง)</option>
-                    <option value="16:9" <?= $settings['image_ratio'] === '16:9' ? 'selected' : '' ?>>16:9 (Widescreen)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนสินค้าต่อ Section</label>
-                <select name="products_per_section" class="w-full px-4 py-2 border rounded-lg">
-                    <?php for ($i = 4; $i <= 20; $i += 2): ?>
-                    <option value="<?= $i ?>" <?= $settings['products_per_section'] == $i ? 'selected' : '' ?>><?= $i ?> รายการ</option>
-                    <?php endfor; ?>
-                </select>
-            </div>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนคอลัมน์ (มือถือ)</label>
-                <select name="columns_mobile" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="1" <?= $settings['columns_mobile'] == 1 ? 'selected' : '' ?>>1 คอลัมน์</option>
-                    <option value="2" <?= $settings['columns_mobile'] == 2 ? 'selected' : '' ?>>2 คอลัมน์</option>
-                    <option value="3" <?= $settings['columns_mobile'] == 3 ? 'selected' : '' ?>>3 คอลัมน์</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนคอลัมน์ (Desktop)</label>
-                <select name="columns_desktop" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="3" <?= $settings['columns_desktop'] == 3 ? 'selected' : '' ?>>3 คอลัมน์</option>
-                    <option value="4" <?= $settings['columns_desktop'] == 4 ? 'selected' : '' ?>>4 คอลัมน์</option>
-                    <option value="5" <?= $settings['columns_desktop'] == 5 ? 'selected' : '' ?>>5 คอลัมน์</option>
-                    <option value="6" <?= $settings['columns_desktop'] == 6 ? 'selected' : '' ?>>6 คอลัมน์</option>
-                </select>
-            </div>
-        </div>
-    </div>
-
-    <!-- Section Settings -->
-    <div class="bg-white rounded-xl shadow p-6">
-        <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-            <i class="fas fa-layer-group text-purple-500 mr-2"></i>Section ที่แสดง
-        </h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <label class="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" name="show_sale_section" <?= $settings['show_sale_section'] == '1' ? 'checked' : '' ?> class="w-5 h-5 text-red-500">
-                <span>🏷️ สินค้าลดราคา</span>
-            </label>
-            <label class="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" name="show_bestseller_section" <?= $settings['show_bestseller_section'] == '1' ? 'checked' : '' ?> class="w-5 h-5 text-orange-500">
-                <span>🔥 สินค้าขายดี</span>
-            </label>
-            <label class="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" name="show_featured_section" <?= $settings['show_featured_section'] == '1' ? 'checked' : '' ?> class="w-5 h-5 text-yellow-500">
-                <span>⭐ สินค้าแนะนำ</span>
-            </label>
-            <label class="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                <input type="checkbox" name="show_points_badge" <?= $settings['show_points_badge'] == '1' ? 'checked' : '' ?> class="w-5 h-5 text-purple-500">
-                <span>🎁 แสดงแต้มสะสม</span>
-            </label>
-        </div>
-    </div>
-
-    <!-- Theme Settings -->
-    <div class="bg-white rounded-xl shadow p-6">
-        <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-            <i class="fas fa-palette text-pink-500 mr-2"></i>สีและธีม
-        </h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">สีหลัก</label>
-                <div class="flex items-center gap-2">
-                    <input type="color" name="primary_color" value="<?= $settings['primary_color'] ?>" class="w-12 h-10 rounded cursor-pointer">
-                    <input type="text" value="<?= $settings['primary_color'] ?>" class="flex-1 px-3 py-2 border rounded-lg text-sm" readonly>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">สี Badge ลดราคา</label>
-                <div class="flex items-center gap-2">
-                    <input type="color" name="sale_badge_color" value="<?= $settings['sale_badge_color'] ?>" class="w-12 h-10 rounded cursor-pointer">
-                    <input type="text" value="<?= $settings['sale_badge_color'] ?>" class="flex-1 px-3 py-2 border rounded-lg text-sm" readonly>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">สี Badge ขายดี</label>
-                <div class="flex items-center gap-2">
-                    <input type="color" name="bestseller_badge_color" value="<?= $settings['bestseller_badge_color'] ?>" class="w-12 h-10 rounded cursor-pointer">
-                    <input type="text" value="<?= $settings['bestseller_badge_color'] ?>" class="flex-1 px-3 py-2 border rounded-lg text-sm" readonly>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">สี Badge แนะนำ</label>
-                <div class="flex items-center gap-2">
-                    <input type="color" name="featured_badge_color" value="<?= $settings['featured_badge_color'] ?>" class="w-12 h-10 rounded cursor-pointer">
-                    <input type="text" value="<?= $settings['featured_badge_color'] ?>" class="flex-1 px-3 py-2 border rounded-lg text-sm" readonly>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Card Style -->
-    <div class="bg-white rounded-xl shadow p-6">
-        <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-            <i class="fas fa-square text-green-500 mr-2"></i>รูปแบบการ์ดสินค้า
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">รูปแบบขอบ</label>
-                <select name="card_style" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="square" <?= $settings['card_style'] === 'square' ? 'selected' : '' ?>>เหลี่ยม</option>
-                    <option value="rounded" <?= $settings['card_style'] === 'rounded' ? 'selected' : '' ?>>มน (8px)</option>
-                    <option value="rounded-lg" <?= $settings['card_style'] === 'rounded-lg' ? 'selected' : '' ?>>มนมาก (16px)</option>
-                    <option value="rounded-xl" <?= $settings['card_style'] === 'rounded-xl' ? 'selected' : '' ?>>มนมากที่สุด (24px)</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">เงา</label>
-                <select name="card_shadow" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="none" <?= $settings['card_shadow'] === 'none' ? 'selected' : '' ?>>ไม่มีเงา</option>
-                    <option value="sm" <?= $settings['card_shadow'] === 'sm' ? 'selected' : '' ?>>เงาเล็ก</option>
-                    <option value="md" <?= $settings['card_shadow'] === 'md' ? 'selected' : '' ?>>เงากลาง</option>
-                    <option value="lg" <?= $settings['card_shadow'] === 'lg' ? 'selected' : '' ?>>เงาใหญ่</option>
-                </select>
-            </div>
-            <div class="flex flex-col gap-2">
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" name="show_sku" <?= $settings['show_sku'] == '1' ? 'checked' : '' ?> class="w-4 h-4">
-                    <span class="text-sm">แสดงรหัสสินค้า (SKU)</span>
-                </label>
-                <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" name="show_stock" <?= $settings['show_stock'] == '1' ? 'checked' : '' ?> class="w-4 h-4">
-                    <span class="text-sm">แสดงจำนวนคงเหลือ</span>
-                </label>
-            </div>
-        </div>
-    </div>
-
-    <!-- Banner Settings -->
-    <div class="bg-white rounded-xl shadow p-6">
-        <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-            <i class="fas fa-images text-indigo-500 mr-2"></i>ตั้งค่า Banner
-        </h3>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ความสูง (มือถือ)</label>
-                <div class="flex items-center gap-2">
-                    <input type="number" name="banner_height_mobile" value="<?= $settings['banner_height_mobile'] ?>" min="100" max="400" class="w-full px-4 py-2 border rounded-lg">
-                    <span class="text-gray-500">px</span>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ความสูง (Desktop)</label>
-                <div class="flex items-center gap-2">
-                    <input type="number" name="banner_height_desktop" value="<?= $settings['banner_height_desktop'] ?>" min="100" max="500" class="w-full px-4 py-2 border rounded-lg">
-                    <span class="text-gray-500">px</span>
-                </div>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ความเร็วเลื่อน</label>
-                <select name="banner_interval" class="w-full px-4 py-2 border rounded-lg">
-                    <option value="3000" <?= $settings['banner_interval'] == 3000 ? 'selected' : '' ?>>3 วินาที</option>
-                    <option value="5000" <?= $settings['banner_interval'] == 5000 ? 'selected' : '' ?>>5 วินาที</option>
-                    <option value="7000" <?= $settings['banner_interval'] == 7000 ? 'selected' : '' ?>>7 วินาที</option>
-                    <option value="10000" <?= $settings['banner_interval'] == 10000 ? 'selected' : '' ?>>10 วินาที</option>
-                </select>
-            </div>
-            <div class="flex items-end">
-                <label class="flex items-center gap-2 cursor-pointer p-2">
-                    <input type="checkbox" name="banner_autoplay" <?= $settings['banner_autoplay'] == '1' ? 'checked' : '' ?> class="w-5 h-5">
-                    <span>เลื่อนอัตโนมัติ</span>
-                </label>
-            </div>
-        </div>
-    </div>
-
-    <!-- Save Button -->
-    <div class="flex justify-end">
-        <button type="submit" class="px-6 py-3 bg-teal-500 text-white rounded-lg font-bold hover:bg-teal-600">
-            <i class="fas fa-save mr-2"></i>บันทึกการตั้งค่า
-        </button>
-    </div>
-</form>
-
-<!-- Banner Management -->
-<div class="bg-white rounded-xl shadow p-6 mt-6">
-    <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-        <i class="fas fa-image text-orange-500 mr-2"></i>จัดการ Banner โปรโมชั่น
-    </h3>
-    
-    <!-- Add Banner Form -->
-    <form method="POST" class="mb-6 p-4 bg-gray-50 rounded-lg">
-        <input type="hidden" name="action" value="add_banner">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">URL รูปภาพ *</label>
-                <input type="url" name="banner_image" required placeholder="https://..." class="w-full px-4 py-2 border rounded-lg">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ Banner</label>
-                <input type="text" name="banner_title" placeholder="โปรโมชั่นพิเศษ" class="w-full px-4 py-2 border rounded-lg">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Link (ถ้ามี)</label>
-                <input type="url" name="banner_link" placeholder="https://..." class="w-full px-4 py-2 border rounded-lg">
-            </div>
-        </div>
-        <div class="mt-4">
-            <button type="submit" class="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600">
-                <i class="fas fa-plus mr-1"></i>เพิ่ม Banner
-            </button>
-        </div>
-    </form>
-    
-    <!-- Banner List -->
-    <?php if (!empty($banners)): ?>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <?php foreach ($banners as $i => $banner): ?>
-        <div class="border rounded-lg overflow-hidden">
-            <div class="aspect-video bg-gray-100">
-                <img src="<?= htmlspecialchars($banner['image']) ?>" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/400x200?text=No+Image'">
-            </div>
-            <div class="p-3">
-                <p class="font-medium text-gray-800 truncate"><?= htmlspecialchars($banner['title'] ?: 'Banner ' . ($i + 1)) ?></p>
-                <?php if (!empty($banner['link'])): ?>
-                <p class="text-xs text-gray-500 truncate"><?= htmlspecialchars($banner['link']) ?></p>
-                <?php endif; ?>
-                <form method="POST" class="mt-2" onsubmit="return confirm('ยืนยันการลบ?')">
-                    <input type="hidden" name="action" value="delete_banner">
-                    <input type="hidden" name="banner_index" value="<?= $i ?>">
-                    <button type="submit" class="text-red-500 text-sm hover:text-red-700">
-                        <i class="fas fa-trash mr-1"></i>ลบ
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Left: Theme Selection & Settings -->
+    <div class="lg:col-span-2 space-y-6">
+        
+        <!-- Theme Selector -->
+        <div class="bg-white rounded-2xl shadow-sm p-6">
+            <h3 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
+                <span class="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg flex items-center justify-center text-white text-sm">
+                    <i class="fas fa-swatchbook"></i>
+                </span>
+                เลือกธีมสำเร็จรูป
+            </h3>
+            
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <?php foreach ($themes as $key => $theme): ?>
+                <form method="POST" class="contents">
+                    <input type="hidden" name="action" value="apply_theme">
+                    <input type="hidden" name="theme" value="<?= $key ?>">
+                    <button type="submit" class="theme-card bg-white border-2 rounded-2xl p-4 text-left hover:shadow-lg <?= $currentTheme === $key ? 'border-green-500 selected' : 'border-gray-200' ?>">
+                        <!-- Theme Preview Mini -->
+                        <div class="aspect-square rounded-xl mb-3 p-2 relative overflow-hidden" style="background: linear-gradient(135deg, <?= $theme['primary_color'] ?>20, <?= $theme['primary_color'] ?>40)">
+                            <div class="absolute inset-2 bg-white rounded-lg shadow-sm flex flex-col">
+                                <div class="h-1/2 bg-gray-100 rounded-t-lg"></div>
+                                <div class="p-1.5">
+                                    <div class="h-1.5 bg-gray-200 rounded w-3/4 mb-1"></div>
+                                    <div class="h-2 rounded w-1/2" style="background: <?= $theme['primary_color'] ?>"></div>
+                                </div>
+                            </div>
+                            <!-- Color dots -->
+                            <div class="absolute bottom-1 right-1 flex gap-0.5">
+                                <div class="w-3 h-3 rounded-full" style="background: <?= $theme['primary_color'] ?>"></div>
+                                <div class="w-3 h-3 rounded-full" style="background: <?= $theme['sale_badge_color'] ?>"></div>
+                            </div>
+                        </div>
+                        <h4 class="font-bold text-gray-800 text-sm"><?= $theme['name'] ?></h4>
+                        <p class="text-xs text-gray-500 mt-1 line-clamp-2"><?= $theme['description'] ?></p>
                     </button>
                 </form>
+                <?php endforeach; ?>
             </div>
         </div>
-        <?php endforeach; ?>
-    </div>
-    <?php else: ?>
-    <div class="text-center py-8 text-gray-500">
-        <i class="fas fa-images text-4xl mb-2 text-gray-300"></i>
-        <p>ยังไม่มี Banner</p>
-    </div>
-    <?php endif; ?>
-</div>
 
-<!-- Preview Section -->
-<div class="bg-white rounded-xl shadow p-6 mt-6">
-    <h3 class="font-bold text-gray-800 mb-4 flex items-center">
-        <i class="fas fa-eye text-cyan-500 mr-2"></i>ตัวอย่างการแสดงผล
-    </h3>
-    <div class="border rounded-lg p-4 bg-gray-50">
-        <div class="max-w-sm mx-auto">
-            <!-- Preview Card -->
-            <div class="bg-white <?= $settings['card_style'] ?> shadow-<?= $settings['card_shadow'] ?> overflow-hidden" 
-                 style="border-radius: <?= $settings['card_style'] === 'square' ? '0' : ($settings['card_style'] === 'rounded' ? '8px' : ($settings['card_style'] === 'rounded-lg' ? '16px' : '24px')) ?>">
-                <div class="relative">
-                    <span class="absolute top-2 left-2 px-2 py-1 text-white text-xs font-bold rounded" style="background: <?= $settings['sale_badge_color'] ?>">-20%</span>
-                    <div class="aspect-square bg-gray-200 flex items-center justify-center">
-                        <i class="fas fa-image text-4xl text-gray-400"></i>
+        <!-- Custom Settings -->
+        <form method="POST" id="customForm">
+            <input type="hidden" name="action" value="save_custom">
+            
+            <div class="bg-white rounded-2xl shadow-sm p-6">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="font-bold text-gray-800 text-lg flex items-center gap-2">
+                        <span class="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center text-white text-sm">
+                            <i class="fas fa-sliders-h"></i>
+                        </span>
+                        ปรับแต่งเพิ่มเติม
+                    </h3>
+                    <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-full">
+                        <?= $currentTheme === 'custom' ? '🎨 กำหนดเอง' : '📦 ธีม: ' . ($themes[$currentTheme]['name'] ?? 'ไม่ระบุ') ?>
+                    </span>
+                </div>
+                
+                <!-- Color Settings -->
+                <div class="mb-6">
+                    <h4 class="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <i class="fas fa-palette text-pink-500"></i>สี
+                    </h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="group">
+                            <label class="block text-xs text-gray-500 mb-1.5">สีหลัก</label>
+                            <div class="flex items-center gap-2 p-2 border rounded-xl group-hover:border-gray-400 transition">
+                                <input type="color" name="primary_color" value="<?= $settings['primary_color'] ?>" 
+                                       class="w-10 h-10 rounded-lg cursor-pointer border-0" onchange="updatePreview()">
+                                <input type="text" value="<?= $settings['primary_color'] ?>" 
+                                       class="flex-1 text-sm text-gray-600 bg-transparent outline-none font-mono" readonly>
+                            </div>
+                        </div>
+                        <div class="group">
+                            <label class="block text-xs text-gray-500 mb-1.5">Badge ลดราคา</label>
+                            <div class="flex items-center gap-2 p-2 border rounded-xl group-hover:border-gray-400 transition">
+                                <input type="color" name="sale_badge_color" value="<?= $settings['sale_badge_color'] ?>" 
+                                       class="w-10 h-10 rounded-lg cursor-pointer border-0" onchange="updatePreview()">
+                                <input type="text" value="<?= $settings['sale_badge_color'] ?>" 
+                                       class="flex-1 text-sm text-gray-600 bg-transparent outline-none font-mono" readonly>
+                            </div>
+                        </div>
+                        <div class="group">
+                            <label class="block text-xs text-gray-500 mb-1.5">Badge ขายดี</label>
+                            <div class="flex items-center gap-2 p-2 border rounded-xl group-hover:border-gray-400 transition">
+                                <input type="color" name="bestseller_badge_color" value="<?= $settings['bestseller_badge_color'] ?>" 
+                                       class="w-10 h-10 rounded-lg cursor-pointer border-0" onchange="updatePreview()">
+                                <input type="text" value="<?= $settings['bestseller_badge_color'] ?>" 
+                                       class="flex-1 text-sm text-gray-600 bg-transparent outline-none font-mono" readonly>
+                            </div>
+                        </div>
+                        <div class="group">
+                            <label class="block text-xs text-gray-500 mb-1.5">Badge แนะนำ</label>
+                            <div class="flex items-center gap-2 p-2 border rounded-xl group-hover:border-gray-400 transition">
+                                <input type="color" name="featured_badge_color" value="<?= $settings['featured_badge_color'] ?>" 
+                                       class="w-10 h-10 rounded-lg cursor-pointer border-0" onchange="updatePreview()">
+                                <input type="text" value="<?= $settings['featured_badge_color'] ?>" 
+                                       class="flex-1 text-sm text-gray-600 bg-transparent outline-none font-mono" readonly>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="p-3">
-                    <h4 class="font-medium text-gray-800 text-sm">ตัวอย่างสินค้า</h4>
-                    <?php if ($settings['show_sku'] == '1'): ?>
-                    <p class="text-xs text-gray-400">SKU: ABC123</p>
-                    <?php endif; ?>
-                    <div class="mt-2 flex items-center gap-2">
-                        <span class="font-bold" style="color: <?= $settings['primary_color'] ?>">฿199</span>
-                        <span class="text-gray-400 text-sm line-through">฿249</span>
+                
+                <!-- Card Style -->
+                <div class="mb-6">
+                    <h4 class="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <i class="fas fa-square text-blue-500"></i>รูปแบบการ์ด
+                    </h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <?php 
+                        $cardStyles = [
+                            'square' => ['name' => 'เหลี่ยม', 'radius' => '0'],
+                            'rounded' => ['name' => 'มน', 'radius' => '8px'],
+                            'rounded-lg' => ['name' => 'มนมาก', 'radius' => '16px'],
+                            'rounded-xl' => ['name' => 'มนสุด', 'radius' => '24px'],
+                        ];
+                        foreach ($cardStyles as $key => $style): ?>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="card_style" value="<?= $key ?>" class="sr-only peer" 
+                                   <?= $settings['card_style'] === $key ? 'checked' : '' ?> onchange="updatePreview()">
+                            <div class="p-3 border-2 rounded-xl text-center peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:bg-gray-50 transition">
+                                <div class="w-12 h-12 bg-gray-200 mx-auto mb-2" style="border-radius: <?= $style['radius'] ?>"></div>
+                                <span class="text-sm font-medium text-gray-700"><?= $style['name'] ?></span>
+                            </div>
+                        </label>
+                        <?php endforeach; ?>
                     </div>
-                    <?php if ($settings['show_stock'] == '1'): ?>
-                    <p class="text-xs text-gray-500 mt-1">คงเหลือ 50 ชิ้น</p>
-                    <?php endif; ?>
+                </div>
+
+                <!-- Shadow Style -->
+                <div class="mb-6">
+                    <h4 class="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <i class="fas fa-clone text-purple-500"></i>เงา
+                    </h4>
+                    <div class="grid grid-cols-4 gap-3">
+                        <?php 
+                        $shadowStyles = [
+                            'none' => 'ไม่มี',
+                            'sm' => 'เล็ก',
+                            'md' => 'กลาง',
+                            'lg' => 'ใหญ่',
+                        ];
+                        foreach ($shadowStyles as $key => $name): ?>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="card_shadow" value="<?= $key ?>" class="sr-only peer" 
+                                   <?= $settings['card_shadow'] === $key ? 'checked' : '' ?> onchange="updatePreview()">
+                            <div class="p-3 border-2 rounded-xl text-center peer-checked:border-purple-500 peer-checked:bg-purple-50 hover:bg-gray-50 transition">
+                                <span class="text-sm font-medium text-gray-700"><?= $name ?></span>
+                            </div>
+                        </label>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                
+                <!-- Layout Settings -->
+                <div class="mb-6">
+                    <h4 class="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <i class="fas fa-th text-green-500"></i>เลย์เอาต์
+                    </h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1.5">ขนาดรูป</label>
+                            <select name="image_size" class="w-full px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" onchange="updatePreview()">
+                                <option value="small" <?= $settings['image_size'] === 'small' ? 'selected' : '' ?>>เล็ก</option>
+                                <option value="medium" <?= $settings['image_size'] === 'medium' ? 'selected' : '' ?>>กลาง</option>
+                                <option value="large" <?= $settings['image_size'] === 'large' ? 'selected' : '' ?>>ใหญ่</option>
+                                <option value="xlarge" <?= $settings['image_size'] === 'xlarge' ? 'selected' : '' ?>>ใหญ่มาก</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1.5">สัดส่วนรูป</label>
+                            <select name="image_ratio" class="w-full px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="1:1" <?= $settings['image_ratio'] === '1:1' ? 'selected' : '' ?>>1:1</option>
+                                <option value="4:3" <?= $settings['image_ratio'] === '4:3' ? 'selected' : '' ?>>4:3</option>
+                                <option value="3:4" <?= $settings['image_ratio'] === '3:4' ? 'selected' : '' ?>>3:4</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1.5">คอลัมน์ (มือถือ)</label>
+                            <select name="columns_mobile" class="w-full px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" onchange="updatePreview()">
+                                <option value="1" <?= $settings['columns_mobile'] == 1 ? 'selected' : '' ?>>1</option>
+                                <option value="2" <?= $settings['columns_mobile'] == 2 ? 'selected' : '' ?>>2</option>
+                                <option value="3" <?= $settings['columns_mobile'] == 3 ? 'selected' : '' ?>>3</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs text-gray-500 mb-1.5">คอลัมน์ (Desktop)</label>
+                            <select name="columns_desktop" class="w-full px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                <option value="3" <?= $settings['columns_desktop'] == 3 ? 'selected' : '' ?>>3</option>
+                                <option value="4" <?= $settings['columns_desktop'] == 4 ? 'selected' : '' ?>>4</option>
+                                <option value="5" <?= $settings['columns_desktop'] == 5 ? 'selected' : '' ?>>5</option>
+                                <option value="6" <?= $settings['columns_desktop'] == 6 ? 'selected' : '' ?>>6</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Section Toggles -->
+                <div class="mb-6">
+                    <h4 class="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <i class="fas fa-layer-group text-orange-500"></i>Section ที่แสดง
+                    </h4>
+                    <div class="flex flex-wrap gap-3">
+                        <label class="flex items-center gap-2 px-4 py-2.5 border-2 rounded-xl cursor-pointer hover:bg-gray-50 transition has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
+                            <input type="checkbox" name="show_sale_section" <?= $settings['show_sale_section'] == '1' ? 'checked' : '' ?> class="w-4 h-4 text-red-500 rounded">
+                            <span class="text-sm font-medium">🏷️ ลดราคา</span>
+                        </label>
+                        <label class="flex items-center gap-2 px-4 py-2.5 border-2 rounded-xl cursor-pointer hover:bg-gray-50 transition has-[:checked]:border-orange-500 has-[:checked]:bg-orange-50">
+                            <input type="checkbox" name="show_bestseller_section" <?= $settings['show_bestseller_section'] == '1' ? 'checked' : '' ?> class="w-4 h-4 text-orange-500 rounded">
+                            <span class="text-sm font-medium">🔥 ขายดี</span>
+                        </label>
+                        <label class="flex items-center gap-2 px-4 py-2.5 border-2 rounded-xl cursor-pointer hover:bg-gray-50 transition has-[:checked]:border-yellow-500 has-[:checked]:bg-yellow-50">
+                            <input type="checkbox" name="show_featured_section" <?= $settings['show_featured_section'] == '1' ? 'checked' : '' ?> class="w-4 h-4 text-yellow-500 rounded">
+                            <span class="text-sm font-medium">⭐ แนะนำ</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Extra Options -->
+                <div class="mb-6">
+                    <h4 class="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <i class="fas fa-cog text-gray-500"></i>ตัวเลือกเพิ่มเติม
+                    </h4>
+                    <div class="flex flex-wrap gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="show_sku" <?= $settings['show_sku'] == '1' ? 'checked' : '' ?> class="w-4 h-4 text-blue-500 rounded">
+                            <span class="text-sm text-gray-600">แสดงรหัสสินค้า (SKU)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="show_stock" <?= $settings['show_stock'] == '1' ? 'checked' : '' ?> class="w-4 h-4 text-blue-500 rounded">
+                            <span class="text-sm text-gray-600">แสดงจำนวนคงเหลือ</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Save Button -->
+                <div class="flex justify-end pt-4 border-t">
+                    <button type="submit" class="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-bold hover:from-blue-700 hover:to-purple-700 transition shadow-lg flex items-center gap-2">
+                        <i class="fas fa-save"></i>บันทึกการตั้งค่า
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Right: Live Preview -->
+    <div class="lg:col-span-1">
+        <div class="sticky top-4">
+            <div class="bg-white rounded-2xl shadow-sm p-6">
+                <h3 class="font-bold text-gray-800 text-lg mb-4 flex items-center gap-2">
+                    <span class="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-500 rounded-lg flex items-center justify-center text-white text-sm">
+                        <i class="fas fa-mobile-alt"></i>
+                    </span>
+                    ตัวอย่าง
+                </h3>
+                
+                <!-- Phone Preview -->
+                <div class="flex justify-center">
+                    <div class="preview-phone shadow-2xl">
+                        <div class="preview-content" id="previewContent">
+                            <!-- Header -->
+                            <div class="px-3 py-2 bg-white border-b sticky top-0 z-10">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs" id="previewLogo" style="background: <?= $settings['primary_color'] ?>">
+                                        <i class="fas fa-store"></i>
+                                    </div>
+                                    <div>
+                                        <div class="font-bold text-gray-800 text-sm">ร้านค้าตัวอย่าง</div>
+                                        <div class="text-[10px] text-gray-400">ออนไลน์</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Banner -->
+                            <div class="p-3">
+                                <div class="rounded-xl p-3 text-white text-sm" id="previewBanner" style="background: linear-gradient(135deg, <?= $settings['primary_color'] ?>, <?= $settings['primary_color'] ?>dd)">
+                                    <div class="font-bold">🎉 ยินดีต้อนรับ!</div>
+                                    <div class="text-xs opacity-80">ส่งฟรีเมื่อซื้อครบ ฿500</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Section Title -->
+                            <div class="px-3 mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm">🔥</span>
+                                    <span class="font-bold text-gray-800 text-sm">สินค้าขายดี</span>
+                                </div>
+                            </div>
+                            
+                            <!-- Product Grid -->
+                            <div class="px-3 pb-4">
+                                <div class="grid gap-2" id="previewGrid" style="grid-template-columns: repeat(<?= $settings['columns_mobile'] ?>, 1fr)">
+                                    <!-- Product Cards -->
+                                    <?php for ($i = 0; $i < 4; $i++): ?>
+                                    <div class="preview-card bg-white overflow-hidden" id="previewCard<?= $i ?>" 
+                                         style="border-radius: <?= $settings['card_style'] === 'square' ? '0' : ($settings['card_style'] === 'rounded' ? '8px' : ($settings['card_style'] === 'rounded-lg' ? '12px' : '16px')) ?>; 
+                                                box-shadow: <?= $settings['card_shadow'] === 'none' ? 'none' : ($settings['card_shadow'] === 'sm' ? '0 1px 3px rgba(0,0,0,0.1)' : ($settings['card_shadow'] === 'md' ? '0 4px 6px rgba(0,0,0,0.1)' : '0 10px 15px rgba(0,0,0,0.1)')) ?>">
+                                        <div class="relative">
+                                            <?php if ($i === 0): ?>
+                                            <span class="absolute top-1 left-1 px-1.5 py-0.5 text-white text-[8px] font-bold rounded" id="previewSaleBadge" style="background: <?= $settings['sale_badge_color'] ?>">-20%</span>
+                                            <?php endif; ?>
+                                            <?php if ($i === 1): ?>
+                                            <span class="absolute top-1 left-1 px-1.5 py-0.5 text-white text-[8px] font-bold rounded" id="previewBestBadge" style="background: <?= $settings['bestseller_badge_color'] ?>">🔥</span>
+                                            <?php endif; ?>
+                                            <div class="aspect-square bg-gray-100 flex items-center justify-center">
+                                                <i class="fas fa-image text-gray-300"></i>
+                                            </div>
+                                        </div>
+                                        <div class="p-1.5">
+                                            <div class="text-[10px] text-gray-800 font-medium truncate">สินค้าตัวอย่าง</div>
+                                            <div class="text-[10px] font-bold mt-0.5" id="previewPrice<?= $i ?>" style="color: <?= $settings['primary_color'] ?>">฿199</div>
+                                        </div>
+                                    </div>
+                                    <?php endfor; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Info -->
+                <div class="mt-4 p-3 bg-gray-50 rounded-xl">
+                    <div class="text-xs text-gray-500 space-y-1">
+                        <div class="flex justify-between">
+                            <span>ธีมปัจจุบัน:</span>
+                            <span class="font-medium text-gray-700"><?= $currentTheme === 'custom' ? 'กำหนดเอง' : ($themes[$currentTheme]['name'] ?? '-') ?></span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>คอลัมน์:</span>
+                            <span class="font-medium text-gray-700"><?= $settings['columns_mobile'] ?> (มือถือ) / <?= $settings['columns_desktop'] ?> (Desktop)</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -463,9 +547,48 @@ require_once __DIR__ . '/../includes/header.php';
 // Sync color inputs
 document.querySelectorAll('input[type="color"]').forEach(colorInput => {
     colorInput.addEventListener('input', function() {
-        this.nextElementSibling.value = this.value;
+        const textInput = this.parentElement.querySelector('input[type="text"]');
+        if (textInput) textInput.value = this.value;
+        updatePreview();
     });
 });
+
+// Update preview in real-time
+function updatePreview() {
+    const primaryColor = document.querySelector('input[name="primary_color"]').value;
+    const saleColor = document.querySelector('input[name="sale_badge_color"]').value;
+    const bestColor = document.querySelector('input[name="bestseller_badge_color"]').value;
+    const cardStyle = document.querySelector('input[name="card_style"]:checked')?.value || 'rounded';
+    const cardShadow = document.querySelector('input[name="card_shadow"]:checked')?.value || 'sm';
+    const columns = document.querySelector('select[name="columns_mobile"]').value;
+    
+    // Update colors
+    document.getElementById('previewLogo').style.background = primaryColor;
+    document.getElementById('previewBanner').style.background = `linear-gradient(135deg, ${primaryColor}, ${primaryColor}dd)`;
+    document.getElementById('previewSaleBadge').style.background = saleColor;
+    document.getElementById('previewBestBadge').style.background = bestColor;
+    
+    // Update prices
+    for (let i = 0; i < 4; i++) {
+        const priceEl = document.getElementById('previewPrice' + i);
+        if (priceEl) priceEl.style.color = primaryColor;
+    }
+    
+    // Update card styles
+    const radiusMap = { 'square': '0', 'rounded': '8px', 'rounded-lg': '12px', 'rounded-xl': '16px' };
+    const shadowMap = { 'none': 'none', 'sm': '0 1px 3px rgba(0,0,0,0.1)', 'md': '0 4px 6px rgba(0,0,0,0.1)', 'lg': '0 10px 15px rgba(0,0,0,0.1)' };
+    
+    for (let i = 0; i < 4; i++) {
+        const card = document.getElementById('previewCard' + i);
+        if (card) {
+            card.style.borderRadius = radiusMap[cardStyle];
+            card.style.boxShadow = shadowMap[cardShadow];
+        }
+    }
+    
+    // Update grid columns
+    document.getElementById('previewGrid').style.gridTemplateColumns = `repeat(${columns}, 1fr)`;
+}
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
