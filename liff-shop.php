@@ -4,6 +4,7 @@
  * - แต่ละหมวดมี section ของตัวเอง
  * - กรอบเด่นสำหรับ Best Seller
  * - ตั้งค่าการแสดงแต่ละหมวดได้
+ * - รองรับ Marketplace theme (redirect to v3)
  */
 require_once 'config/config.php';
 require_once 'config/database.php';
@@ -18,6 +19,18 @@ $filterSearch = trim($_GET['search'] ?? '');
 $filterFeatured = isset($_GET['featured']) && $_GET['featured'] == '1';
 $filterBestseller = isset($_GET['bestseller']) && $_GET['bestseller'] == '1';
 $isFiltered = $filterCategory || $filterSearch || $filterFeatured || $filterBestseller;
+
+// Check if marketplace theme is selected - redirect to v3
+try {
+    $stmt = $db->prepare("SELECT setting_value FROM promotion_settings WHERE line_account_id = ? AND setting_key = 'layout_style'");
+    $stmt->execute([$lineAccountId]);
+    $layoutStyle = $stmt->fetchColumn();
+    if ($layoutStyle === 'marketplace') {
+        $queryString = $_SERVER['QUERY_STRING'] ?? '';
+        header("Location: liff-shop-v3.php?" . $queryString);
+        exit;
+    }
+} catch (Exception $e) {}
 
 // Pagination
 $page = max(1, (int)($_GET['page'] ?? 1));

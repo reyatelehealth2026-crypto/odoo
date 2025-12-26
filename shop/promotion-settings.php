@@ -42,12 +42,31 @@ function setPromoSetting($db, $lineAccountId, $key, $value) {
     $stmt->execute([$lineAccountId, $key, $jsonValue, $jsonValue]);
 }
 
-// Define 4 Themes
+// Define 5 Themes
 $themes = [
+    'marketplace' => [
+        'name' => '🛒 Marketplace',
+        'description' => 'สไตล์ Lazada/Shopee มี Flash Sale, Quick Menu, Bottom Nav',
+        'primary_color' => '#F85606',
+        'secondary_color' => '#FFE4D6',
+        'sale_badge_color' => '#EE4D2D',
+        'bestseller_badge_color' => '#FFAA00',
+        'featured_badge_color' => '#FF6B6B',
+        'card_style' => 'rounded',
+        'card_shadow' => 'sm',
+        'image_size' => 'large',
+        'columns_mobile' => 2,
+        'layout_style' => 'marketplace',
+        'show_flash_sale' => true,
+        'show_quick_menu' => true,
+        'show_sold_count' => true,
+        'show_rating' => true,
+    ],
     'pharmacy' => [
         'name' => '💊 ร้านยา',
         'description' => 'โทนสีเขียวมิ้นท์ สะอาดตา เหมาะกับร้านยา/สุขภาพ',
         'primary_color' => '#11B0A6',
+        'secondary_color' => '#E0F7F5',
         'sale_badge_color' => '#EF4444',
         'bestseller_badge_color' => '#F59E0B',
         'featured_badge_color' => '#8B5CF6',
@@ -55,11 +74,13 @@ $themes = [
         'card_shadow' => 'sm',
         'image_size' => 'medium',
         'columns_mobile' => 2,
+        'layout_style' => 'classic',
     ],
     'modern' => [
         'name' => '🛍️ โมเดิร์น',
         'description' => 'โทนสีน้ำเงินเข้ม ดูหรูหรา เหมาะกับร้านค้าทั่วไป',
         'primary_color' => '#3B82F6',
+        'secondary_color' => '#DBEAFE',
         'sale_badge_color' => '#DC2626',
         'bestseller_badge_color' => '#EA580C',
         'featured_badge_color' => '#7C3AED',
@@ -67,11 +88,13 @@ $themes = [
         'card_shadow' => 'md',
         'image_size' => 'large',
         'columns_mobile' => 2,
+        'layout_style' => 'classic',
     ],
     'minimal' => [
         'name' => '✨ มินิมอล',
         'description' => 'โทนขาว-ดำ เรียบง่าย สะอาดตา',
         'primary_color' => '#1F2937',
+        'secondary_color' => '#F3F4F6',
         'sale_badge_color' => '#EF4444',
         'bestseller_badge_color' => '#374151',
         'featured_badge_color' => '#6B7280',
@@ -79,11 +102,13 @@ $themes = [
         'card_shadow' => 'none',
         'image_size' => 'medium',
         'columns_mobile' => 2,
+        'layout_style' => 'minimal',
     ],
     'warm' => [
         'name' => '🌸 อบอุ่น',
         'description' => 'โทนสีชมพู-ส้ม อบอุ่น เหมาะกับร้านเครื่องสำอาง/ของขวัญ',
         'primary_color' => '#EC4899',
+        'secondary_color' => '#FCE7F3',
         'sale_badge_color' => '#F43F5E',
         'bestseller_badge_color' => '#F97316',
         'featured_badge_color' => '#A855F7',
@@ -91,6 +116,7 @@ $themes = [
         'card_shadow' => 'lg',
         'image_size' => 'large',
         'columns_mobile' => 2,
+        'layout_style' => 'classic',
     ],
 ];
 
@@ -107,6 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $theme = $themes[$themeKey];
             setPromoSetting($db, $lineAccountId, 'current_theme', $themeKey);
             setPromoSetting($db, $lineAccountId, 'primary_color', $theme['primary_color']);
+            setPromoSetting($db, $lineAccountId, 'secondary_color', $theme['secondary_color'] ?? '#E0F7F5');
             setPromoSetting($db, $lineAccountId, 'sale_badge_color', $theme['sale_badge_color']);
             setPromoSetting($db, $lineAccountId, 'bestseller_badge_color', $theme['bestseller_badge_color']);
             setPromoSetting($db, $lineAccountId, 'featured_badge_color', $theme['featured_badge_color']);
@@ -114,6 +141,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             setPromoSetting($db, $lineAccountId, 'card_shadow', $theme['card_shadow']);
             setPromoSetting($db, $lineAccountId, 'image_size', $theme['image_size']);
             setPromoSetting($db, $lineAccountId, 'columns_mobile', $theme['columns_mobile']);
+            setPromoSetting($db, $lineAccountId, 'layout_style', $theme['layout_style'] ?? 'classic');
+            
+            // Marketplace specific settings
+            if ($themeKey === 'marketplace') {
+                setPromoSetting($db, $lineAccountId, 'show_flash_sale', '1');
+                setPromoSetting($db, $lineAccountId, 'show_quick_menu', '1');
+                setPromoSetting($db, $lineAccountId, 'show_sold_count', '1');
+                setPromoSetting($db, $lineAccountId, 'show_rating', '1');
+                setPromoSetting($db, $lineAccountId, 'show_bottom_nav', '1');
+            }
+            
             $message = 'เปลี่ยนธีมเป็น "' . $theme['name'] . '" สำเร็จ!';
             $messageType = 'success';
         }
@@ -152,6 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $currentTheme = getPromoSetting($db, $lineAccountId, 'current_theme', 'pharmacy');
 $settings = [
     'primary_color' => getPromoSetting($db, $lineAccountId, 'primary_color', '#11B0A6'),
+    'secondary_color' => getPromoSetting($db, $lineAccountId, 'secondary_color', '#E0F7F5'),
     'sale_badge_color' => getPromoSetting($db, $lineAccountId, 'sale_badge_color', '#EF4444'),
     'bestseller_badge_color' => getPromoSetting($db, $lineAccountId, 'bestseller_badge_color', '#F59E0B'),
     'featured_badge_color' => getPromoSetting($db, $lineAccountId, 'featured_badge_color', '#8B5CF6'),
@@ -170,6 +209,12 @@ $settings = [
     'show_description' => getPromoSetting($db, $lineAccountId, 'show_description', '1'),
     'show_usage' => getPromoSetting($db, $lineAccountId, 'show_usage', '1'),
     'show_manufacturer' => getPromoSetting($db, $lineAccountId, 'show_manufacturer', '0'),
+    'layout_style' => getPromoSetting($db, $lineAccountId, 'layout_style', 'classic'),
+    'show_flash_sale' => getPromoSetting($db, $lineAccountId, 'show_flash_sale', '0'),
+    'show_quick_menu' => getPromoSetting($db, $lineAccountId, 'show_quick_menu', '0'),
+    'show_sold_count' => getPromoSetting($db, $lineAccountId, 'show_sold_count', '0'),
+    'show_rating' => getPromoSetting($db, $lineAccountId, 'show_rating', '0'),
+    'show_bottom_nav' => getPromoSetting($db, $lineAccountId, 'show_bottom_nav', '1'),
 ];
 
 require_once __DIR__ . '/../includes/header.php';
