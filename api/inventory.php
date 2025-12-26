@@ -243,6 +243,162 @@ try {
             echo json_encode(['success' => true, 'message' => 'GR confirmed, stock updated']);
             break;
             
+        // ==================== Bulk Order & Auto Reorder ====================
+        case 'bulk_create_po':
+            $data = json_decode(file_get_contents('php://input'), true);
+            $supplierId = $data['supplier_id'] ?? null;
+            $groupBySupplier = $data['group_by_supplier'] ?? false;
+            $items = $data['items'] ?? [];
+            
+            if (empty($items)) {
+                throw new Exception('No items provided');
+            }
+            
+            $poIds = [];
+            
+            if ($groupBySupplier) {
+                // Group items by supplier
+                $itemsBySupplier = [];
+                foreach ($items as $item) {
+                    $sid = $item['supplier_id'] ?: 'default';
+                    if (!isset($itemsBySupplier[$sid])) {
+                        $itemsBySupplier[$sid] = [];
+                    }
+                    $itemsBySupplier[$sid][] = $item;
+                }
+                
+                // Get default supplier
+                $defaultSupplier = null;
+                try {
+                    $stmt = $db->prepare("SELECT id FROM suppliers WHERE code = 'SUP-DEFAULT' LIMIT 1");
+                    $stmt->execute();
+                    $defaultSupplier = $stmt->fetchColumn();
+                } catch (Exception $e) {}
+                
+                // Create PO for each supplier
+                foreach ($itemsBySupplier as $sid => $supplierItems) {
+                    $actualSupplierId = $sid === 'default' ? ($defaultSupplier ?: $supplierId) : $sid;
+                    if (!$actualSupplierId) continue;
+                    
+                    $poResult = $poService->createPO([
+                        'supplier_id' => $actualSupplierId,
+                        'order_date' => date('Y-m-d'),
+                        'notes' => 'Bulk Order - Auto Reorder',
+                        'created_by' => $adminId
+                    ]);
+                    
+                    foreach ($supplierItems as $item) {
+                        $poService->addPOItem($poResult['id'], [
+                            'product_id' => $item['id'],
+                            'quantity' => $item['quantity'],
+                            'unit_cost' => $item['cost'] ?? 0
+                        ]);
+                    }
+                    
+                    $poIds[] = $poResult['id'];
+                }
+            } else {
+                // Single PO for all items
+                if (!$supplierId) {
+                    throw new Exception('Supplier is required');
+                }
+                
+                $poResult = $poService->createPO([
+                    'supplier_id' => $supplierId,
+                    'order_date' => date('Y-m-d'),
+                    'notes' => 'Bulk Order',
+                    'created_by' => $adminId
+                ]);
+                
+                foreach ($items as $item) {
+                    $poService->addPOItem($poResult['id'], [
+                        'product_id' => $item['id'],
+                        'quantity' => $item['quantity'],
+                        'unit_cost' => $item['cost'] ?? 0
+                    ]);
+                }
+                
+                $poIds[] = $poResult['id'];
+            }
+            
+            echo json_encode([
+                'success' => true, 
+                'data' => [
+                    'po_count' => count($poIds),
+                    'po_ids' => $poIds
+                ]
+            ]);
+            break;
+            
+        case 'auto_reorder':
+            // Get all products at reorder point
+            $products = $inventoryService->getProductsAtReorderPoint();
+            
+            if (empty($products)) {
+                echo json_encode(['success' => true, 'data' => ['po_count' => 0, 'item_count' => 0]]);
+                break;
+            }
+            
+            // Group by supplier
+            $itemsBySupplier = [];
+            foreach ($products as $p) {
+                $sid = $p['supplier_id'] ?: 'default';
+                if (!isset($itemsBySupplier[$sid])) {
+                    $itemsBySupplier[$sid] = [];
+                }
+                $rop = $p['reorder_point'] ?? 5;
+                $orderQty = max($rop * 2 - $p['stock'], $rop);
+                $itemsBySupplier[$sid][] = [
+                    'id' => $p['id'],
+                    'quantity' => $orderQty,
+                    'cost' => $p['cost_price'] ?? 0
+                ];
+            }
+            
+            // Get default supplier
+            $defaultSupplier = null;
+            try {
+                $stmt = $db->prepare("SELECT id FROM suppliers WHERE code = 'SUP-DEFAULT' LIMIT 1");
+                $stmt->execute();
+                $defaultSupplier = $stmt->fetchColumn();
+            } catch (Exception $e) {}
+            
+            $poIds = [];
+            $itemCount = 0;
+            
+            foreach ($itemsBySupplier as $sid => $supplierItems) {
+                $actualSupplierId = $sid === 'default' ? $defaultSupplier : $sid;
+                if (!$actualSupplierId) continue;
+                
+                $poResult = $poService->createPO([
+                    'supplier_id' => $actualSupplierId,
+                    'order_date' => date('Y-m-d'),
+                    'notes' => 'Auto Reorder - ROP',
+                    'created_by' => $adminId
+                ]);
+                
+                foreach ($supplierItems as $item) {
+                    $poService->addPOItem($poResult['id'], [
+                        'product_id' => $item['id'],
+                        'quantity' => $item['quantity'],
+                        'unit_cost' => $item['cost']
+                    ]);
+                    $itemCount++;
+                }
+                
+                $poIds[] = $poResult['id'];
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'data' => [
+                    'po_count' => count($poIds),
+                    'item_count' => $itemCount,
+                    'po_ids' => $poIds
+                ]
+            ]);
+            break;
+            
         default:
             echo json_encode(['success' => false, 'message' => 'Invalid action']);
     }

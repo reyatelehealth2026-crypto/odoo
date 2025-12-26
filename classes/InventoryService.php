@@ -317,4 +317,47 @@ class InventoryService {
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+    
+    /**
+     * Get low stock products with supplier info
+     */
+    public function getLowStockProductsWithSupplier(): array {
+        $cols = $this->getBusinessItemsColumns();
+        $hasMinStock = in_array('min_stock', $cols);
+        $hasReorderPoint = in_array('reorder_point', $cols);
+        $hasCostPrice = in_array('cost_price', $cols);
+        $hasSupplierId = in_array('supplier_id', $cols);
+        
+        $threshold = $hasReorderPoint ? 'COALESCE(bi.reorder_point, 5)' : ($hasMinStock ? 'COALESCE(bi.min_stock, 5)' : '5');
+        
+        $sql = "SELECT bi.id, bi.name, bi.sku, bi.stock, " . 
+               ($hasMinStock ? "bi.min_stock, " : "5 as min_stock, ") .
+               ($hasReorderPoint ? "bi.reorder_point, " : "5 as reorder_point, ") .
+               ($hasCostPrice ? "bi.cost_price, " : "0 as cost_price, ") .
+               ($hasSupplierId ? "bi.supplier_id, " : "NULL as supplier_id, ") .
+               "s.name as supplier_name, s.code as supplier_code
+                FROM business_items bi
+                LEFT JOIN suppliers s ON " . ($hasSupplierId ? "bi.supplier_id = s.id" : "1=0") . "
+                WHERE bi.is_active = 1 
+                AND bi.stock <= {$threshold}";
+        $params = [];
+        
+        if ($this->lineAccountId) {
+            $sql .= " AND (bi.line_account_id = ? OR bi.line_account_id IS NULL)";
+            $params[] = $this->lineAccountId;
+        }
+        
+        $sql .= " ORDER BY bi.stock ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * Get products at reorder point for auto reorder
+     */
+    public function getProductsAtReorderPoint(): array {
+        return $this->getLowStockProductsWithSupplier();
+    }
+
 }
