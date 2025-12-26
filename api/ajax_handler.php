@@ -203,6 +203,45 @@ try {
             $stmt->execute([$orderId, $currentBotId]);
             $order = $stmt->fetch(PDO::FETCH_ASSOC);
             if (!$order) throw new Exception('Order not found');
+            
+            // ถ้าเปลี่ยนเป็น cancelled ให้คืนสต็อก
+            if ($newStatus === 'cancelled' && $order['status'] !== 'cancelled') {
+                $stmt = $db->prepare("SELECT product_id, quantity FROM transaction_items WHERE transaction_id = ?");
+                $stmt->execute([$orderId]);
+                $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                foreach ($items as $item) {
+                    // คืนสต็อก
+                    $stmt = $db->prepare("UPDATE business_items SET stock = stock + ? WHERE id = ?");
+                    $stmt->execute([$item['quantity'], $item['product_id']]);
+                    
+                    // บันทึก stock movement
+                    try {
+                        $stmtStock = $db->prepare("SELECT stock, name FROM business_items WHERE id = ?");
+                        $stmtStock->execute([$item['product_id']]);
+                        $product = $stmtStock->fetch(PDO::FETCH_ASSOC);
+                        
+                        $stmt = $db->prepare("
+                            INSERT INTO stock_movements 
+                            (line_account_id, product_id, movement_type, quantity, stock_before, stock_after, reference_type, reference_id, reference_number, notes)
+                            VALUES (?, ?, 'return', ?, ?, ?, 'order', ?, ?, ?)
+                        ");
+                        $stmt->execute([
+                            $order['line_account_id'],
+                            $item['product_id'],
+                            $item['quantity'],
+                            $product['stock'] - $item['quantity'],
+                            $product['stock'],
+                            $orderId,
+                            $order['order_number'],
+                            'คืนสต็อก (ยกเลิกออเดอร์): ' . ($product['name'] ?? '')
+                        ]);
+                    } catch (Exception $e) {
+                        // stock_movements table might not exist
+                    }
+                }
+            }
+            
             $stmt = $db->prepare("UPDATE transactions SET status = ?, shipping_tracking = ? WHERE id = ?");
             $stmt->execute([$newStatus, $tracking, $orderId]);
             if ($order['line_user_id']) {

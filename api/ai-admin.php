@@ -1280,6 +1280,43 @@ function actionCancelOrder($db, $orderId, $botId) {
             return ['text' => "⚠️ ไม่สามารถยกเลิกออเดอร์ที่ส่งแล้วได้", 'type' => 'warning'];
         }
         
+        // Get order items to restore stock
+        $stmt = $db->prepare("SELECT product_id, quantity FROM transaction_items WHERE transaction_id = ?");
+        $stmt->execute([$order['id']]);
+        $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Restore stock for each item
+        foreach ($items as $item) {
+            // คืนสต็อก
+            $stmt = $db->prepare("UPDATE business_items SET stock = stock + ? WHERE id = ?");
+            $stmt->execute([$item['quantity'], $item['product_id']]);
+            
+            // บันทึก stock movement (ถ้ามีตาราง)
+            try {
+                $stmtStock = $db->prepare("SELECT stock, name FROM business_items WHERE id = ?");
+                $stmtStock->execute([$item['product_id']]);
+                $product = $stmtStock->fetch(PDO::FETCH_ASSOC);
+                
+                $stmt = $db->prepare("
+                    INSERT INTO stock_movements 
+                    (line_account_id, product_id, movement_type, quantity, stock_before, stock_after, reference_type, reference_id, reference_number, notes)
+                    VALUES (?, ?, 'return', ?, ?, ?, 'order', ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $order['line_account_id'],
+                    $item['product_id'],
+                    $item['quantity'],
+                    $product['stock'] - $item['quantity'],
+                    $product['stock'],
+                    $order['id'],
+                    $order['order_number'],
+                    'คืนสต็อก (ยกเลิกออเดอร์): ' . ($product['name'] ?? '')
+                ]);
+            } catch (Exception $e) {
+                // stock_movements table might not exist, ignore
+            }
+        }
+        
         // Update status
         $stmt = $db->prepare("UPDATE transactions SET status = 'cancelled', updated_at = NOW() WHERE id = ?");
         $stmt->execute([$order['id']]);
@@ -1288,6 +1325,7 @@ function actionCancelOrder($db, $orderId, $botId) {
         $text .= "📦 ออเดอร์: #{$order['order_number']}\n";
         $text .= "💰 ยอด: ฿" . number_format($order['grand_total'], 2) . "\n";
         $text .= "📋 สถานะ: {$order['status']} → cancelled\n";
+        $text .= "📦 คืนสต็อก: " . count($items) . " รายการ\n";
         
         return ['text' => $text, 'type' => 'action', 'data' => ['order_id' => $order['id']]];
     } catch (Exception $e) {

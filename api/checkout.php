@@ -596,6 +596,35 @@ function handleCreateOrder($data) {
                 $item['quantity'],
                 $itemSubtotal
             ]);
+            
+            // ลดสต็อกสินค้า
+            $stmt = $db->prepare("UPDATE business_items SET stock = stock - ? WHERE id = ? AND stock >= ?");
+            $stmt->execute([$item['quantity'], $item['product_id'], $item['quantity']]);
+            
+            // บันทึก stock movement (ถ้ามีตาราง)
+            try {
+                $stmtStock = $db->prepare("SELECT stock FROM business_items WHERE id = ?");
+                $stmtStock->execute([$item['product_id']]);
+                $currentStock = $stmtStock->fetchColumn();
+                
+                $stmt = $db->prepare("
+                    INSERT INTO stock_movements 
+                    (line_account_id, product_id, movement_type, quantity, stock_before, stock_after, reference_type, reference_id, reference_number, notes)
+                    VALUES (?, ?, 'sale', ?, ?, ?, 'order', ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $lineAccountId,
+                    $item['product_id'],
+                    -$item['quantity'],
+                    $currentStock + $item['quantity'],
+                    $currentStock,
+                    $orderId,
+                    $orderNumber,
+                    'ขายสินค้า: ' . $item['name']
+                ]);
+            } catch (Exception $e) {
+                // stock_movements table might not exist, ignore
+            }
         }
         
         // Clear cart
