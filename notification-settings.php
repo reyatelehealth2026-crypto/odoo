@@ -383,12 +383,9 @@ require_once 'includes/header.php';
                     </div>
                     
                     <div class="mt-4 pt-4 border-t">
-                        <form method="POST" class="inline">
-                            <input type="hidden" name="action" value="test_line">
-                            <button type="submit" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm">
-                                <i class="fas fa-paper-plane mr-2"></i>ทดสอบส่ง LINE
-                            </button>
-                        </form>
+                        <button type="button" onclick="testLine()" class="px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 text-sm">
+                            <i class="fas fa-paper-plane mr-2"></i>ทดสอบส่ง LINE
+                        </button>
                     </div>
                 </div>
 
@@ -616,6 +613,14 @@ require_once 'includes/header.php';
 </div>
 
 <script>
+function testLine() {
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.innerHTML = `<input type="hidden" name="action" value="test_line">`;
+    document.body.appendChild(form);
+    form.submit();
+}
+
 function testEmail() {
     const email = document.getElementById('testEmail').value;
     if (!email) {
