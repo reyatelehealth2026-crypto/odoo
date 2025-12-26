@@ -400,9 +400,45 @@
                 
                 $roomId = 'call_' . uniqid() . '_' . time();
                 
-                $stmt = $db->prepare("INSERT INTO video_calls (room_id, user_id, line_user_id, display_name, picture_url, line_account_id, status, created_at) 
-                                    VALUES (?, ?, ?, ?, ?, ?, 'ringing', NOW())");
-                $stmt->execute([$roomId, $userId, $lineUserId ?: null, $displayName, $pictureUrl, $accountId]);
+                // Check which columns exist in video_calls table
+                $columns = [];
+                try {
+                    $colResult = $db->query("SHOW COLUMNS FROM video_calls");
+                    $columns = $colResult->fetchAll(PDO::FETCH_COLUMN);
+                } catch (Exception $e) {
+                    $columns = ['room_id', 'status', 'created_at'];
+                }
+                
+                // Build dynamic insert based on available columns
+                $insertCols = ['room_id', 'status', 'created_at'];
+                $insertVals = [$roomId, 'ringing', date('Y-m-d H:i:s')];
+                
+                if (in_array('user_id', $columns)) {
+                    $insertCols[] = 'user_id';
+                    $insertVals[] = $userId;
+                }
+                if (in_array('line_user_id', $columns)) {
+                    $insertCols[] = 'line_user_id';
+                    $insertVals[] = $lineUserId ?: null;
+                }
+                if (in_array('display_name', $columns)) {
+                    $insertCols[] = 'display_name';
+                    $insertVals[] = $displayName;
+                }
+                if (in_array('picture_url', $columns)) {
+                    $insertCols[] = 'picture_url';
+                    $insertVals[] = $pictureUrl;
+                }
+                if (in_array('line_account_id', $columns)) {
+                    $insertCols[] = 'line_account_id';
+                    $insertVals[] = $accountId;
+                }
+                
+                $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
+                $colNames = implode(', ', $insertCols);
+                
+                $stmt = $db->prepare("INSERT INTO video_calls ($colNames) VALUES ($placeholders)");
+                $stmt->execute($insertVals);
                 
                 $callId = $db->lastInsertId();
                 
