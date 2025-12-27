@@ -8,6 +8,11 @@
  * - Authenticate LINE_User and retrieve profile automatically
  * - Client-side routing without full page reloads
  */
+
+// Debug mode - show errors
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 require_once '../config/config.php';
 require_once '../config/database.php';
 
