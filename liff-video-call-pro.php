@@ -199,6 +199,7 @@
                 $hasPhone = in_array('phone', $cols);
             } catch (Exception $e) {}
             
+            // Include empty status as well (bug fix - some calls have empty status)
             $sql = "SELECT vc.id, vc.room_id, vc.user_id, vc.line_user_id, 
                         COALESCE(u.display_name, vc.display_name, 'ลูกค้า') as display_name, 
                         COALESCE(u.picture_url, vc.picture_url) as picture_url, 
@@ -206,7 +207,8 @@
                         ($hasPhone ? ", u.phone" : "") . "
                     FROM video_calls vc 
                     LEFT JOIN users u ON vc.user_id = u.id OR vc.line_user_id = u.line_user_id
-                    WHERE vc.status IN ('pending', 'ringing')
+                    WHERE (vc.status IN ('pending', 'ringing', '') OR vc.status IS NULL)
+                    AND vc.ended_at IS NULL
                     ORDER BY vc.created_at DESC
                     LIMIT 20";
             
@@ -214,8 +216,8 @@
                 $stmt = $db->query($sql);
                 $calls = $stmt->fetchAll(PDO::FETCH_ASSOC);
             } catch (PDOException $e) {
-                // Fallback: simple query without join
-                $stmt = $db->query("SELECT * FROM video_calls WHERE status IN ('pending', 'ringing') ORDER BY created_at DESC LIMIT 20");
+                // Fallback: simple query without join - include empty status
+                $stmt = $db->query("SELECT * FROM video_calls WHERE (status IN ('pending', 'ringing', '') OR status IS NULL) AND ended_at IS NULL ORDER BY created_at DESC LIMIT 20");
                 $calls = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
             
