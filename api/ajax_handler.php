@@ -562,6 +562,150 @@ try {
             echo json_encode(['success' => true, 'products' => $products]);
             break;
 
+        case 'get_business_info_for_ai':
+            // Get comprehensive business info for AI knowledge base
+            $businessInfo = [];
+            $productKnowledge = '';
+            
+            try {
+                // 1. Get shop settings
+                $stmt = $db->prepare("SELECT * FROM shop_settings WHERE line_account_id = ? OR line_account_id IS NULL ORDER BY line_account_id DESC LIMIT 1");
+                $stmt->execute([$currentBotId]);
+                $shop = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($shop) {
+                    $businessInfo[] = "ชื่อร้าน: " . ($shop['shop_name'] ?? 'ไม่ระบุ');
+                    if (!empty($shop['shop_address'])) $businessInfo[] = "ที่อยู่: " . $shop['shop_address'];
+                    if (!empty($shop['contact_phone'])) $businessInfo[] = "เบอร์โทร: " . $shop['contact_phone'];
+                    if (!empty($shop['shop_email'])) $businessInfo[] = "อีเมล: " . $shop['shop_email'];
+                    if (!empty($shop['line_id'])) $businessInfo[] = "LINE ID: " . $shop['line_id'];
+                    if (!empty($shop['shipping_fee'])) $businessInfo[] = "ค่าส่ง: " . number_format($shop['shipping_fee']) . " บาท";
+                    if (!empty($shop['free_shipping_min'])) $businessInfo[] = "ส่งฟรีเมื่อซื้อขั้นต่ำ: " . number_format($shop['free_shipping_min']) . " บาท";
+                    if (!empty($shop['promptpay_number'])) $businessInfo[] = "พร้อมเพย์: " . $shop['promptpay_number'];
+                    
+                    // Bank accounts
+                    if (!empty($shop['bank_accounts'])) {
+                        $banks = json_decode($shop['bank_accounts'], true);
+                        if (!empty($banks['banks'])) {
+                            $bankList = [];
+                            foreach ($banks['banks'] as $bank) {
+                                $bankList[] = $bank['name'] . " " . $bank['account'] . " (" . $bank['holder'] . ")";
+                            }
+                            $businessInfo[] = "บัญชีธนาคาร: " . implode(", ", $bankList);
+                        }
+                    }
+                }
+                
+                // 2. Get LINE account info
+                $stmt = $db->prepare("SELECT name, basic_id FROM line_accounts WHERE id = ?");
+                $stmt->execute([$currentBotId]);
+                $lineAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($lineAccount) {
+                    if (!empty($lineAccount['basic_id'])) $businessInfo[] = "LINE OA: " . $lineAccount['basic_id'];
+                }
+                
+                // 3. Get categories
+                $categories = [];
+                try {
+                    $stmt = $db->query("SELECT name FROM item_categories ORDER BY id LIMIT 20");
+                    $cats = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                    if (!empty($cats)) {
+                        $businessInfo[] = "หมวดหมู่สินค้า: " . implode(", ", $cats);
+                    }
+                } catch (Exception $e) {}
+                
+                // 4. Get products (top 30 bestsellers and featured)
+                $sql = "SELECT name, price, sale_price, description, is_bestseller, is_featured 
+                        FROM business_items 
+                        WHERE is_active = 1";
+                $params = [];
+                if ($currentBotId) {
+                    $sql .= " AND (line_account_id = ? OR line_account_id IS NULL)";
+                    $params[] = $currentBotId;
+                }
+                $sql .= " ORDER BY is_bestseller DESC, is_featured DESC, id DESC LIMIT 30";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($params);
+                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (!empty($products)) {
+                    $productLines = ["สินค้าในร้าน:"];
+                    $bestsellers = [];
+                    $featured = [];
+                    
+                    foreach ($products as $p) {
+                        $price = !empty($p['sale_price']) ? $p['sale_price'] . " (ลดจาก " . $p['price'] . ")" : $p['price'];
+                        $line = "- " . $p['name'] . ": " . $price . " บาท";
+                        if (!empty($p['description'])) {
+                            $line .= " (" . mb_substr($p['description'], 0, 50) . ")";
+                        }
+                        $productLines[] = $line;
+                        
+                        if ($p['is_bestseller']) $bestsellers[] = $p['name'];
+                        if ($p['is_featured']) $featured[] = $p['name'];
+                    }
+                    
+                    $productKnowledge = implode("\n", $productLines);
+                    
+                    if (!empty($bestsellers)) {
+                        $businessInfo[] = "สินค้าขายดี: " . implode(", ", array_slice($bestsellers, 0, 5));
+                    }
+                    if (!empty($featured)) {
+                        $businessInfo[] = "สินค้าแนะนำ: " . implode(", ", array_slice($featured, 0, 5));
+                    }
+                }
+                
+                // 5. Get active promotions
+                try {
+                    $stmt = $db->prepare("SELECT name, discount_type, discount_value, min_purchase 
+                                          FROM promotions 
+                                          WHERE is_active = 1 AND (end_date IS NULL OR end_date >= CURDATE())
+                                          AND (line_account_id = ? OR line_account_id IS NULL)
+                                          LIMIT 5");
+                    $stmt->execute([$currentBotId]);
+                    $promos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($promos)) {
+                        $promoList = [];
+                        foreach ($promos as $promo) {
+                            $discount = $promo['discount_type'] === 'percent' 
+                                ? "ลด " . $promo['discount_value'] . "%" 
+                                : "ลด " . number_format($promo['discount_value']) . " บาท";
+                            $promoList[] = $promo['name'] . " (" . $discount . ")";
+                        }
+                        $businessInfo[] = "โปรโมชั่น: " . implode(", ", $promoList);
+                    }
+                } catch (Exception $e) {}
+                
+                // 6. Get pharmacist info (if pharmacy)
+                try {
+                    $stmt = $db->prepare("SELECT name, title, specialty FROM pharmacists WHERE line_account_id = ? AND is_active = 1 LIMIT 3");
+                    $stmt->execute([$currentBotId]);
+                    $pharmacists = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($pharmacists)) {
+                        $pharmList = [];
+                        foreach ($pharmacists as $pharm) {
+                            $pharmList[] = ($pharm['title'] ?? '') . $pharm['name'];
+                        }
+                        $businessInfo[] = "เภสัชกร: " . implode(", ", $pharmList);
+                    }
+                } catch (Exception $e) {}
+                
+            } catch (Exception $e) {
+                // Ignore errors
+            }
+            
+            ob_end_clean();
+            echo json_encode([
+                'success' => true, 
+                'business_info' => implode("\n", $businessInfo),
+                'product_knowledge' => $productKnowledge,
+                'raw' => [
+                    'shop' => $shop ?? null,
+                    'product_count' => count($products ?? [])
+                ]
+            ]);
+            break;
+
         case 'search_products':
             $query = trim($_GET['q'] ?? '');
             $products = [];
@@ -582,7 +726,7 @@ try {
                 $sql .= " ORDER BY name ASC LIMIT 15";
                 $stmt = $db->prepare($sql);
                 $stmt->execute($params);
-                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);TCH_ASSOC);
+                $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
             ob_end_clean();
             echo json_encode(['success' => true, 'products' => $products]);

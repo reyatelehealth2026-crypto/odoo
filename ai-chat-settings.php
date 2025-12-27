@@ -314,6 +314,11 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="card-body">
                         <textarea name="business_info" rows="3" class="input-field resize-none"
                                   placeholder="เช่น: ร้าน ABC เปิด 9:00-21:00 ทุกวัน, ที่อยู่: 123 ถ.สุขุมวิท..."><?= htmlspecialchars($businessInfo) ?></textarea>
+                        <div class="mt-2 flex gap-2">
+                            <button type="button" onclick="loadBusinessInfoFromDB()" class="btn-secondary">
+                                <i class="fas fa-sync mr-1"></i>โหลดจากฐานข้อมูล
+                            </button>
+                        </div>
                         <p class="hint">ข้อมูลที่ AI จะใช้ในการตอบคำถามเกี่ยวกับร้าน</p>
                     </div>
                 </div>
@@ -326,9 +331,15 @@ require_once __DIR__ . '/includes/header.php';
                     <div class="card-body">
                         <textarea name="product_knowledge" rows="3" class="input-field resize-none"
                                   placeholder="เช่น: สินค้าขายดี: ขมิ้นชัน 250 บาท, พาราเซตามอล 35 บาท..."><?= htmlspecialchars($productKnowledge) ?></textarea>
-                        <button type="button" onclick="loadProductsFromDB()" class="btn-secondary mt-2">
-                            <i class="fas fa-sync mr-1"></i>โหลดจากฐานข้อมูล
-                        </button>
+                        <div class="mt-2 flex gap-2">
+                            <button type="button" onclick="loadProductsFromDB()" class="btn-secondary">
+                                <i class="fas fa-sync mr-1"></i>โหลดสินค้า
+                            </button>
+                            <button type="button" onclick="loadAllFromDB()" class="btn-secondary" style="background: #dbeafe; color: #1e40af;">
+                                <i class="fas fa-database mr-1"></i>โหลดทั้งหมด (ธุรกิจ+สินค้า)
+                            </button>
+                        </div>
+                        <p class="hint">ข้อมูลสินค้าที่ AI จะใช้แนะนำลูกค้า</p>
                     </div>
                 </div>
 
@@ -620,6 +631,61 @@ async function loadProductsFromDB() {
             alert('โหลดข้อมูลสินค้าสำเร็จ ' + data.products.length + ' รายการ');
         } else {
             alert('ไม่พบข้อมูลสินค้า');
+        }
+    } catch (e) {
+        alert('เกิดข้อผิดพลาด: ' + e.message);
+    }
+}
+
+async function loadBusinessInfoFromDB() {
+    try {
+        const response = await fetch('api/ajax_handler.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=get_business_info_for_ai'
+        });
+        const data = await response.json();
+        
+        if (data.success && data.business_info) {
+            document.querySelector('textarea[name="business_info"]').value = data.business_info;
+            alert('โหลดข้อมูลธุรกิจสำเร็จ');
+        } else {
+            alert('ไม่พบข้อมูลธุรกิจ กรุณาตั้งค่าร้านค้าก่อน');
+        }
+    } catch (e) {
+        alert('เกิดข้อผิดพลาด: ' + e.message);
+    }
+}
+
+async function loadAllFromDB() {
+    try {
+        const response = await fetch('api/ajax_handler.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'action=get_business_info_for_ai'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            let loaded = [];
+            
+            if (data.business_info) {
+                document.querySelector('textarea[name="business_info"]').value = data.business_info;
+                loaded.push('ข้อมูลธุรกิจ');
+            }
+            
+            if (data.product_knowledge) {
+                document.querySelector('textarea[name="product_knowledge"]').value = data.product_knowledge;
+                loaded.push('สินค้า ' + (data.raw?.product_count || 0) + ' รายการ');
+            }
+            
+            if (loaded.length > 0) {
+                alert('โหลดสำเร็จ: ' + loaded.join(', '));
+            } else {
+                alert('ไม่พบข้อมูล กรุณาตั้งค่าร้านค้าและเพิ่มสินค้าก่อน');
+            }
+        } else {
+            alert('เกิดข้อผิดพลาด: ' + (data.error || 'ไม่สามารถโหลดข้อมูลได้'));
         }
     } catch (e) {
         alert('เกิดข้อผิดพลาด: ' + e.message);
