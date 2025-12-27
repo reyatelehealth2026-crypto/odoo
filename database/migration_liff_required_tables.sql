@@ -179,10 +179,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     order_number VARCHAR(50) UNIQUE,
     user_id INT NOT NULL,
     transaction_type ENUM('purchase', 'refund', 'exchange') DEFAULT 'purchase',
+    total_amount DECIMAL(10,2) DEFAULT 0,
     subtotal DECIMAL(10,2) DEFAULT 0,
     discount DECIMAL(10,2) DEFAULT 0,
     shipping_fee DECIMAL(10,2) DEFAULT 0,
     grand_total DECIMAL(10,2) DEFAULT 0,
+    delivery_info JSON,
     payment_method VARCHAR(50),
     payment_status ENUM('pending', 'paid', 'failed', 'refunded') DEFAULT 'pending',
     status ENUM('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'completed', 'cancelled') DEFAULT 'pending',
@@ -202,13 +204,32 @@ CREATE TABLE IF NOT EXISTS transaction_items (
     transaction_id INT NOT NULL,
     product_id INT NOT NULL,
     product_name VARCHAR(255),
+    product_price DECIMAL(10,2) DEFAULT 0,
     quantity INT DEFAULT 1,
     price DECIMAL(10,2) DEFAULT 0,
+    subtotal DECIMAL(10,2) DEFAULT 0,
     total DECIMAL(10,2) DEFAULT 0,
     image_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_transaction (transaction_id),
     INDEX idx_product (product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ==================== Payment Slips Table ====================
+CREATE TABLE IF NOT EXISTS payment_slips (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    order_id INT,
+    transaction_id INT,
+    user_id INT,
+    image_url VARCHAR(500) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    verified_by INT,
+    verified_at TIMESTAMP NULL,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_order (order_id),
+    INDEX idx_transaction (transaction_id),
+    INDEX idx_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ==================== Add missing columns to users table ====================

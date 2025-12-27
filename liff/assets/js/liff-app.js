@@ -6519,8 +6519,12 @@ class LiffApp {
             const pharmacistId = this.appointmentState?.selectedPharmacist?.id;
             const date = this.appointmentState?.selectedDate;
             
+            console.log('📅 Loading time slots for:', { pharmacistId, date });
+            
             const response = await fetch(`${this.config.BASE_URL}/api/appointments.php?action=available_slots&pharmacist_id=${pharmacistId}&date=${date}`);
             const data = await response.json();
+            
+            console.log('📅 Time slots response:', data);
 
             if (data.success && data.slots?.length > 0) {
                 container.innerHTML = data.slots.map(slot => `
@@ -6533,7 +6537,15 @@ class LiffApp {
                 `).join('');
             } else {
                 container.innerHTML = '';
-                if (noSlotsMsg) noSlotsMsg.classList.remove('hidden');
+                if (noSlotsMsg) {
+                    noSlotsMsg.classList.remove('hidden');
+                    // Show message from API if available
+                    if (data.message) {
+                        noSlotsMsg.textContent = data.message;
+                    } else {
+                        noSlotsMsg.textContent = 'ไม่มีช่วงเวลาว่างในวันนี้';
+                    }
+                }
             }
         } catch (error) {
             console.error('Error loading time slots:', error);

@@ -214,42 +214,88 @@ function handleAvailableSlots($db) {
         jsonResponse(false, 'สามารถจองล่วงหน้าได้ไม่เกิน 30 วัน');
     }
     
-    // Get pharmacist info
-    $stmt = $db->prepare("SELECT consultation_duration FROM pharmacists WHERE id = ?");
-    $stmt->execute([$pharmacistId]);
-    $pharmacist = $stmt->fetch(PDO::FETCH_ASSOC);
+    // Get pharmacist info - check which columns exist
+    $duration = 15; // Default duration
+    try {
+        $columns = $db->query("SHOW COLUMNS FROM pharmacists")->fetchAll(PDO::FETCH_COLUMN);
+        $hasConsultationDuration = in_array('consultation_duration', $columns);
+        
+        if ($hasConsultationDuration) {
+            $stmt = $db->prepare("SELECT consultation_duration FROM pharmacists WHERE id = ?");
+            $stmt->execute([$pharmacistId]);
+            $pharmacist = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($pharmacist && $pharmacist['consultation_duration']) {
+                $duration = (int)$pharmacist['consultation_duration'];
+            }
+        } else {
+            // Just verify pharmacist exists
+            $stmt = $db->prepare("SELECT id FROM pharmacists WHERE id = ?");
+            $stmt->execute([$pharmacistId]);
+            $pharmacist = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+        
+        if (!$pharmacist) {
+            jsonResponse(false, 'ไม่พบข้อมูลเภสัชกร');
+        }
+    } catch (Exception $e) {
+        error_log("handleAvailableSlots: Error getting pharmacist: " . $e->getMessage());
+        // Continue with default duration
+    }
+    $dayOfWeek = (int)$selectedDate->format('w'); // 0=Sunday, 6=Saturday
     
-    if (!$pharmacist) {
-        jsonResponse(false, 'ไม่พบข้อมูลเภสัชกร');
+    // Check if holiday (with error handling for missing table)
+    try {
+        $stmt = $db->prepare("SELECT id FROM pharmacist_holidays WHERE pharmacist_id = ? AND holiday_date = ?");
+        $stmt->execute([$pharmacistId, $date]);
+        if ($stmt->fetch()) {
+            jsonResponse(true, 'OK', ['slots' => [], 'message' => 'วันหยุด']);
+        }
+    } catch (Exception $e) {
+        // Table doesn't exist, continue
     }
     
-    $duration = $pharmacist['consultation_duration'] ?: 15;
-    $dayOfWeek = $selectedDate->format('w'); // 0-6
-    
-    // Check if holiday
-    $stmt = $db->prepare("SELECT id FROM pharmacist_holidays WHERE pharmacist_id = ? AND holiday_date = ?");
-    $stmt->execute([$pharmacistId, $date]);
-    if ($stmt->fetch()) {
-        jsonResponse(true, 'OK', ['slots' => [], 'message' => 'วันหยุด']);
+    // Get schedule for this day (with fallback to default)
+    $schedule = null;
+    try {
+        $stmt = $db->prepare("SELECT start_time, end_time FROM pharmacist_schedules WHERE pharmacist_id = ? AND day_of_week = ? AND is_available = 1");
+        $stmt->execute([$pharmacistId, $dayOfWeek]);
+        $schedule = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        // Table doesn't exist
     }
     
-    // Get schedule for this day
-    $stmt = $db->prepare("SELECT start_time, end_time FROM pharmacist_schedules WHERE pharmacist_id = ? AND day_of_week = ? AND is_available = 1");
-    $stmt->execute([$pharmacistId, $dayOfWeek]);
-    $schedule = $stmt->fetch(PDO::FETCH_ASSOC);
+    // Fallback: Use default schedule if no specific schedule found
+    if (!$schedule) {
+        // Default: Mon-Fri 9:00-17:00, Sat 9:00-12:00, Sun closed
+        $defaultSchedules = [
+            0 => null, // Sunday - closed
+            1 => ['start_time' => '09:00:00', 'end_time' => '17:00:00'],
+            2 => ['start_time' => '09:00:00', 'end_time' => '17:00:00'],
+            3 => ['start_time' => '09:00:00', 'end_time' => '17:00:00'],
+            4 => ['start_time' => '09:00:00', 'end_time' => '17:00:00'],
+            5 => ['start_time' => '09:00:00', 'end_time' => '17:00:00'],
+            6 => ['start_time' => '09:00:00', 'end_time' => '12:00:00']
+        ];
+        $schedule = $defaultSchedules[$dayOfWeek];
+    }
     
     if (!$schedule) {
         jsonResponse(true, 'OK', ['slots' => [], 'message' => 'ไม่มีตารางในวันนี้']);
     }
     
-    // Get booked slots
-    $stmt = $db->prepare("
-        SELECT appointment_time, duration 
-        FROM appointments 
-        WHERE pharmacist_id = ? AND appointment_date = ? AND status NOT IN ('cancelled', 'no_show')
-    ");
-    $stmt->execute([$pharmacistId, $date]);
-    $bookedSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // Get booked slots (with error handling)
+    $bookedSlots = [];
+    try {
+        $stmt = $db->prepare("
+            SELECT appointment_time, duration 
+            FROM appointments 
+            WHERE pharmacist_id = ? AND appointment_date = ? AND status NOT IN ('cancelled', 'no_show')
+        ");
+        $stmt->execute([$pharmacistId, $date]);
+        $bookedSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        // Table doesn't exist
+    }
     
     // Generate available slots
     $slots = [];
@@ -257,14 +303,19 @@ function handleAvailableSlots($db) {
     $endTime = new DateTime($date . ' ' . $schedule['end_time']);
     $now = new DateTime();
     
+    // Debug log
+    error_log("handleAvailableSlots: date={$date}, dayOfWeek={$dayOfWeek}, schedule=" . json_encode($schedule));
+    error_log("handleAvailableSlots: startTime={$startTime->format('Y-m-d H:i')}, endTime={$endTime->format('Y-m-d H:i')}, now={$now->format('Y-m-d H:i')}");
+    
     while ($startTime < $endTime) {
         $slotEnd = clone $startTime;
         $slotEnd->modify("+{$duration} minutes");
         
         if ($slotEnd > $endTime) break;
         
-        // Skip if in the past (for today)
-        if ($selectedDate->format('Y-m-d') === $today->format('Y-m-d') && $startTime <= $now) {
+        // Skip if in the past (for today only)
+        $isToday = $selectedDate->format('Y-m-d') === $today->format('Y-m-d');
+        if ($isToday && $startTime <= $now) {
             $startTime->modify("+{$duration} minutes");
             continue;
         }
@@ -274,7 +325,8 @@ function handleAvailableSlots($db) {
         foreach ($bookedSlots as $booked) {
             $bookedStart = new DateTime($date . ' ' . $booked['appointment_time']);
             $bookedEnd = clone $bookedStart;
-            $bookedEnd->modify("+{$booked['duration']} minutes");
+            $bookedDuration = isset($booked['duration']) ? (int)$booked['duration'] : $duration;
+            $bookedEnd->modify("+{$bookedDuration} minutes");
             
             if ($startTime < $bookedEnd && $slotEnd > $bookedStart) {
                 $isBooked = true;
@@ -289,6 +341,8 @@ function handleAvailableSlots($db) {
         
         $startTime->modify("+{$duration} minutes");
     }
+    
+    error_log("handleAvailableSlots: Generated " . count($slots) . " slots");
     
     jsonResponse(true, 'OK', ['slots' => $slots, 'duration' => $duration]);
 }

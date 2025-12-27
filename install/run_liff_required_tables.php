@@ -202,10 +202,12 @@ $tables = [
             order_number VARCHAR(50) UNIQUE,
             user_id INT NOT NULL,
             transaction_type ENUM('purchase', 'refund', 'exchange') DEFAULT 'purchase',
+            total_amount DECIMAL(10,2) DEFAULT 0,
             subtotal DECIMAL(10,2) DEFAULT 0,
             discount DECIMAL(10,2) DEFAULT 0,
             shipping_fee DECIMAL(10,2) DEFAULT 0,
             grand_total DECIMAL(10,2) DEFAULT 0,
+            delivery_info JSON,
             payment_method VARCHAR(50),
             payment_status ENUM('pending', 'paid', 'failed', 'refunded') DEFAULT 'pending',
             status ENUM('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'completed', 'cancelled') DEFAULT 'pending',
@@ -226,13 +228,33 @@ $tables = [
             transaction_id INT NOT NULL,
             product_id INT NOT NULL,
             product_name VARCHAR(255),
+            product_price DECIMAL(10,2) DEFAULT 0,
             quantity INT DEFAULT 1,
             price DECIMAL(10,2) DEFAULT 0,
+            subtotal DECIMAL(10,2) DEFAULT 0,
             total DECIMAL(10,2) DEFAULT 0,
             image_url VARCHAR(500),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_transaction (transaction_id),
             INDEX idx_product (product_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    ",
+    
+    'payment_slips' => "
+        CREATE TABLE IF NOT EXISTS payment_slips (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            order_id INT,
+            transaction_id INT,
+            user_id INT,
+            image_url VARCHAR(500) NOT NULL,
+            status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+            verified_by INT,
+            verified_at TIMESTAMP NULL,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_order (order_id),
+            INDEX idx_transaction (transaction_id),
+            INDEX idx_status (status)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     "
 ];
@@ -289,6 +311,94 @@ try {
     }
 } catch (Exception $e) {
     echo "❌ Error checking users table: " . $e->getMessage() . "\n";
+}
+
+// Add columns to pharmacists table if missing
+$pharmacistColumns = [
+    'consultation_fee' => "DECIMAL(10,2) DEFAULT 0",
+    'consultation_duration' => "INT DEFAULT 15",
+    'is_available' => "TINYINT(1) DEFAULT 1",
+    'is_active' => "TINYINT(1) DEFAULT 1",
+    'rating' => "DECIMAL(2,1) DEFAULT 5.0",
+    'review_count' => "INT DEFAULT 0"
+];
+
+echo "\n--- Adding columns to pharmacists table ---\n";
+
+try {
+    $existingCols = $db->query("SHOW COLUMNS FROM pharmacists")->fetchAll(PDO::FETCH_COLUMN);
+    $existingCols = array_flip($existingCols);
+    
+    foreach ($pharmacistColumns as $col => $type) {
+        if (!isset($existingCols[$col])) {
+            try {
+                $db->exec("ALTER TABLE pharmacists ADD COLUMN {$col} {$type}");
+                echo "✅ Added column 'pharmacists.{$col}'\n";
+            } catch (Exception $e) {
+                echo "⚠️ Column 'pharmacists.{$col}': " . $e->getMessage() . "\n";
+            }
+        } else {
+            echo "✓ Column 'pharmacists.{$col}' exists\n";
+        }
+    }
+} catch (Exception $e) {
+    echo "⚠️ Pharmacists table: " . $e->getMessage() . "\n";
+}
+
+// Add columns to transactions table if missing
+$transactionColumns = [
+    'total_amount' => "DECIMAL(10,2) DEFAULT 0",
+    'delivery_info' => "JSON"
+];
+
+echo "\n--- Adding columns to transactions table ---\n";
+
+try {
+    $existingCols = $db->query("SHOW COLUMNS FROM transactions")->fetchAll(PDO::FETCH_COLUMN);
+    $existingCols = array_flip($existingCols);
+    
+    foreach ($transactionColumns as $col => $type) {
+        if (!isset($existingCols[$col])) {
+            try {
+                $db->exec("ALTER TABLE transactions ADD COLUMN {$col} {$type}");
+                echo "✅ Added column 'transactions.{$col}'\n";
+            } catch (Exception $e) {
+                echo "⚠️ Column 'transactions.{$col}': " . $e->getMessage() . "\n";
+            }
+        } else {
+            echo "✓ Column 'transactions.{$col}' exists\n";
+        }
+    }
+} catch (Exception $e) {
+    echo "⚠️ Transactions table: " . $e->getMessage() . "\n";
+}
+
+// Add columns to transaction_items table if missing
+$transactionItemColumns = [
+    'product_price' => "DECIMAL(10,2) DEFAULT 0",
+    'subtotal' => "DECIMAL(10,2) DEFAULT 0"
+];
+
+echo "\n--- Adding columns to transaction_items table ---\n";
+
+try {
+    $existingCols = $db->query("SHOW COLUMNS FROM transaction_items")->fetchAll(PDO::FETCH_COLUMN);
+    $existingCols = array_flip($existingCols);
+    
+    foreach ($transactionItemColumns as $col => $type) {
+        if (!isset($existingCols[$col])) {
+            try {
+                $db->exec("ALTER TABLE transaction_items ADD COLUMN {$col} {$type}");
+                echo "✅ Added column 'transaction_items.{$col}'\n";
+            } catch (Exception $e) {
+                echo "⚠️ Column 'transaction_items.{$col}': " . $e->getMessage() . "\n";
+            }
+        } else {
+            echo "✓ Column 'transaction_items.{$col}' exists\n";
+        }
+    }
+} catch (Exception $e) {
+    echo "⚠️ Transaction_items table: " . $e->getMessage() . "\n";
 }
 
 // Insert sample rewards
