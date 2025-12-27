@@ -375,16 +375,39 @@ function handleBook($db, $data) {
         jsonResponse(false, 'ไม่พบข้อมูลผู้ใช้');
     }
     
-    // Get pharmacist
-    $stmt = $db->prepare("SELECT id, consultation_fee, consultation_duration FROM pharmacists WHERE id = ? AND is_active = 1");
-    $stmt->execute([$pharmacistId]);
-    $pharmacist = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if (!$pharmacist) {
-        jsonResponse(false, 'ไม่พบข้อมูลเภสัชกร');
+    // Get pharmacist - check which columns exist
+    $duration = 15;
+    $consultationFee = 0;
+    try {
+        $columns = $db->query("SHOW COLUMNS FROM pharmacists")->fetchAll(PDO::FETCH_COLUMN);
+        $hasConsultationFee = in_array('consultation_fee', $columns);
+        $hasConsultationDuration = in_array('consultation_duration', $columns);
+        $hasIsActive = in_array('is_active', $columns);
+        
+        $selectCols = ['id'];
+        if ($hasConsultationFee) $selectCols[] = 'consultation_fee';
+        if ($hasConsultationDuration) $selectCols[] = 'consultation_duration';
+        
+        $whereClause = $hasIsActive ? "AND is_active = 1" : "";
+        
+        $stmt = $db->prepare("SELECT " . implode(',', $selectCols) . " FROM pharmacists WHERE id = ? {$whereClause}");
+        $stmt->execute([$pharmacistId]);
+        $pharmacist = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$pharmacist) {
+            jsonResponse(false, 'ไม่พบข้อมูลเภสัชกร');
+        }
+        
+        if ($hasConsultationDuration && $pharmacist['consultation_duration']) {
+            $duration = (int)$pharmacist['consultation_duration'];
+        }
+        if ($hasConsultationFee && $pharmacist['consultation_fee']) {
+            $consultationFee = (float)$pharmacist['consultation_fee'];
+        }
+    } catch (Exception $e) {
+        error_log("handleBook: Error getting pharmacist: " . $e->getMessage());
     }
     
-    $duration = $pharmacist['consultation_duration'] ?: 15;
     $endTime = date('H:i:s', strtotime($time) + ($duration * 60));
     
     // Check if slot is still available
@@ -412,26 +435,64 @@ function handleBook($db, $data) {
     // Generate appointment ID
     $appointmentId = 'APT' . date('ymdHis') . rand(100, 999);
     
-    // Create appointment
-    $stmt = $db->prepare("
-        INSERT INTO appointments (
-            line_account_id, appointment_id, user_id, pharmacist_id,
-            appointment_date, appointment_time, end_time, duration,
-            type, symptoms, consultation_fee, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed')
-    ");
-    $stmt->execute([
-        $lineAccountId, $appointmentId, $user['id'], $pharmacistId,
-        $date, $time, $endTime, $duration,
-        $type, $symptoms, $pharmacist['consultation_fee']
-    ]);
-    
-    jsonResponse(true, 'จองนัดหมายสำเร็จ!', [
-        'appointment_id' => $appointmentId,
-        'date' => $date,
-        'time' => $time,
-        'duration' => $duration
-    ]);
+    // Check which columns exist in appointments table
+    try {
+        $aptColumns = $db->query("SHOW COLUMNS FROM appointments")->fetchAll(PDO::FETCH_COLUMN);
+        $aptColumnSet = array_flip($aptColumns);
+        
+        // Build dynamic INSERT
+        $insertCols = ['user_id', 'pharmacist_id', 'appointment_date', 'appointment_time', 'status'];
+        $insertVals = [$user['id'], $pharmacistId, $date, $time, 'confirmed'];
+        
+        if (isset($aptColumnSet['line_account_id'])) {
+            $insertCols[] = 'line_account_id';
+            $insertVals[] = $lineAccountId;
+        }
+        if (isset($aptColumnSet['appointment_id'])) {
+            $insertCols[] = 'appointment_id';
+            $insertVals[] = $appointmentId;
+        }
+        if (isset($aptColumnSet['end_time'])) {
+            $insertCols[] = 'end_time';
+            $insertVals[] = $endTime;
+        }
+        if (isset($aptColumnSet['duration'])) {
+            $insertCols[] = 'duration';
+            $insertVals[] = $duration;
+        }
+        if (isset($aptColumnSet['type'])) {
+            $insertCols[] = 'type';
+            $insertVals[] = $type;
+        }
+        if (isset($aptColumnSet['symptoms'])) {
+            $insertCols[] = 'symptoms';
+            $insertVals[] = $symptoms;
+        }
+        if (isset($aptColumnSet['consultation_fee'])) {
+            $insertCols[] = 'consultation_fee';
+            $insertVals[] = $consultationFee;
+        }
+        
+        $placeholders = implode(',', array_fill(0, count($insertCols), '?'));
+        $sql = "INSERT INTO appointments (" . implode(',', $insertCols) . ") VALUES ({$placeholders})";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($insertVals);
+        
+        $newId = $db->lastInsertId();
+        
+        jsonResponse(true, 'จองนัดหมายสำเร็จ!', [
+            'appointment_id' => $appointmentId,
+            'id' => $newId,
+            'date' => $date,
+            'time' => $time,
+            'duration' => $duration
+        ]);
+        
+    } catch (Exception $e) {
+        error_log("handleBook: Error creating appointment: " . $e->getMessage());
+        jsonResponse(false, 'เกิดข้อผิดพลาด: ' . $e->getMessage());
+    }
 }
 
 /**

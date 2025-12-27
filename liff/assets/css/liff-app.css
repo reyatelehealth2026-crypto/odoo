@@ -3575,17 +3575,16 @@ img[loading="lazy"] {
 /* Checkout Bar */
 .cart-checkout-bar {
     position: fixed;
-    bottom: 60px; /* Above bottom nav */
+    bottom: calc(56px + var(--safe-area-bottom)); /* Above bottom nav */
     left: 0;
     right: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: var(--space-3) var(--space-4);
-    padding-bottom: var(--space-3);
     background: var(--bg-white);
     box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
-    z-index: var(--z-fixed);
+    z-index: calc(var(--z-fixed) + 1);
 }
 
 .cart-checkout-total {
