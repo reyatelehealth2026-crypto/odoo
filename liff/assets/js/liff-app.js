@@ -4786,7 +4786,7 @@ class LiffApp {
      * View product detail
      */
     viewProduct(productId) {
-        window.router.navigate('/product-detail', { id: productId });
+        window.router.navigate(`/product/${productId}`);
     }
 
     /**
