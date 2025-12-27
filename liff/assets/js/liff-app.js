@@ -2018,6 +2018,10 @@ class LiffApp {
      * Setup cart page event listeners
      */
     setupCartEventListeners() {
+        // Prevent duplicate subscriptions
+        if (this._cartListenersSetup) return;
+        this._cartListenersSetup = true;
+        
         // Subscribe to cart changes
         if (window.store) {
             window.store.subscribe('cart', () => {
@@ -2030,8 +2034,15 @@ class LiffApp {
      * Load cart from server (sync with backend)
      */
     async loadCartFromServer() {
+        // Prevent duplicate/rapid calls
+        if (this._loadingCart) return;
+        this._loadingCart = true;
+        
         const profile = window.store?.get('profile');
-        if (!profile?.userId) return;
+        if (!profile?.userId) {
+            this._loadingCart = false;
+            return;
+        }
 
         try {
             const url = `${this.config.BASE_URL}/api/checkout.php?action=cart&line_user_id=${profile.userId}`;
@@ -2060,6 +2071,8 @@ class LiffApp {
             }
         } catch (error) {
             console.error('Error loading cart from server:', error);
+        } finally {
+            this._loadingCart = false;
         }
     }
 
