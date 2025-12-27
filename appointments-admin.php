@@ -342,10 +342,14 @@ function openDetailModal(apt) {
         'no_show': '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">ไม่มา</span>'
     };
     
+    // Handle undefined/null values
+    const duration = apt.duration || apt.consultation_duration || 15;
+    const symptoms = apt.symptoms || apt.reason || '';
+    
     const html = `
         <div class="space-y-4">
             <div class="flex justify-between items-center">
-                <span class="font-mono text-purple-600 font-bold">${apt.appointment_id}</span>
+                <span class="font-mono text-purple-600 font-bold">${apt.appointment_id || '-'}</span>
                 ${statusLabels[apt.status] || apt.status}
             </div>
             
@@ -357,7 +361,7 @@ function openDetailModal(apt) {
             
             <div class="p-4 bg-gray-50 rounded-lg">
                 <p class="text-sm text-gray-500 mb-1">เภสัชกร</p>
-                <p class="font-medium">${apt.pharmacist_title}${apt.pharmacist_name}</p>
+                <p class="font-medium">${apt.pharmacist_title || ''}${apt.pharmacist_name || '-'}</p>
             </div>
             
             <div class="grid grid-cols-2 gap-4">
@@ -367,14 +371,14 @@ function openDetailModal(apt) {
                 </div>
                 <div class="p-4 bg-blue-50 rounded-lg">
                     <p class="text-sm text-blue-600 mb-1">⏰ เวลา</p>
-                    <p class="font-medium">${apt.appointment_time.substring(0,5)} น. (${apt.duration} นาที)</p>
+                    <p class="font-medium">${(apt.appointment_time || '').substring(0,5)} น. (${duration} นาที)</p>
                 </div>
             </div>
             
-            ${apt.symptoms ? `
+            ${symptoms ? `
             <div class="p-4 bg-yellow-50 rounded-lg">
                 <p class="text-sm text-yellow-600 mb-1">💊 อาการ/เหตุผล</p>
-                <p>${apt.symptoms}</p>
+                <p>${symptoms}</p>
             </div>
             ` : ''}
             
