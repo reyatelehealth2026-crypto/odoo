@@ -140,7 +140,8 @@ class VideoCallManager {
      * Get API endpoint URL
      */
     getApiUrl() {
-        return `${this.baseUrl}/liff-video-call-pro.php`;
+        const base = this.baseUrl.replace(/\/+$/, ''); // Remove trailing slashes
+        return `${base}/liff-video-call-pro.php`;
     }
 
     /**
@@ -238,20 +239,28 @@ class VideoCallManager {
      */
     async createCall() {
         const profile = window.store?.get('profile');
+        const apiUrl = this.getApiUrl();
         
-        const response = await fetch(this.getApiUrl(), {
+        console.log('📹 Creating call...', { apiUrl, accountId: this.accountId });
+        
+        const requestBody = {
+            action: 'create',
+            user_id: profile?.userId || 'guest_' + Date.now(),
+            display_name: profile?.displayName || 'ลูกค้า',
+            picture_url: profile?.pictureUrl || '',
+            account_id: this.accountId
+        };
+        
+        console.log('📹 Request body:', requestBody);
+        
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'create',
-                user_id: profile?.userId || 'guest_' + Date.now(),
-                display_name: profile?.displayName || 'ลูกค้า',
-                picture_url: profile?.pictureUrl || '',
-                account_id: this.accountId
-            })
+            body: JSON.stringify(requestBody)
         });
 
         const data = await response.json();
+        console.log('📹 Create call response:', data);
         
         if (!data.success) {
             throw new Error(data.error || 'ไม่สามารถสร้างการโทรได้');
