@@ -442,12 +442,17 @@ async function answerCall(callId) {
     document.getElementById('call-status-text').textContent = 'กำลังเชื่อมต่อ...';
     
     try {
-        // Get local media
-        localStream = await navigator.mediaDevices.getUserMedia({
-            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-            audio: { echoCancellation: true, noiseSuppression: true }
-        });
-        document.getElementById('local-video').srcObject = localStream;
+        // Get local media - allow to proceed without camera for testing
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+            document.getElementById('local-video').srcObject = localStream;
+        } catch (mediaError) {
+            console.warn('📹 Could not get media, proceeding without:', mediaError.message);
+            // Continue without local stream for testing
+        }
         
         // Update call status to active
         await fetch(API_URL, {
@@ -464,7 +469,7 @@ async function answerCall(callId) {
         
     } catch (e) {
         console.error('Answer call error:', e);
-        alert('ไม่สามารถเข้าถึงกล้องหรือไมค์ได้');
+        alert('เกิดข้อผิดพลาด: ' + e.message);
         closeVideoModal();
     }
 }
