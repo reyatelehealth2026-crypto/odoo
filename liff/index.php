@@ -186,6 +186,16 @@ $currentPage = $pages[$page] ?? $pages['home'];
 
     <!-- App Configuration -->
     <script>
+        // Global error handler to catch JS errors
+        window.onerror = function(msg, url, line, col, error) {
+            var errorDiv = document.createElement('div');
+            errorDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;background:red;color:white;padding:10px;z-index:99999;font-size:12px;';
+            errorDiv.innerHTML = 'JS Error: ' + msg + '<br>File: ' + url + '<br>Line: ' + line;
+            document.body.appendChild(errorDiv);
+            console.error('Global error:', msg, url, line, col, error);
+            return false;
+        };
+        
         window.APP_CONFIG = {
             BASE_URL: '<?= $baseUrl ?>',
             LIFF_ID: '<?= $liffId ?>',
@@ -196,6 +206,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
             COMPANY_NAME: '<?= addslashes($companyName) ?>',
             LIFF_TO_ACCOUNT: <?= json_encode($liffToAccountMap) ?>
         };
+        console.log('APP_CONFIG loaded:', window.APP_CONFIG);
     </script>
 
     <!-- App Scripts -->
