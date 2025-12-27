@@ -6160,24 +6160,14 @@ class LiffApp {
                     <button class="back-btn" onclick="window.router.back()">
                         <i class="fas fa-arrow-left"></i>
                     </button>
-                    <h1 class="page-title" style="flex: 1; margin-left: 12px;">นัดหมาย</h1>
+                    <h1 class="page-title" style="flex: 1; margin-left: 12px;">นัดหมายพบเภสัชกร</h1>
                     <button class="btn btn-icon" onclick="window.liffApp.showMyAppointments()">
                         <i class="fas fa-calendar-check"></i>
                     </button>
                 </div>
 
-                <!-- Tabs -->
-                <div class="appointment-tabs">
-                    <button class="appointment-tab active" data-tab="instant" onclick="window.liffApp.switchAppointmentTab('instant')">
-                        พบเภสัชกรทันที
-                    </button>
-                    <button class="appointment-tab" data-tab="schedule" onclick="window.liffApp.switchAppointmentTab('schedule')">
-                        นัดล่วงหน้า
-                    </button>
-                </div>
-
-                <!-- Step Indicator (for schedule mode) -->
-                <div id="appointment-steps" class="appointment-steps hidden">
+                <!-- Step Indicator -->
+                <div id="appointment-steps" class="appointment-steps">
                     <div class="step active" data-step="1">
                         <span class="step-number">1</span>
                         <span class="step-label">เลือกเภสัชกร</span>
@@ -6265,7 +6255,6 @@ class LiffApp {
      */
     initAppointmentState() {
         this.appointmentState = {
-            currentTab: 'instant',
             currentStep: 1,
             pharmacists: [],
             selectedPharmacist: null,
@@ -6337,6 +6326,16 @@ class LiffApp {
         const container = document.getElementById('pharmacist-list');
         if (!container) return;
 
+        if (!pharmacists || pharmacists.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-user-md"></i>
+                    <p>ยังไม่มีเภสัชกรให้บริการ</p>
+                </div>
+            `;
+            return;
+        }
+
         container.innerHTML = pharmacists.map(p => {
             const fee = p.consultation_fee > 0 ? `฿${this.formatNumber(p.consultation_fee)}` : 'ฟรี';
             const duration = p.consultation_duration || 15;
@@ -6348,7 +6347,7 @@ class LiffApp {
                              alt="${p.name}"
                              onerror="this.src='${this.config.BASE_URL}/assets/images/avatar-placeholder.png'">
                         <span class="pharmacist-rating">
-                            <i class="fas fa-star"></i> ${p.rating || '4.9'}
+                            <i class="fas fa-star"></i> ${p.rating || '5.0'}
                         </span>
                     </div>
                     <div class="pharmacist-info">
@@ -6360,8 +6359,8 @@ class LiffApp {
                             <span class="pharmacist-duration">${duration} นาที</span>
                         </div>
                     </div>
-                    <button class="btn btn-primary btn-sm pharmacist-book-btn" ${!p.is_available ? 'disabled' : ''}>
-                        ${p.is_available ? 'นัดหมาย' : 'ไม่ว่าง'}
+                    <button class="btn btn-primary btn-sm pharmacist-book-btn">
+                        นัดหมาย
                     </button>
                 </div>
             `;
@@ -6375,17 +6374,11 @@ class LiffApp {
         if (!this.appointmentState) this.initAppointmentState();
         
         const pharmacist = this.appointmentState.pharmacists.find(p => p.id === pharmacistId);
-        if (!pharmacist || !pharmacist.is_available) return;
+        if (!pharmacist) return;
 
         this.appointmentState.selectedPharmacist = pharmacist;
         
-        // If instant mode, go directly to video call
-        if (this.appointmentState.currentTab === 'instant') {
-            window.router.navigate('/video-call', { pharmacist_id: pharmacistId });
-            return;
-        }
-
-        // Schedule mode - go to step 2
+        // Go to step 2 - select date/time
         this.goToAppointmentStep(2);
         this.renderSelectedPharmacistInfo();
         this.renderDateSelection();

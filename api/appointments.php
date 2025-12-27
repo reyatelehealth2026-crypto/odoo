@@ -83,8 +83,19 @@ function handleGetPharmacists($db) {
         
         $selectStr = implode(', ', $selectCols);
         
-        // Get all pharmacists
-        $sql = "SELECT {$selectStr} FROM pharmacists ORDER BY id DESC";
+        // Build WHERE clause
+        $whereConditions = [];
+        $hasIsActive = isset($columnSet['is_active']);
+        $hasIsAvailable = isset($columnSet['is_available']);
+        
+        if ($hasIsActive) {
+            $whereConditions[] = "is_active = 1";
+        }
+        
+        $whereClause = count($whereConditions) > 0 ? "WHERE " . implode(' AND ', $whereConditions) : "";
+        
+        // Get all active pharmacists
+        $sql = "SELECT {$selectStr} FROM pharmacists {$whereClause} ORDER BY id DESC";
         $stmt = $db->query($sql);
         $pharmacists = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
