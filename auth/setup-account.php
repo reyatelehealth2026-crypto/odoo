@@ -17,7 +17,7 @@ $user = $_SESSION['admin_user'];
 
 // Admin ไม่ต้องตั้งค่า
 if ($user['role'] === 'admin') {
-    header('Location: ../index.php');
+    header('Location: ../admin/');
     exit;
 }
 

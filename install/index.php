@@ -178,7 +178,7 @@ $requiredTables = [
                 <a href="?step=install" class="flex-1 py-3 bg-green-500 text-white text-center rounded-lg hover:bg-green-600 font-medium">
                     <i class="fas fa-database mr-2"></i>ติดตั้งฐานข้อมูล
                 </a>
-                <a href="../index.php" class="flex-1 py-3 bg-gray-200 text-gray-700 text-center rounded-lg hover:bg-gray-300 font-medium">
+                <a href="../admin/" class="flex-1 py-3 bg-gray-200 text-gray-700 text-center rounded-lg hover:bg-gray-300 font-medium">
                     <i class="fas fa-arrow-left mr-2"></i>กลับหน้าหลัก
                 </a>
             </div>
@@ -192,7 +192,7 @@ $requiredTables = [
                 <p class="text-gray-500 mb-6">ระบบพร้อมใช้งานแล้ว</p>
                 
                 <div class="flex space-x-4 justify-center">
-                    <a href="../index.php" class="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium">
+                    <a href="../admin/" class="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium">
                         <i class="fas fa-home mr-2"></i>ไปหน้าหลัก
                     </a>
                     <a href="../line-accounts.php" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium">

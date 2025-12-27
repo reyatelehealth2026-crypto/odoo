@@ -1,0 +1,46 @@
+# Admin Panel - Apache Configuration
+# URL rewriting for admin routes
+
+# Enable RewriteEngine
+RewriteEngine On
+
+# Base path for admin
+RewriteBase /admin/
+
+# =====================================================
+# Clean URLs - ไม่ต้องพิมพ์ .php
+# เช่น /admin/users แทน /admin/users.php
+# =====================================================
+
+# ถ้าไม่ใช่ไฟล์หรือโฟลเดอร์จริง ให้ลองหา .php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)/?$ $1.php [L]
+
+# รองรับ subdirectory เช่น /admin/shop/products
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^([^/]+)/([^/]+)/?$ $1/$2.php [L]
+
+# =====================================================
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Disable directory listing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options SAMEORIGIN
+    Header always set X-XSS-Protection "1; mode=block"
+</IfModule>

@@ -336,7 +336,7 @@ if ($overallScore < 100) {
     echo "<a href='install_all.php' class='btn'>🚀 Run Installation</a>";
 }
 echo "<a href='check_system.php' class='btn' style='background: #3B82F6;'>🔄 Refresh Check</a>";
-echo "<a href='../index.php' class='btn' style='background: #6B7280;'>🏠 Go to Dashboard</a>";
+echo "<a href='../admin/' class='btn' style='background: #6B7280;'>🏠 Go to Dashboard</a>";
 echo "</div>";
 
 // PHP Info

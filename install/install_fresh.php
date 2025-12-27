@@ -582,7 +582,7 @@ date_default_timezone_set(TIMEZONE);
                 </ol>
                 
                 <div style="margin-top: 30px;">
-                    <a href="../index.php" class="btn">🏠 ไปหน้า Dashboard</a>
+                    <a href="../admin/" class="btn">🏠 ไปหน้า Dashboard</a>
                     <a href="check_system.php" class="btn btn-secondary">🔍 ตรวจสอบระบบ</a>
                 </div>
                 

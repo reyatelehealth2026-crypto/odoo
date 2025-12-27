@@ -35,7 +35,7 @@ $accountId = $_GET['account_id'] ?? 1;
                 📹 Video Call Center
                 <span id="statusBadge" class="text-sm bg-green-500 px-3 py-1 rounded-full">🟢 Online</span>
             </h1>
-            <a href="index.php" class="text-gray-400 hover:text-white">← กลับ</a>
+            <a href="/admin/" class="text-gray-400 hover:text-white">← กลับ</a>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

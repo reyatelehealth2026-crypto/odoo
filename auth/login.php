@@ -15,7 +15,7 @@ $auth = new AdminAuth($db);
 
 // Already logged in - redirect to dashboard
 if (isset($_SESSION['admin_user']) && !empty($_SESSION['admin_user']['id'])) {
-    header('Location: ../index.php');
+    header('Location: ../admin/');
     exit;
 }
 
@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $result = $auth->login($username, $password);
         if ($result['success']) {
-            header('Location: ../index.php');
+            header('Location: ../admin/');
             exit;
         } else {
             $error = $result['message'];

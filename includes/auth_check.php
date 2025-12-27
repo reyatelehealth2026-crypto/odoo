@@ -73,7 +73,7 @@ function isUser() {
  */
 function requireSuperAdmin() {
     if (!isSuperAdmin()) {
-        header('Location: index.php?error=no_permission');
+        header('Location: /admin/?error=no_permission');
         exit;
     }
 }

@@ -215,7 +215,7 @@ if (isset($_POST['install'])) {
     echo "<h2 class='success'>✅ Installation Complete!</h2>";
     echo "<p>ระบบติดตั้งเสร็จสมบูรณ์แล้ว</p>";
     echo "<a href='check_system.php' class='btn'>🔍 ตรวจสอบระบบ</a>";
-    echo "<a href='../index.php' class='btn btn-warning'>🏠 ไปหน้าหลัก</a>";
+    echo "<a href='../admin/' class='btn btn-warning'>🏠 ไปหน้าหลัก</a>";
     echo "</div>";
     
 } else {

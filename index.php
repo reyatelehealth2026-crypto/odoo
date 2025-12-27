@@ -1,6 +1,11 @@
 <?php
 /**
- * Dashboard - Modern Admin Style
+ * Public Landing Page
+ * 
+ * A public-facing landing page for the LINE Telepharmacy Platform.
+ * Displays shop information, services, and CTA buttons to LIFF App.
+ * 
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 3.1, 3.2, 4.1, 4.2, 4.3, 5.1, 5.2, 5.3
  */
 
 // Check if installed
@@ -13,430 +18,1075 @@ require_once 'config/config.php';
 require_once 'config/database.php';
 
 $db = Database::getInstance()->getConnection();
-$pageTitle = 'Dashboard';
 
-require_once 'includes/header.php';
+// Helper function to get promotion settings
+function getLandingPromoSetting($db, $lineAccountId, $key, $default = null) {
+    try {
+        $stmt = $db->prepare("SELECT setting_value FROM promotion_settings WHERE line_account_id = ? AND setting_key = ?");
+        $stmt->execute([$lineAccountId, $key]);
+        $result = $stmt->fetchColumn();
+        return $result !== false ? $result : $default;
+    } catch (Exception $e) {
+        return $default;
+    }
+}
 
-// Get all statistics
-$stats = [];
-
-// Users stats
-$stmt = $currentBotId 
-    ? $db->prepare("SELECT COUNT(*) FROM users WHERE is_blocked = 0 AND line_account_id = ?")
-    : $db->query("SELECT COUNT(*) FROM users WHERE is_blocked = 0");
-if ($currentBotId) $stmt->execute([$currentBotId]);
-$stats['total_users'] = $stmt->fetchColumn();
-
-$stmt = $currentBotId
-    ? $db->prepare("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURDATE() AND line_account_id = ?")
-    : $db->query("SELECT COUNT(*) FROM users WHERE DATE(created_at) = CURDATE()");
-if ($currentBotId) $stmt->execute([$currentBotId]);
-$stats['new_today'] = $stmt->fetchColumn();
-
-// Messages stats
-$stmt = $currentBotId
-    ? $db->prepare("SELECT COUNT(*) FROM messages WHERE DATE(created_at) = CURDATE() AND line_account_id = ?")
-    : $db->query("SELECT COUNT(*) FROM messages WHERE DATE(created_at) = CURDATE()");
-if ($currentBotId) $stmt->execute([$currentBotId]);
-$stats['messages_today'] = $stmt->fetchColumn();
-
-// Orders stats (use transactions table - unified with LIFF)
-$stats['total_orders'] = 0;
-$stats['pending_orders'] = 0;
-$stats['total_revenue'] = 0;
+// Get default LINE account for LIFF URL
+$lineAccount = null;
+$liffId = null;
 try {
-    $stmt = $db->query("SELECT COUNT(*) FROM transactions");
-    $stats['total_orders'] = $stmt->fetchColumn();
+    $stmt = $db->query("SELECT * FROM line_accounts WHERE is_default = 1 LIMIT 1");
+    $lineAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$lineAccount) {
+        $stmt = $db->query("SELECT * FROM line_accounts ORDER BY id ASC LIMIT 1");
+        $lineAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+    if ($lineAccount) {
+        $liffId = $lineAccount['liff_id'] ?? null;
+    }
+} catch (Exception $e) {}
+
+$lineAccountId = $lineAccount['id'] ?? 1;
+
+// Get shop settings
+$shopSettings = [];
+try {
+    $stmt = $db->prepare("SELECT * FROM shop_settings WHERE line_account_id = ? LIMIT 1");
+    $stmt->execute([$lineAccountId]);
+    $shopSettings = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    $stmt = $db->query("SELECT COUNT(*) FROM transactions WHERE status = 'pending'");
-    $stats['pending_orders'] = $stmt->fetchColumn();
-    
-    $stmt = $db->query("SELECT COALESCE(SUM(grand_total), 0) FROM transactions WHERE status IN ('paid', 'confirmed', 'delivered')");
-    $stats['total_revenue'] = $stmt->fetchColumn();
+    if (!$shopSettings) {
+        $stmt = $db->query("SELECT * FROM shop_settings WHERE id = 1 OR line_account_id IS NULL LIMIT 1");
+        $shopSettings = $stmt->fetch(PDO::FETCH_ASSOC);
+    }
 } catch (Exception $e) {}
 
-// Products stats
-$stats['total_products'] = 0;
-$stats['low_stock'] = 0;
+// Default shop settings
+$shopName = $shopSettings['shop_name'] ?? 'LINE Telepharmacy';
+$shopLogo = $shopSettings['shop_logo'] ?? '';
+$shopDescription = $shopSettings['welcome_message'] ?? 'ร้านยาออนไลน์ครบวงจร พร้อมบริการปรึกษาเภสัชกร';
+$contactPhone = $shopSettings['contact_phone'] ?? '';
+$shopAddress = $shopSettings['shop_address'] ?? '';
+$shopEmail = $shopSettings['shop_email'] ?? '';
+$lineId = $shopSettings['line_id'] ?? '';
+
+// Get theme colors from promotion_settings (Requirements: 1.5, 3.2)
+require_once 'classes/LandingPageRenderer.php';
+$primaryColor = getLandingPromoSetting($db, $lineAccountId, 'primary_color', LandingPageRenderer::DEFAULT_PRIMARY_COLOR);
+$secondaryColor = getLandingPromoSetting($db, $lineAccountId, 'secondary_color', LandingPageRenderer::DEFAULT_SECONDARY_COLOR);
+
+// Validate and normalize colors with fallback to defaults
+$primaryColor = LandingPageRenderer::normalizeHexColor($primaryColor, LandingPageRenderer::DEFAULT_PRIMARY_COLOR);
+$secondaryColor = LandingPageRenderer::normalizeHexColor($secondaryColor, LandingPageRenderer::DEFAULT_SECONDARY_COLOR);
+
+// Get active promotions
+$promotions = [];
 try {
-    // Use products table
-    $productsTable = 'products';
-    
-    // Count products - แสดงสินค้าทั้งหมด ไม่ filter ตาม line_account_id
-    $stmt = $db->query("SELECT COUNT(*) FROM {$productsTable} WHERE is_active = 1");
-    $stats['total_products'] = $stmt->fetchColumn();
-    
-    // Low stock (active products with stock <= 5)
-    $stmt = $db->query("SELECT COUNT(*) FROM {$productsTable} WHERE stock > 0 AND stock <= 5 AND is_active = 1");
-    $stats['low_stock'] = $stmt->fetchColumn();
+    $stmt = $db->prepare("
+        SELECT * FROM products 
+        WHERE is_active = 1 
+        AND (is_featured = 1 OR is_bestseller = 1 OR is_new = 1)
+        AND (line_account_id = ? OR line_account_id IS NULL)
+        ORDER BY is_featured DESC, is_bestseller DESC 
+        LIMIT 6
+    ");
+    $stmt->execute([$lineAccountId]);
+    $promotions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
-// Auto-reply & Broadcast stats
-$stats['auto_replies'] = 0;
-$stats['broadcasts'] = 0;
-try {
-    $stmt = $db->query("SELECT COUNT(*) FROM auto_replies WHERE is_active = 1");
-    $stats['auto_replies'] = $stmt->fetchColumn();
-    
-    $stmt = $db->query("SELECT COUNT(*) FROM broadcasts WHERE status = 'sent'");
-    $stats['broadcasts'] = $stmt->fetchColumn();
-} catch (Exception $e) {}
-
-// Pending slips count (uploaded but not approved)
-$stats['pending_slips'] = 0;
-try {
-    $stmt = $db->query("SELECT COUNT(DISTINCT transaction_id) FROM payment_slips WHERE status = 'pending'");
-    $stats['pending_slips'] = $stmt->fetchColumn();
-} catch (Exception $e) {}
-
-// Recent orders (use transactions table - unified with LIFF)
-$recentOrders = [];
-try {
-    $stmt = $db->query("SELECT o.*, u.display_name FROM transactions o LEFT JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 5");
-    $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
-
-// Recent messages
-$recentMessages = [];
-try {
-    $stmt = $db->query("SELECT m.*, u.display_name, u.picture_url FROM messages m JOIN users u ON m.user_id = u.id WHERE m.direction = 'incoming' ORDER BY m.created_at DESC LIMIT 5");
-    $recentMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
-
-// Recent users
-$recentUsers = [];
-try {
-    $stmt = $db->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 5");
-    $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+// Build LIFF URL
+$liffUrl = $liffId ? "https://liff.line.me/{$liffId}" : null;
+$baseUrl = rtrim(BASE_URL, '/');
 ?>
-
-<style>
-.stat-card {
-    background: white;
-    border-radius: 12px;
-    padding: 20px;
-    display: flex;
-    align-items: flex-start;
-    gap: 16px;
-    transition: all 0.2s;
-}
-.stat-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
-.stat-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 20px;
-}
-.stat-content { flex: 1; }
-.stat-label { font-size: 13px; color: #64748b; margin-bottom: 4px; }
-.stat-value { font-size: 24px; font-weight: 700; color: #1e293b; }
-.stat-change { font-size: 12px; margin-top: 4px; }
-.stat-change.up { color: #10b981; }
-.stat-change.down { color: #ef4444; }
-.mini-chart { height: 40px; margin-top: 8px; }
-
-.card {
-    background: white;
-    border-radius: 12px;
-    overflow: hidden;
-}
-.card-header {
-    padding: 16px 20px;
-    border-bottom: 1px solid #f1f5f9;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-.card-title { font-weight: 600; color: #1e293b; }
-.card-body { padding: 0; }
-
-.list-item {
-    display: flex;
-    align-items: center;
-    padding: 12px 20px;
-    border-bottom: 1px solid #f8fafc;
-    transition: background 0.2s;
-}
-.list-item:hover { background: #f8fafc; }
-.list-item:last-child { border-bottom: none; }
-
-.avatar {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    color: white;
-    overflow: hidden;
-}
-.avatar img { width: 100%; height: 100%; object-fit: cover; }
-
-.badge {
-    padding: 4px 10px;
-    border-radius: 6px;
-    font-size: 11px;
-    font-weight: 600;
-}
-.badge-pending { background: #fef3c7; color: #d97706; }
-.badge-paid { background: #dcfce7; color: #16a34a; }
-.badge-confirmed { background: #dbeafe; color: #2563eb; }
-.badge-shipping { background: #e0e7ff; color: #4f46e5; }
-.badge-delivered { background: #d1fae5; color: #059669; }
-.badge-cancelled { background: #fee2e2; color: #dc2626; }
-
-.quick-action {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 16px;
-    background: #f8fafc;
-    border-radius: 10px;
-    transition: all 0.2s;
-    text-decoration: none;
-}
-.quick-action:hover {
-    background: #f1f5f9;
-    transform: translateY(-2px);
-}
-.quick-action-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 18px;
-    color: white;
-    margin-bottom: 8px;
-}
-.quick-action-label { font-size: 12px; color: #64748b; font-weight: 500; }
-</style>
-
-<?php if ($stats['pending_slips'] > 0): ?>
-<!-- Pending Slips Alert -->
-<div class="mb-6 p-4 bg-orange-100 border border-orange-300 rounded-xl flex items-center justify-between shadow-sm">
-    <div class="flex items-center">
-        <div class="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center mr-4">
-            <i class="fas fa-receipt text-white text-xl"></i>
-        </div>
-        <div>
-            <p class="font-bold text-orange-700 text-lg">มีสลิปรอตรวจสอบ <?= $stats['pending_slips'] ?> รายการ</p>
-            <p class="text-sm text-orange-600">ลูกค้าอัพโหลดสลิปแล้ว กรุณาตรวจสอบและอนุมัติ</p>
-        </div>
-    </div>
-    <a href="shop/orders.php?pending_slip=1" class="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 font-semibold flex items-center gap-2">
-        <i class="fas fa-eye"></i>ตรวจสอบเลย
-    </a>
-</div>
-<?php endif; ?>
-
-<!-- Stats Row -->
-<div class="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
-    <div class="stat-card">
-        <div class="stat-icon bg-blue-100 text-blue-600"><i class="fas fa-users"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">Total Users</div>
-            <div class="stat-value"><?= number_format($stats['total_users']) ?></div>
-            <?php if ($stats['new_today'] > 0): ?>
-            <div class="stat-change up">+<?= $stats['new_today'] ?> today</div>
-            <?php endif; ?>
-        </div>
-    </div>
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="<?= htmlspecialchars($shopDescription) ?>">
+    <meta name="theme-color" content="<?= htmlspecialchars($primaryColor) ?>">
     
-    <div class="stat-card">
-        <div class="stat-icon bg-green-100 text-green-600"><i class="fas fa-comments"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">Messages Today</div>
-            <div class="stat-value"><?= number_format($stats['messages_today']) ?></div>
-        </div>
-    </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon bg-orange-100 text-orange-600"><i class="fas fa-shopping-cart"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">Total Orders</div>
-            <div class="stat-value"><?= number_format($stats['total_orders']) ?></div>
-            <?php if ($stats['pending_orders'] > 0): ?>
-            <div class="stat-change" style="color:#d97706"><?= $stats['pending_orders'] ?> pending</div>
-            <?php endif; ?>
-        </div>
-    </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon bg-emerald-100 text-emerald-600"><i class="fas fa-baht-sign"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">Revenue</div>
-            <div class="stat-value">฿<?= number_format($stats['total_revenue']) ?></div>
-        </div>
-    </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon bg-purple-100 text-purple-600"><i class="fas fa-box"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">Products</div>
-            <div class="stat-value"><?= number_format($stats['total_products']) ?></div>
-            <?php if ($stats['low_stock'] > 0): ?>
-            <div class="stat-change down"><?= $stats['low_stock'] ?> low stock</div>
-            <?php endif; ?>
-        </div>
-    </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon bg-pink-100 text-pink-600"><i class="fas fa-robot"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">Auto Replies</div>
-            <div class="stat-value"><?= number_format($stats['auto_replies']) ?></div>
-        </div>
-    </div>
-    
-    <?php if ($stats['pending_slips'] > 0): ?>
-    <a href="shop/orders.php?pending_slip=1" class="stat-card hover:ring-2 hover:ring-orange-400">
-        <div class="stat-icon bg-orange-100 text-orange-600"><i class="fas fa-receipt"></i></div>
-        <div class="stat-content">
-            <div class="stat-label">รอตรวจสลิป</div>
-            <div class="stat-value text-orange-600"><?= number_format($stats['pending_slips']) ?></div>
-            <div class="stat-change" style="color:#d97706">ต้องตรวจสอบ</div>
-        </div>
-    </a>
+    <!-- Open Graph -->
+    <meta property="og:title" content="<?= htmlspecialchars($shopName) ?>">
+    <meta property="og:description" content="<?= htmlspecialchars($shopDescription) ?>">
+    <?php if ($shopLogo): ?>
+    <meta property="og:image" content="<?= htmlspecialchars($shopLogo) ?>">
     <?php endif; ?>
-</div>
+    
+    <title><?= htmlspecialchars($shopName) ?></title>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Dynamic Theme Colors (Requirements: 1.5, 3.2) -->
+    <style>
+        :root {
+            --primary: <?= htmlspecialchars($primaryColor) ?>;
+            --primary-dark: <?= htmlspecialchars($primaryColor) ?>dd;
+            --primary-light: <?= htmlspecialchars($secondaryColor) ?>;
+            --primary-rgb: <?= hexdec(substr($primaryColor, 1, 2)) ?>, <?= hexdec(substr($primaryColor, 3, 2)) ?>, <?= hexdec(substr($primaryColor, 5, 2)) ?>;
+        }
+    </style>
 
-<!-- Main Content Grid -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-    <!-- Recent Orders -->
-    <div class="card lg:col-span-2">
-        <div class="card-header">
-            <span class="card-title"><i class="fas fa-receipt mr-2 text-orange-500"></i>Recent Orders</span>
-            <a href="shop/orders.php" class="text-sm text-green-600 hover:underline">View All</a>
-        </div>
-        <div class="card-body">
-            <?php if (empty($recentOrders)): ?>
-            <div class="p-8 text-center text-gray-400">No orders yet</div>
-            <?php else: ?>
-            <?php foreach ($recentOrders as $order): ?>
-            <div class="list-item">
-                <div class="avatar bg-orange-500">
-                    <i class="fas fa-receipt"></i>
-                </div>
-                <div class="flex-1 ml-3 min-w-0">
-                    <div class="flex items-center gap-2">
-                        <span class="font-medium text-sm">#<?= htmlspecialchars($order['order_number'] ?? $order['id']) ?></span>
-                        <span class="badge badge-<?= $order['status'] ?>"><?= ucfirst($order['status']) ?></span>
+    <!-- Landing Page Styles (Requirements: 4.1, 4.2, 4.3 - Responsive Design) -->
+    <style>
+        /* ==================== Base Reset ==================== */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        html {
+            font-size: 16px;
+            scroll-behavior: smooth;
+            -webkit-text-size-adjust: 100%;
+        }
+        
+        body {
+            font-family: 'Sarabun', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: #1F2937;
+            background-color: #F8FAFC;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        img {
+            max-width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        /* ==================== Typography ==================== */
+        h1, h2, h3, h4 {
+            font-weight: 700;
+            line-height: 1.3;
+            color: #1F2937;
+        }
+        
+        h1 { font-size: 2rem; }
+        h2 { font-size: 1.5rem; }
+        h3 { font-size: 1.25rem; }
+        
+        /* ==================== Container ==================== */
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 16px;
+        }
+        
+        /* ==================== Header ==================== */
+        .landing-header {
+            background: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            padding: 12px 0;
+        }
+        
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-img {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            object-fit: cover;
+            background: var(--primary-light);
+        }
+        
+        .logo-placeholder {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+        }
+        
+        .shop-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1F2937;
+        }
+        
+        .header-cta {
+            display: none;
+        }
+        
+        /* ==================== Hero Section ==================== */
+        .hero-section {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            padding: 48px 0 64px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -20%;
+            width: 60%;
+            height: 200%;
+            background: rgba(255,255,255,0.05);
+            border-radius: 50%;
+            transform: rotate(-15deg);
+        }
+        
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            text-align: center;
+        }
+        
+        .hero-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: white;
+        }
+        
+        .hero-subtitle {
+            font-size: 1rem;
+            opacity: 0.9;
+            margin-bottom: 32px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .hero-cta {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            align-items: center;
+        }
+        
+        /* ==================== Buttons ==================== */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-height: 48px;
+            min-width: 200px;
+        }
+        
+        .btn-primary {
+            background: white;
+            color: var(--primary);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+        
+        .btn-outline {
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255,255,255,0.5);
+        }
+        
+        .btn-outline:hover {
+            background: rgba(255,255,255,0.1);
+            border-color: white;
+        }
+        
+        /* LINE Button Style (Requirements: 2.4) */
+        .btn-line {
+            background: #06C755;
+            color: white;
+        }
+        
+        .btn-line:hover {
+            background: #05B04C;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(6,199,85,0.3);
+        }
+        
+        /* ==================== Services Section ==================== */
+        .services-section {
+            padding: 48px 0;
+            background: white;
+        }
+        
+        .section-title {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        
+        .section-title h2 {
+            color: #1F2937;
+            margin-bottom: 8px;
+        }
+        
+        .section-title p {
+            color: #6B7280;
+            font-size: 0.95rem;
+        }
+        
+        .services-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+        
+        .service-card {
+            background: #F8FAFC;
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 1px solid #E5E7EB;
+        }
+        
+        .service-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.08);
+            border-color: var(--primary);
+        }
+        
+        .service-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 16px;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin: 0 auto 16px;
+        }
+        
+        .service-card h3 {
+            margin-bottom: 8px;
+            font-size: 1.1rem;
+        }
+        
+        .service-card p {
+            color: #6B7280;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        
+        /* ==================== Promotions Section ==================== */
+        .promotions-section {
+            padding: 48px 0;
+            background: #F8FAFC;
+        }
+        
+        .promotions-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        
+        .promo-card {
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        
+        .promo-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.1);
+        }
+        
+        .promo-image {
+            aspect-ratio: 1;
+            background: #F3F4F6;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .promo-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .promo-badge {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        
+        .badge-featured {
+            background: #EF4444;
+            color: white;
+        }
+        
+        .badge-bestseller {
+            background: #F59E0B;
+            color: white;
+        }
+        
+        .badge-new {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .promo-info {
+            padding: 12px;
+        }
+        
+        .promo-name {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #1F2937;
+            margin-bottom: 4px;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        
+        .promo-price {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        /* ==================== Contact Section ==================== */
+        .contact-section {
+            padding: 48px 0;
+            background: white;
+        }
+        
+        .contact-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 24px;
+        }
+        
+        .contact-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        
+        .contact-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--primary-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        
+        .contact-info h4 {
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+        
+        .contact-info p {
+            color: #6B7280;
+            font-size: 0.9rem;
+        }
+        
+        .contact-info a {
+            color: var(--primary);
+        }
+        
+        .contact-info a:hover {
+            text-decoration: underline;
+        }
+
+        /* ==================== CTA Section ==================== */
+        .cta-section {
+            padding: 48px 0;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            text-align: center;
+        }
+        
+        .cta-section h2 {
+            color: white;
+            margin-bottom: 16px;
+        }
+        
+        .cta-section p {
+            opacity: 0.9;
+            margin-bottom: 24px;
+        }
+        
+        /* ==================== Footer ==================== */
+        .landing-footer {
+            background: #1F2937;
+            color: white;
+            padding: 32px 0 24px;
+        }
+        
+        .footer-content {
+            text-align: center;
+        }
+        
+        .footer-logo {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .footer-logo img {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+        }
+        
+        .footer-logo span {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+        
+        .footer-links a {
+            color: #9CA3AF;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+        
+        .footer-links a:hover {
+            color: white;
+        }
+        
+        .footer-social {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .social-link {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+        
+        .social-link:hover {
+            background: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        .footer-copyright {
+            color: #6B7280;
+            font-size: 0.85rem;
+            padding-top: 24px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        /* Admin Link (Requirements: 3.1, 3.2) */
+        .admin-link {
+            color: #6B7280;
+            font-size: 0.8rem;
+            margin-top: 16px;
+            display: inline-block;
+        }
+        
+        .admin-link:hover {
+            color: #9CA3AF;
+        }
+        
+        /* ==================== Mobile Fixed CTA (Requirements: 2.4) ==================== */
+        .mobile-cta {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 12px 16px;
+            padding-bottom: max(12px, env(safe-area-inset-bottom));
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            z-index: 100;
+            display: flex;
+            gap: 12px;
+        }
+        
+        .mobile-cta .btn {
+            flex: 1;
+            min-width: auto;
+        }
+        
+        /* Add padding to body for fixed CTA */
+        body {
+            padding-bottom: 80px;
+        }
+        
+        /* ==================== Responsive Design (Requirements: 4.1, 4.2, 4.3) ==================== */
+        
+        /* Tablet and up (768px+) */
+        @media (min-width: 768px) {
+            .container {
+                padding: 0 24px;
+            }
+            
+            h1 { font-size: 2.5rem; }
+            h2 { font-size: 1.75rem; }
+            
+            .header-cta {
+                display: block;
+            }
+            
+            .header-cta .btn {
+                min-width: auto;
+                padding: 10px 20px;
+                min-height: 44px;
+            }
+            
+            .hero-section {
+                padding: 80px 0 100px;
+            }
+            
+            .hero-title {
+                font-size: 2.5rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.1rem;
+            }
+            
+            .hero-cta {
+                flex-direction: row;
+                justify-content: center;
+            }
+            
+            .services-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
+            }
+            
+            .service-card {
+                padding: 32px 24px;
+            }
+            
+            .promotions-grid {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 24px;
+            }
+            
+            .contact-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 32px;
+            }
+            
+            .mobile-cta {
+                display: none;
+            }
+            
+            body {
+                padding-bottom: 0;
+            }
+            
+            .services-section,
+            .promotions-section,
+            .contact-section {
+                padding: 64px 0;
+            }
+            
+            .cta-section {
+                padding: 64px 0;
+            }
+        }
+        
+        /* Desktop (1024px+) */
+        @media (min-width: 1024px) {
+            .hero-section {
+                padding: 100px 0 120px;
+            }
+            
+            .hero-title {
+                font-size: 3rem;
+            }
+            
+            .promotions-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .contact-grid {
+                grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .services-section,
+            .promotions-section,
+            .contact-section {
+                padding: 80px 0;
+            }
+        }
+        
+        /* Large Desktop (1280px+) */
+        @media (min-width: 1280px) {
+            .promotions-grid {
+                grid-template-columns: repeat(6, 1fr);
+            }
+        }
+        
+        /* LINE In-App Browser Optimizations */
+        @supports (-webkit-touch-callout: none) {
+            /* iOS specific */
+            .btn {
+                -webkit-tap-highlight-color: transparent;
+            }
+        }
+        
+        /* Safe Area Support for notched devices */
+        @supports (padding: max(0px)) {
+            .landing-header {
+                padding-top: max(12px, env(safe-area-inset-top));
+            }
+            
+            .mobile-cta {
+                padding-bottom: max(12px, env(safe-area-inset-bottom));
+            }
+        }
+        
+        /* Reduced Motion */
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                transition: none !important;
+                animation: none !important;
+            }
+        }
+        
+        /* Print Styles */
+        @media print {
+            .mobile-cta,
+            .header-cta {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="landing-header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo-section">
+                    <?php if ($shopLogo): ?>
+                    <img src="<?= htmlspecialchars($shopLogo) ?>" alt="<?= htmlspecialchars($shopName) ?>" class="logo-img">
+                    <?php else: ?>
+                    <div class="logo-placeholder">
+                        <i class="fas fa-clinic-medical"></i>
                     </div>
-                    <div class="text-xs text-gray-500 truncate"><?= htmlspecialchars($order['display_name'] ?? 'Customer') ?></div>
+                    <?php endif; ?>
+                    <span class="shop-name"><?= htmlspecialchars($shopName) ?></span>
                 </div>
-                <div class="text-right">
-                    <div class="font-semibold text-green-600">฿<?= number_format($order['grand_total'] ?? 0) ?></div>
-                    <div class="text-xs text-gray-400"><?= date('d/m H:i', strtotime($order['created_at'])) ?></div>
+                
+                <?php if ($liffUrl): ?>
+                <div class="header-cta">
+                    <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
+                        <i class="fab fa-line"></i>
+                        เปิดแอป
+                    </a>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Hero Section (Requirements: 1.1, 1.2, 1.3) -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title"><?= htmlspecialchars($shopName) ?></h1>
+                <p class="hero-subtitle"><?= htmlspecialchars($shopDescription) ?></p>
+                
+                <div class="hero-cta">
+                    <?php if ($liffUrl): ?>
+                    <!-- Requirements: 2.1, 2.2, 2.3, 2.4 -->
+                    <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-primary">
+                        <i class="fab fa-line"></i>
+                        เริ่มใช้งานเลย
+                    </a>
+                    <?php else: ?>
+                    <span class="btn btn-outline" style="cursor: default;">
+                        <i class="fas fa-clock"></i>
+                        เร็วๆ นี้
+                    </span>
+                    <?php endif; ?>
+                    
+                    <a href="#services" class="btn btn-outline">
+                        <i class="fas fa-info-circle"></i>
+                        ดูบริการ
+                    </a>
                 </div>
             </div>
-            <?php endforeach; ?>
-            <?php endif; ?>
         </div>
-    </div>
+    </section>
     
-    <!-- Recent Users -->
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fas fa-user-plus mr-2 text-blue-500"></i>New Users</span>
-            <a href="users.php" class="text-sm text-green-600 hover:underline">View All</a>
+    <!-- Services Section (Requirements: 1.4, 5.1) -->
+    <section class="services-section" id="services">
+        <div class="container">
+            <div class="section-title">
+                <h2>บริการของเรา</h2>
+                <p>ครบครันทุกบริการด้านสุขภาพ</p>
+            </div>
+            
+            <div class="services-grid">
+                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/shop' : '#' ?>" class="service-card">
+                    <div class="service-icon">
+                        <i class="fas fa-shopping-bag"></i>
+                    </div>
+                    <h3>ร้านค้าออนไลน์</h3>
+                    <p>เลือกซื้อยาและผลิตภัณฑ์สุขภาพได้ง่ายๆ พร้อมจัดส่งถึงบ้าน</p>
+                </a>
+                
+                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/consult' : '#' ?>" class="service-card">
+                    <div class="service-icon">
+                        <i class="fas fa-user-md"></i>
+                    </div>
+                    <h3>ปรึกษาเภสัชกร</h3>
+                    <p>พูดคุยกับเภสัชกรผู้เชี่ยวชาญ ได้คำแนะนำที่ถูกต้อง</p>
+                </a>
+                
+                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/appointments' : '#' ?>" class="service-card">
+                    <div class="service-icon">
+                        <i class="fas fa-calendar-check"></i>
+                    </div>
+                    <h3>นัดหมายออนไลน์</h3>
+                    <p>จองคิวล่วงหน้า ไม่ต้องรอคิว สะดวกรวดเร็ว</p>
+                </a>
+            </div>
         </div>
-        <div class="card-body">
-            <?php if (empty($recentUsers)): ?>
-            <div class="p-8 text-center text-gray-400">No users yet</div>
-            <?php else: ?>
-            <?php foreach ($recentUsers as $user): ?>
-            <div class="list-item">
-                <div class="avatar bg-blue-500">
-                    <?php if (!empty($user['picture_url'])): ?>
-                    <img src="<?= htmlspecialchars($user['picture_url']) ?>">
-                    <?php else: ?>
-                    <?= mb_substr($user['display_name'] ?? 'U', 0, 1) ?>
+    </section>
+    
+    <?php if (!empty($promotions)): ?>
+    <!-- Promotions Section (Requirements: 5.2) -->
+    <section class="promotions-section" id="promotions">
+        <div class="container">
+            <div class="section-title">
+                <h2>สินค้าแนะนำ</h2>
+                <p>สินค้าคุณภาพ ราคาพิเศษ</p>
+            </div>
+            
+            <div class="promotions-grid">
+                <?php foreach ($promotions as $product): ?>
+                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/product/' . $product['id'] : '#' ?>" class="promo-card">
+                    <div class="promo-image">
+                        <?php if (!empty($product['image_url'])): ?>
+                        <img src="<?= htmlspecialchars($product['image_url']) ?>" alt="<?= htmlspecialchars($product['name']) ?>" loading="lazy">
+                        <?php else: ?>
+                        <div style="width:100%;height:100%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;">
+                            <i class="fas fa-image" style="font-size:32px;color:#D1D5DB;"></i>
+                        </div>
+                        <?php endif; ?>
+                        
+                        <?php if (!empty($product['is_featured'])): ?>
+                        <span class="promo-badge badge-featured">แนะนำ</span>
+                        <?php elseif (!empty($product['is_bestseller'])): ?>
+                        <span class="promo-badge badge-bestseller">ขายดี</span>
+                        <?php elseif (!empty($product['is_new'])): ?>
+                        <span class="promo-badge badge-new">ใหม่</span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="promo-info">
+                        <div class="promo-name"><?= htmlspecialchars($product['name']) ?></div>
+                        <div class="promo-price">฿<?= number_format($product['price'], 0) ?></div>
+                    </div>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+
+    <!-- Contact Section (Requirements: 3.1, 5.3) -->
+    <section class="contact-section" id="contact">
+        <div class="container">
+            <div class="section-title">
+                <h2>ติดต่อเรา</h2>
+                <p>พร้อมให้บริการทุกวัน</p>
+            </div>
+            
+            <div class="contact-grid">
+                <?php if ($contactPhone): ?>
+                <div class="contact-item">
+                    <div class="contact-icon">
+                        <i class="fas fa-phone"></i>
+                    </div>
+                    <div class="contact-info">
+                        <h4>โทรศัพท์</h4>
+                        <p><a href="tel:<?= htmlspecialchars($contactPhone) ?>"><?= htmlspecialchars($contactPhone) ?></a></p>
+                    </div>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ($lineId): ?>
+                <div class="contact-item">
+                    <div class="contact-icon">
+                        <i class="fab fa-line"></i>
+                    </div>
+                    <div class="contact-info">
+                        <h4>LINE</h4>
+                        <p><a href="https://line.me/R/ti/p/<?= htmlspecialchars(ltrim($lineId, '@')) ?>" target="_blank"><?= htmlspecialchars($lineId) ?></a></p>
+                    </div>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ($shopEmail): ?>
+                <div class="contact-item">
+                    <div class="contact-icon">
+                        <i class="fas fa-envelope"></i>
+                    </div>
+                    <div class="contact-info">
+                        <h4>อีเมล</h4>
+                        <p><a href="mailto:<?= htmlspecialchars($shopEmail) ?>"><?= htmlspecialchars($shopEmail) ?></a></p>
+                    </div>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ($shopAddress): ?>
+                <div class="contact-item">
+                    <div class="contact-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <div class="contact-info">
+                        <h4>ที่อยู่</h4>
+                        <p><?= nl2br(htmlspecialchars($shopAddress)) ?></p>
+                    </div>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+    </section>
+    
+    <!-- CTA Section -->
+    <?php if ($liffUrl): ?>
+    <section class="cta-section">
+        <div class="container">
+            <h2>พร้อมเริ่มต้นแล้วหรือยัง?</h2>
+            <p>เปิดแอปผ่าน LINE เพื่อเริ่มใช้บริการได้เลย</p>
+            <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-primary">
+                <i class="fab fa-line"></i>
+                เปิดแอปเลย
+            </a>
+        </div>
+    </section>
+    <?php endif; ?>
+    
+    <!-- Footer (Requirements: 3.1, 3.2) -->
+    <footer class="landing-footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-logo">
+                    <?php if ($shopLogo): ?>
+                    <img src="<?= htmlspecialchars($shopLogo) ?>" alt="<?= htmlspecialchars($shopName) ?>">
+                    <?php endif; ?>
+                    <span><?= htmlspecialchars($shopName) ?></span>
+                </div>
+                
+                <div class="footer-links">
+                    <a href="#services">บริการ</a>
+                    <?php if (!empty($promotions)): ?>
+                    <a href="#promotions">สินค้า</a>
+                    <?php endif; ?>
+                    <a href="#contact">ติดต่อ</a>
+                    <a href="privacy-policy.php">นโยบายความเป็นส่วนตัว</a>
+                    <a href="terms-of-service.php">ข้อกำหนดการใช้งาน</a>
+                </div>
+                
+                <div class="footer-social">
+                    <?php if ($lineId): ?>
+                    <a href="https://line.me/R/ti/p/<?= htmlspecialchars(ltrim($lineId, '@')) ?>" class="social-link" target="_blank" title="LINE">
+                        <i class="fab fa-line"></i>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (!empty($shopSettings['facebook_url'])): ?>
+                    <a href="<?= htmlspecialchars($shopSettings['facebook_url']) ?>" class="social-link" target="_blank" title="Facebook">
+                        <i class="fab fa-facebook-f"></i>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (!empty($shopSettings['instagram_url'])): ?>
+                    <a href="<?= htmlspecialchars($shopSettings['instagram_url']) ?>" class="social-link" target="_blank" title="Instagram">
+                        <i class="fab fa-instagram"></i>
+                    </a>
                     <?php endif; ?>
                 </div>
-                <div class="flex-1 ml-3 min-w-0">
-                    <div class="font-medium text-sm truncate"><?= htmlspecialchars($user['display_name'] ?? 'Unknown') ?></div>
-                    <div class="text-xs text-gray-400"><?= date('d/m/Y H:i', strtotime($user['created_at'])) ?></div>
+                
+                <div class="footer-copyright">
+                    <p>&copy; <?= date('Y') ?> <?= htmlspecialchars($shopName) ?>. All rights reserved.</p>
+                    <!-- Admin Login Link (Requirements: 3.1, 3.2) -->
+                    <a href="admin/" class="admin-link">
+                        <i class="fas fa-lock"></i> Admin
+                    </a>
                 </div>
             </div>
-            <?php endforeach; ?>
-            <?php endif; ?>
         </div>
-    </div>
-</div>
-
-<!-- Recent Messages & Quick Actions -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <!-- Recent Messages -->
-    <div class="card lg:col-span-2">
-        <div class="card-header">
-            <span class="card-title"><i class="fas fa-inbox mr-2 text-green-500"></i>Recent Messages</span>
-            <a href="messages.php" class="text-sm text-green-600 hover:underline">View All</a>
-        </div>
-        <div class="card-body">
-            <?php if (empty($recentMessages)): ?>
-            <div class="p-8 text-center text-gray-400">No messages yet</div>
-            <?php else: ?>
-            <?php foreach ($recentMessages as $msg): ?>
-            <div class="list-item">
-                <div class="avatar bg-green-500">
-                    <?php if (!empty($msg['picture_url'])): ?>
-                    <img src="<?= htmlspecialchars($msg['picture_url']) ?>">
-                    <?php else: ?>
-                    <?= mb_substr($msg['display_name'] ?? 'U', 0, 1) ?>
-                    <?php endif; ?>
-                </div>
-                <div class="flex-1 ml-3 min-w-0">
-                    <div class="font-medium text-sm"><?= htmlspecialchars($msg['display_name'] ?? 'Unknown') ?></div>
-                    <div class="text-xs text-gray-500 truncate"><?= htmlspecialchars(mb_substr($msg['content'] ?? '', 0, 50)) ?></div>
-                </div>
-                <div class="text-xs text-gray-400"><?= date('H:i', strtotime($msg['created_at'])) ?></div>
-            </div>
-            <?php endforeach; ?>
-            <?php endif; ?>
-        </div>
-    </div>
+    </footer>
     
-    <!-- Quick Actions -->
-    <div class="card">
-        <div class="card-header">
-            <span class="card-title"><i class="fas fa-bolt mr-2 text-yellow-500"></i>Quick Actions</span>
-        </div>
-        <div class="p-4 grid grid-cols-3 gap-3">
-            <a href="broadcast.php" class="quick-action">
-                <div class="quick-action-icon bg-green-500"><i class="fas fa-bullhorn"></i></div>
-                <span class="quick-action-label">Broadcast</span>
-            </a>
-            <a href="messages.php" class="quick-action">
-                <div class="quick-action-icon bg-blue-500"><i class="fas fa-comments"></i></div>
-                <span class="quick-action-label">Messages</span>
-            </a>
-            <a href="shop/orders.php" class="quick-action">
-                <div class="quick-action-icon bg-orange-500"><i class="fas fa-receipt"></i></div>
-                <span class="quick-action-label">Orders</span>
-            </a>
-            <a href="shop/products.php" class="quick-action">
-                <div class="quick-action-icon bg-purple-500"><i class="fas fa-box"></i></div>
-                <span class="quick-action-label">Products</span>
-            </a>
-            <a href="auto-reply.php" class="quick-action">
-                <div class="quick-action-icon bg-pink-500"><i class="fas fa-robot"></i></div>
-                <span class="quick-action-label">Auto Reply</span>
-            </a>
-            <a href="analytics.php" class="quick-action">
-                <div class="quick-action-icon bg-indigo-500"><i class="fas fa-chart-pie"></i></div>
-                <span class="quick-action-label">Analytics</span>
-            </a>
-        </div>
+    <!-- Mobile Fixed CTA (Requirements: 2.4) -->
+    <?php if ($liffUrl): ?>
+    <div class="mobile-cta">
+        <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
+            <i class="fab fa-line"></i>
+            เปิดแอป LINE
+        </a>
     </div>
-</div>
+    <?php endif; ?>
 
-<?php require_once 'includes/footer.php'; ?>
+</body>
+</html>

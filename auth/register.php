@@ -9,7 +9,7 @@ $error = '';
 
 // ถ้าล็อกอินแล้วให้ redirect
 if (isset($_SESSION['admin_user'])) {
-    header('Location: ../index.php');
+    header('Location: ../admin/');
     exit;
 }
 

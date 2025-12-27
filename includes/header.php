@@ -169,7 +169,7 @@ $menuSections = [
     'main' => [
         'title' => '',
         'items' => [
-            ['icon' => 'fa-th-large', 'label' => 'Dashboard', 'url' => '/', 'page' => 'index'],
+            ['icon' => 'fa-th-large', 'label' => 'Dashboard', 'url' => '/admin/', 'page' => 'index'],
             ['icon' => 'fa-chart-line', 'label' => '📊 Executive', 'url' => '/executive-dashboard', 'page' => 'executive-dashboard'],
         ]
     ],
