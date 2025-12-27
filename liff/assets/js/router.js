@@ -102,8 +102,14 @@ class Router {
         const hash = window.location.hash || '#/';
         const path = hash.slice(1) || '/'; // Remove # prefix
         
-        // Parse path and extract params
-        const { route, params } = this.matchRoute(path);
+        // Parse path and extract params from URL
+        const { route, params: urlParams } = this.matchRoute(path);
+        
+        // Merge with params from history.state (passed via navigate())
+        const stateParams = history.state?.params || {};
+        const params = { ...urlParams, ...stateParams };
+        
+        console.log('🔀 Route change:', { path, urlParams, stateParams, mergedParams: params });
         
         if (!route) {
             console.warn(`Route not found: ${path}`);

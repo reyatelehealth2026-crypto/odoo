@@ -7695,11 +7695,15 @@ class LiffApp {
      * @param {Object} params - Route parameters
      */
     renderVideoCallPage(params = {}) {
+        // Get appointment_id from params
+        const appointmentId = params.appointment_id || params.appointmentId || null;
+        
         // Initialize video call manager if not already done
         if (window.videoCallManager) {
             window.videoCallManager.init({
                 baseUrl: this.config.BASE_URL,
                 accountId: this.config.ACCOUNT_ID,
+                appointmentId: appointmentId,
                 onStateChange: (state, oldState, data) => this.handleVideoCallStateChange(state, oldState, data),
                 onRemoteStream: (stream) => this.handleRemoteStream(stream),
                 onCallEnded: (data) => this.handleCallEnded(data),

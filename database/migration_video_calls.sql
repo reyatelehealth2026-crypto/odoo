@@ -53,3 +53,9 @@ CREATE TABLE IF NOT EXISTS video_call_settings (
 -- Insert default settings
 INSERT INTO video_call_settings (line_account_id, is_enabled) VALUES (NULL, 1)
 ON DUPLICATE KEY UPDATE is_enabled = is_enabled;
+
+
+-- Add appointment_id column to video_calls (if not exists)
+-- This links video calls to appointments
+ALTER TABLE video_calls ADD COLUMN IF NOT EXISTS appointment_id INT NULL AFTER line_account_id;
+ALTER TABLE video_calls ADD INDEX IF NOT EXISTS idx_appointment (appointment_id);

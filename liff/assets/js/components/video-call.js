@@ -76,6 +76,7 @@ class VideoCallManager {
     init(options = {}) {
         if (options.baseUrl) this.baseUrl = options.baseUrl;
         if (options.accountId) this.accountId = options.accountId;
+        if (options.appointmentId) this.appointmentId = options.appointmentId;
         if (options.onStateChange) this.onStateChange = options.onStateChange;
         if (options.onRemoteStream) this.onRemoteStream = options.onRemoteStream;
         if (options.onCallEnded) this.onCallEnded = options.onCallEnded;
@@ -85,7 +86,8 @@ class VideoCallManager {
         console.log('📹 VideoCallManager initialized', {
             isIOS: this.isIOS,
             isLINE: this.isLINE,
-            hasIOSLimitations: this.hasIOSLimitations
+            hasIOSLimitations: this.hasIOSLimitations,
+            appointmentId: this.appointmentId
         });
     }
 
@@ -241,14 +243,15 @@ class VideoCallManager {
         const profile = window.store?.get('profile');
         const apiUrl = this.getApiUrl();
         
-        console.log('📹 Creating call...', { apiUrl, accountId: this.accountId });
+        console.log('📹 Creating call...', { apiUrl, accountId: this.accountId, appointmentId: this.appointmentId });
         
         const requestBody = {
             action: 'create',
             user_id: profile?.userId || 'guest_' + Date.now(),
             display_name: profile?.displayName || 'ลูกค้า',
             picture_url: profile?.pictureUrl || '',
-            account_id: this.accountId
+            account_id: this.accountId,
+            appointment_id: this.appointmentId || null
         };
         
         console.log('📹 Request body:', requestBody);

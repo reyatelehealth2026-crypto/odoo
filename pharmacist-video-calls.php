@@ -438,8 +438,15 @@ async function checkIncomingCalls() {
         const data = await res.json();
         console.log('📹 Response:', data);
         
+        // Show debug info
+        if (data.debug) {
+            console.log('📹 Debug - hasAppointmentId:', data.debug.hasAppointmentId);
+            console.log('📹 Debug - SQL:', data.debug.sql);
+        }
+        
         if (data.success && data.calls?.length > 0) {
             console.log('📹 Found', data.calls.length, 'calls');
+            console.log('📹 Calls data:', JSON.stringify(data.calls, null, 2));
             renderCalls(data.calls);
         } else {
             console.log('📹 No calls found');
@@ -452,13 +459,27 @@ async function checkIncomingCalls() {
 
 function renderCalls(calls) {
     const container = document.getElementById('calls-list');
-    container.innerHTML = calls.map(call => `
+    container.innerHTML = calls.map(call => {
+        // Format appointment info if available
+        const aptCode = call.apt_code || call.appointment_id || null;
+        const aptInfo = aptCode ? `
+            <div style="background: #F0FDF4; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px;">
+                <div style="color: #059669; font-weight: 600; margin-bottom: 4px;">
+                    📋 #${aptCode}
+                </div>
+                ${call.symptoms ? `<div style="color: #6B7280;">อาการ: ${call.symptoms}</div>` : ''}
+                ${call.appointment_date ? `<div style="color: #6B7280;">📅 ${formatDate(call.appointment_date)} ${call.appointment_time || ''}</div>` : ''}
+            </div>
+        ` : '';
+        
+        return `
         <div class="call-card ${call.status === 'ringing' ? 'ringing' : ''}" data-call-id="${call.id}">
             <div class="call-card-header">
                 <div class="call-type">📹 วิดีโอคอล</div>
                 <div class="call-time">${formatTime(call.created_at)}</div>
             </div>
             <div class="call-card-body">
+                ${aptInfo}
                 <div class="caller-info">
                     ${call.picture_url 
                         ? `<img src="${call.picture_url}" class="caller-avatar" alt="">` 
@@ -479,7 +500,13 @@ function renderCalls(calls) {
                 </div>
             </div>
         </div>
-    `).join('');
+    `}).join('');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function renderEmptyState() {

@@ -151,6 +151,13 @@
     try {
         $db->query("SELECT 1 FROM video_calls LIMIT 1");
         
+        // Auto-add missing columns to video_calls
+        $vcCols = $db->query("DESCRIBE video_calls")->fetchAll(PDO::FETCH_COLUMN);
+        if (!in_array('appointment_id', $vcCols)) {
+            $db->exec("ALTER TABLE video_calls ADD COLUMN appointment_id INT NULL AFTER line_account_id");
+            $db->exec("ALTER TABLE video_calls ADD INDEX idx_appointment (appointment_id)");
+        }
+        
         // Auto-add missing columns to video_call_signals
         $cols = $db->query("DESCRIBE video_call_signals")->fetchAll(PDO::FETCH_COLUMN);
         if (!in_array('from_who', $cols)) {
@@ -191,7 +198,7 @@
         if ($action === 'check_calls') {
             $accountId = $_GET['account_id'] ?? null;
             
-            // ดึงสายทั้งหมดที่รอรับ พร้อมข้อมูลผู้ใช้จาก users table
+            // ดึงสายทั้งหมดที่รอรับ พร้อมข้อมูลผู้ใช้จาก users table และ appointment
             // First check if users table has phone column
             $hasPhone = false;
             try {
@@ -199,14 +206,24 @@
                 $hasPhone = in_array('phone', $cols);
             } catch (Exception $e) {}
             
+            // Check if video_calls has appointment_id column
+            $hasAppointmentId = false;
+            try {
+                $vcCols = $db->query("DESCRIBE video_calls")->fetchAll(PDO::FETCH_COLUMN);
+                $hasAppointmentId = in_array('appointment_id', $vcCols);
+            } catch (Exception $e) {}
+            
             // Include empty status as well (bug fix - some calls have empty status)
+            // Join with appointments table to get appointment_id
             $sql = "SELECT vc.id, vc.room_id, vc.user_id, vc.line_user_id, 
                         COALESCE(u.display_name, vc.display_name, 'ลูกค้า') as display_name, 
                         COALESCE(u.picture_url, vc.picture_url) as picture_url, 
                         vc.line_account_id, vc.status, vc.created_at" . 
-                        ($hasPhone ? ", u.phone" : "") . "
+                        ($hasPhone ? ", u.phone" : "") .
+                        ($hasAppointmentId ? ", vc.appointment_id, a.appointment_id as apt_code, a.symptoms, a.appointment_date, a.appointment_time" : "") . "
                     FROM video_calls vc 
-                    LEFT JOIN users u ON vc.user_id = u.id OR vc.line_user_id = u.line_user_id
+                    LEFT JOIN users u ON vc.user_id = u.id OR vc.line_user_id = u.line_user_id" .
+                    ($hasAppointmentId ? " LEFT JOIN appointments a ON vc.appointment_id = a.id" : "") . "
                     WHERE (vc.status IN ('pending', 'ringing', '') OR vc.status IS NULL)
                     AND vc.ended_at IS NULL
                     ORDER BY vc.created_at DESC
@@ -224,7 +241,12 @@
             echo json_encode([
                 'success' => true, 
                 'calls' => $calls, 
-                'count' => count($calls)
+                'count' => count($calls),
+                'debug' => [
+                    'hasAppointmentId' => $hasAppointmentId,
+                    'hasPhone' => $hasPhone,
+                    'sql' => $sql
+                ]
             ]);
             exit;
         }
@@ -381,6 +403,7 @@
                 $displayName = $input['display_name'] ?? 'ลูกค้า';
                 $pictureUrl = $input['picture_url'] ?? '';
                 $accountId = $input['account_id'] ?? null;
+                $appointmentId = $input['appointment_id'] ?? null;
                 
                 // Validate account_id exists
                 if ($accountId) {
@@ -389,6 +412,16 @@
                     if (!$stmt->fetch()) {
                         $accountId = null; // Set to null if not found
                     }
+                }
+                
+                // Validate appointment_id exists and get appointment info
+                $appointmentDbId = null;
+                if ($appointmentId) {
+                    // appointment_id could be the code (APT...) or the database id
+                    $stmt = $db->prepare("SELECT id FROM appointments WHERE id = ? OR appointment_id = ?");
+                    $stmt->execute([$appointmentId, $appointmentId]);
+                    $apt = $stmt->fetch();
+                    $appointmentDbId = $apt ? $apt['id'] : null;
                 }
                 
                 // Get or create user
@@ -434,6 +467,10 @@
                 if (in_array('line_account_id', $columns)) {
                     $insertCols[] = 'line_account_id';
                     $insertVals[] = $accountId;
+                }
+                if (in_array('appointment_id', $columns) && $appointmentDbId) {
+                    $insertCols[] = 'appointment_id';
+                    $insertVals[] = $appointmentDbId;
                 }
                 
                 $placeholders = implode(', ', array_fill(0, count($insertCols), '?'));
