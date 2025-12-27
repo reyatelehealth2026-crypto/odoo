@@ -781,17 +781,17 @@ let recordedChunks = [];
 // Send greeting message
 function sendGreeting() {
     if (!currentCallId) {
-        alert('ยังไม่มีสายที่กำลังโทร');
+        showQuickActionToast('⚠️ ยังไม่มีสายที่กำลังโทร', 'warning');
         return;
     }
-    // Could send via WebRTC data channel or show toast
+    // Show toast - in real implementation could send via WebRTC data channel
     showQuickActionToast('👋 ส่งข้อความทักทายแล้ว');
 }
 
 // Send waiting message
 function sendWaiting() {
     if (!currentCallId) {
-        alert('ยังไม่มีสายที่กำลังโทร');
+        showQuickActionToast('⚠️ ยังไม่มีสายที่กำลังโทร', 'warning');
         return;
     }
     showQuickActionToast('⏳ ส่งข้อความรอสักครู่แล้ว');
@@ -800,41 +800,66 @@ function sendWaiting() {
 // Take screenshot of video call
 function takeScreenshot() {
     const remoteVideo = document.getElementById('remote-video');
-    if (!remoteVideo || !remoteVideo.srcObject) {
-        alert('ยังไม่มีวิดีโอให้ถ่าย');
+    const localVideo = document.getElementById('local-video');
+    
+    // Try remote video first, then local video
+    let videoEl = null;
+    if (remoteVideo && remoteVideo.srcObject && remoteVideo.videoWidth > 0) {
+        videoEl = remoteVideo;
+    } else if (localVideo && localVideo.srcObject && localVideo.videoWidth > 0) {
+        videoEl = localVideo;
+    }
+    
+    if (!videoEl) {
+        showQuickActionToast('⚠️ ยังไม่มีวิดีโอให้ถ่าย', 'warning');
         return;
     }
     
-    const canvas = document.createElement('canvas');
-    canvas.width = remoteVideo.videoWidth || 640;
-    canvas.height = remoteVideo.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(remoteVideo, 0, 0, canvas.width, canvas.height);
-    
-    // Download screenshot
-    const link = document.createElement('a');
-    link.download = `screenshot_${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-    
-    showQuickActionToast('📸 บันทึก Screenshot แล้ว');
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = videoEl.videoWidth || 640;
+        canvas.height = videoEl.videoHeight || 480;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        
+        // Download screenshot
+        const link = document.createElement('a');
+        link.download = `screenshot_${Date.now()}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        
+        showQuickActionToast('📸 บันทึก Screenshot แล้ว');
+    } catch (e) {
+        console.error('Screenshot error:', e);
+        showQuickActionToast('❌ ไม่สามารถถ่ายภาพได้', 'error');
+    }
 }
 
 // Toggle recording
 function toggleRecording() {
     const btn = document.getElementById('btn-record');
+    const btnModal = document.getElementById('btn-record-modal');
     
     if (!isRecording) {
         // Start recording
         const remoteVideo = document.getElementById('remote-video');
-        if (!remoteVideo || !remoteVideo.srcObject) {
-            alert('ยังไม่มีวิดีโอให้บันทึก');
+        const localVideo = document.getElementById('local-video');
+        
+        let stream = null;
+        if (remoteVideo && remoteVideo.srcObject) {
+            stream = remoteVideo.srcObject;
+        } else if (localVideo && localVideo.srcObject) {
+            stream = localVideo.srcObject;
+        }
+        
+        if (!stream) {
+            showQuickActionToast('⚠️ ยังไม่มีวิดีโอให้บันทึก', 'warning');
             return;
         }
         
         try {
             recordedChunks = [];
-            mediaRecorder = new MediaRecorder(remoteVideo.srcObject, { mimeType: 'video/webm' });
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
             
             mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) recordedChunks.push(e.data);
@@ -851,13 +876,19 @@ function toggleRecording() {
             
             mediaRecorder.start();
             isRecording = true;
-            btn.innerHTML = '<span>⏹️</span> หยุดบันทึก';
-            btn.style.background = '#FEE2E2';
-            btn.style.color = '#991B1B';
+            if (btn) {
+                btn.innerHTML = '<span>⏹️</span> หยุดบันทึก';
+                btn.style.background = '#FEE2E2';
+                btn.style.color = '#991B1B';
+            }
+            if (btnModal) {
+                btnModal.textContent = '⏹️';
+                btnModal.style.background = '#FEE2E2';
+            }
             showQuickActionToast('🔴 เริ่มบันทึกวิดีโอ');
         } catch (e) {
             console.error('Recording error:', e);
-            alert('ไม่สามารถบันทึกได้: ' + e.message);
+            showQuickActionToast('❌ ไม่สามารถบันทึกได้: ' + e.message, 'error');
         }
     } else {
         // Stop recording
@@ -865,28 +896,41 @@ function toggleRecording() {
             mediaRecorder.stop();
         }
         isRecording = false;
-        btn.innerHTML = '<span>🔴</span> บันทึก';
-        btn.style.background = '#DBEAFE';
-        btn.style.color = '#1E40AF';
+        if (btn) {
+            btn.innerHTML = '<span>🔴</span> บันทึก';
+            btn.style.background = '#DBEAFE';
+            btn.style.color = '#1E40AF';
+        }
+        if (btnModal) {
+            btnModal.textContent = '🔴';
+            btnModal.style.background = 'rgba(255,255,255,0.9)';
+        }
         showQuickActionToast('⏹️ หยุดบันทึกและดาวน์โหลดแล้ว');
     }
 }
 
 // Show toast for quick actions
-function showQuickActionToast(message) {
+function showQuickActionToast(message, type = 'success') {
+    const bgColors = {
+        'success': '#1F2937',
+        'warning': '#92400E',
+        'error': '#991B1B'
+    };
+    
     const toast = document.createElement('div');
     toast.style.cssText = `
         position: fixed;
         bottom: 100px;
         left: 50%;
         transform: translateX(-50%);
-        background: #1F2937;
+        background: ${bgColors[type] || bgColors.success};
         color: white;
         padding: 12px 24px;
         border-radius: 12px;
         font-size: 14px;
         z-index: 10000;
         animation: fadeInUp 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     `;
     toast.textContent = message;
     document.body.appendChild(toast);
