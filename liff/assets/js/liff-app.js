@@ -6516,10 +6516,10 @@ class LiffApp {
 
             if (data.success && data.slots?.length > 0) {
                 container.innerHTML = data.slots.map(slot => `
-                    <button class="time-slot-btn ${slot.is_available ? '' : 'disabled'}" 
+                    <button class="time-slot-btn ${slot.available ? '' : 'disabled'}" 
                             data-time="${slot.time}"
                             onclick="window.liffApp.selectAppointmentTime('${slot.time}')"
-                            ${!slot.is_available ? 'disabled' : ''}>
+                            ${!slot.available ? 'disabled' : ''}>
                         ${slot.time}
                     </button>
                 `).join('');
@@ -6700,33 +6700,25 @@ class LiffApp {
         container.innerHTML = '<div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i></div>';
 
         try {
-            const response = await fetch(`${this.config.BASE_URL}/api/appointments.php?action=list&line_user_id=${profile.userId}`);
+            const response = await fetch(`${this.config.BASE_URL}/api/appointments.php?action=my_appointments&line_user_id=${profile.userId}`);
             const data = await response.json();
 
-            if (data.success && data.appointments?.length > 0) {
-                container.innerHTML = data.appointments.map(apt => {
-                    const canJoin = apt.status === 'confirmed' && this.isAppointmentTimeNow(apt.date, apt.time);
-                    return `
-                        <div class="my-appointment-card ${apt.status}">
-                            <div class="appointment-datetime">
-                                <i class="far fa-calendar"></i>
-                                ${apt.date} เวลา ${apt.time}
-                            </div>
-                            <div class="appointment-pharmacist">
-                                <img src="${apt.pharmacist_image || this.config.BASE_URL + '/assets/images/avatar-placeholder.png'}" alt="">
-                                <span>${apt.pharmacist_name || 'เภสัชกร'}</span>
-                            </div>
-                            <div class="appointment-status-row">
-                                <span class="appointment-status ${apt.status}">${this.getAppointmentStatusText(apt.status)}</span>
-                                ${canJoin ? `
-                                    <button class="btn btn-primary btn-sm" onclick="window.router.navigate('/video-call', { appointment_id: ${apt.id} })">
-                                        <i class="fas fa-video"></i> เข้าร่วม
-                                    </button>
-                                ` : ''}
-                            </div>
-                        </div>
-                    `;
-                }).join('');
+            if (data.success && (data.upcoming?.length > 0 || data.past?.length > 0)) {
+                let html = '';
+                
+                // Upcoming appointments
+                if (data.upcoming?.length > 0) {
+                    html += '<h3 class="appointments-section-title">นัดหมายที่กำลังจะมาถึง</h3>';
+                    html += data.upcoming.map(apt => this.renderMyAppointmentCard(apt, true)).join('');
+                }
+                
+                // Past appointments
+                if (data.past?.length > 0) {
+                    html += '<h3 class="appointments-section-title">นัดหมายที่ผ่านมา</h3>';
+                    html += data.past.map(apt => this.renderMyAppointmentCard(apt, false)).join('');
+                }
+                
+                container.innerHTML = html;
             } else {
                 container.innerHTML = `
                     <div class="empty-state">
@@ -6744,6 +6736,41 @@ class LiffApp {
                 </div>
             `;
         }
+    }
+
+    /**
+     * Render my appointment card
+     */
+    renderMyAppointmentCard(apt, isUpcoming) {
+        const canJoin = isUpcoming && apt.status === 'confirmed' && this.isAppointmentTimeNow(apt.appointment_date, apt.appointment_time);
+        const dateFormatted = new Date(apt.appointment_date).toLocaleDateString('th-TH', { 
+            day: 'numeric', 
+            month: 'short', 
+            year: '2-digit' 
+        });
+        
+        return `
+            <div class="my-appointment-card ${apt.status}">
+                <div class="appointment-datetime">
+                    <i class="far fa-calendar"></i>
+                    ${dateFormatted} เวลา ${apt.appointment_time}
+                </div>
+                <div class="appointment-pharmacist">
+                    <img src="${apt.pharmacist_image || this.config.BASE_URL + '/assets/images/avatar-placeholder.png'}" 
+                         alt="${apt.pharmacist_name}"
+                         onerror="this.src='${this.config.BASE_URL}/assets/images/avatar-placeholder.png'">
+                    <span>${apt.pharmacist_name || 'เภสัชกร'}</span>
+                </div>
+                <div class="appointment-status-row">
+                    <span class="appointment-status ${apt.status}">${this.getAppointmentStatusText(apt.status)}</span>
+                    ${canJoin ? `
+                        <button class="btn btn-primary btn-sm" onclick="window.router.navigate('/video-call', { appointment_id: '${apt.appointment_id}' })">
+                            <i class="fas fa-video"></i> เข้าร่วม
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `;
     }
 
     /**
@@ -6812,20 +6839,25 @@ class LiffApp {
         if (!container) return;
 
         try {
-            const response = await fetch(this.config.BASE_URL + '/api/rewards.php?action=list');
+            const response = await fetch(`${this.config.BASE_URL}/api/points.php?action=rewards&line_account_id=${this.config.ACCOUNT_ID}`);
             const data = await response.json();
 
             if (data.success && data.rewards?.length > 0) {
+                const member = window.store?.get('member');
+                const userPoints = member?.points || 0;
+                
                 let html = '';
                 data.rewards.forEach(reward => {
+                    const canRedeem = userPoints >= reward.points_required;
                     html += `
-                        <div class="reward-card" onclick="window.liffApp.showRewardDetail(${reward.id})">
-                            <img src="${reward.image_url || 'assets/images/placeholder.png'}" 
+                        <div class="reward-card ${!canRedeem ? 'disabled' : ''}" onclick="${canRedeem ? `window.liffApp.showRewardDetail(${reward.id})` : ''}">
+                            <img src="${reward.image_url || this.config.BASE_URL + '/assets/images/image-placeholder.svg'}" 
                                  class="reward-image"
-                                 onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23f0f0f0%22 width=%22100%22 height=%22100%22/></svg>'">
+                                 onerror="this.src='${this.config.BASE_URL}/assets/images/image-placeholder.svg'">
                             <div class="reward-info">
                                 <div class="reward-name">${reward.name}</div>
                                 <div class="reward-points">${this.formatNumber(reward.points_required)} แต้ม</div>
+                                ${!canRedeem ? '<div class="reward-insufficient">แต้มไม่พอ</div>' : ''}
                             </div>
                         </div>
                     `;
