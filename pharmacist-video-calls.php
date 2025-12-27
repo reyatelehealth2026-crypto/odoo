@@ -6,16 +6,10 @@
 
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/config/database.php';
-require_once __DIR__ . '/includes/auth.php';
-
-// Check authentication
-if (!isLoggedIn()) {
-    header('Location: auth/login.php');
-    exit;
-}
+require_once __DIR__ . '/includes/auth_check.php';
 
 $db = Database::getInstance()->getConnection();
-$lineAccountId = $_SESSION['line_account_id'] ?? 1;
+$lineAccountId = $_SESSION['line_account_id'] ?? $_SESSION['admin_user']['line_account_id'] ?? 1;
 
 // Get pharmacist info if logged in as pharmacist
 $pharmacistId = $_SESSION['pharmacist_id'] ?? null;
