@@ -11845,3 +11845,251 @@ body:has(.ai-chat-page) .bottom-nav {
     color: var(--danger);
     padding: var(--space-4);
 }
+
+
+/* ==================== Register Page ==================== */
+.register-page {
+    min-height: 100vh;
+    background: var(--bg-light);
+    padding-bottom: calc(100px + var(--safe-area-bottom));
+}
+
+.register-header {
+    display: flex;
+    align-items: center;
+    padding: var(--space-4);
+    background: var(--bg-white);
+    border-bottom: 1px solid var(--border-light);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.register-form {
+    padding: var(--space-4);
+}
+
+.register-profile-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4);
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+}
+
+.register-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+    border: 3px solid var(--primary);
+}
+
+.register-profile-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.register-profile-hint {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 4px 0 0;
+}
+
+.form-section {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.form-section-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-4);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.form-section-title .required {
+    color: var(--error);
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3);
+}
+
+.form-group {
+    margin-bottom: var(--space-3);
+}
+
+.form-group label {
+    display: block;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-1);
+}
+
+.form-group label .required {
+    color: var(--error);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 16px;
+    color: var(--text-primary);
+    background: var(--bg-white);
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(17, 176, 166, 0.1);
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+    color: var(--text-muted);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font-size: 14px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    margin-top: 2px;
+    accent-color: var(--primary);
+}
+
+.checkbox-label a {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.btn-lg {
+    padding: var(--space-4);
+    font-size: 18px;
+}
+
+/* Appointments Section Title */
+.appointments-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: var(--space-4) 0 var(--space-2);
+    padding: 0 var(--space-2);
+}
+
+.appointments-section-title:first-child {
+    margin-top: 0;
+}
+
+/* My Appointment Card */
+.my-appointment-card {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-bottom: var(--space-3);
+    box-shadow: var(--shadow-sm);
+}
+
+.my-appointment-card .appointment-datetime {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.my-appointment-card .appointment-pharmacist {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+}
+
+.my-appointment-card .appointment-pharmacist img {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-full);
+    object-fit: cover;
+}
+
+.my-appointment-card .appointment-pharmacist span {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.my-appointment-card .appointment-status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.my-appointment-card .appointment-status {
+    font-size: 12px;
+    font-weight: 600;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+}
+
+.my-appointment-card .appointment-status.confirmed {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.my-appointment-card .appointment-status.pending {
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
+.my-appointment-card .appointment-status.completed {
+    background: var(--bg-gray);
+    color: var(--text-muted);
+}
+
+.my-appointment-card .appointment-status.cancelled {
+    background: var(--error-light);
+    color: var(--error);
+}
+
+/* Reward Card Disabled */
+.reward-card.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.reward-insufficient {
+    font-size: 12px;
+    color: var(--error);
+    margin-top: var(--space-1);
+}

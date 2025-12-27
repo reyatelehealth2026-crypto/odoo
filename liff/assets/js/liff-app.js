@@ -271,12 +271,15 @@ class LiffApp {
         
         // Other pages - placeholder for now
         const placeholderPages = [
-            'points', 'coupons', 'symptom', 'register'
+            'points', 'coupons', 'symptom'
         ];
         
         placeholderPages.forEach(page => {
             window.router.register(page, (params) => this.renderPlaceholderPage(page, params));
         });
+        
+        // Register page - full implementation
+        window.router.register('register', () => this.renderRegisterPage());
     }
 
     /**
@@ -2310,6 +2313,8 @@ class LiffApp {
         const profile = window.store?.get('profile');
         if (!profile?.userId) {
             this._loadingCart = false;
+            // Use local cart if not logged in
+            this.refreshCartDisplay();
             return;
         }
 
@@ -2318,7 +2323,7 @@ class LiffApp {
             const response = await this.fetchWithRetry(url);
             const data = await response.json();
 
-            if (data.success && data.items) {
+            if (data.success && data.items && data.items.length > 0) {
                 // Update store with server cart data
                 const cart = window.store.get('cart');
                 cart.items = data.items.map(item => ({
@@ -2336,10 +2341,13 @@ class LiffApp {
                 cart.hasPrescription = cart.items.some(item => item.is_prescription);
                 
                 window.store.set('cart', cart);
-                this.refreshCartDisplay();
             }
+            // If server returns empty, keep local cart (don't overwrite)
+            this.refreshCartDisplay();
         } catch (error) {
             console.error('Error loading cart from server:', error);
+            // On error, just display local cart
+            this.refreshCartDisplay();
         } finally {
             this._loadingCart = false;
         }
@@ -6881,6 +6889,239 @@ class LiffApp {
     showRewardDetail(rewardId) {
         // TODO: Show reward detail modal
         this.showToast('เร็วๆ นี้', 'info');
+    }
+
+    /**
+     * Render Register/Member Registration page
+     */
+    renderRegisterPage() {
+        const profile = window.store?.get('profile');
+        
+        // Check if already registered
+        const member = window.store?.get('member');
+        if (member?.is_registered) {
+            setTimeout(() => {
+                this.showToast('คุณเป็นสมาชิกอยู่แล้ว', 'info');
+                window.router.navigate('/member');
+            }, 100);
+            return '<div class="loading-page"><div class="loading-spinner"></div></div>';
+        }
+
+        return `
+            <div class="register-page">
+                <div class="register-header">
+                    <button class="back-btn" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">สมัครสมาชิก</h1>
+                    <div class="header-spacer"></div>
+                </div>
+
+                <form id="register-form" class="register-form" onsubmit="window.liffApp.submitRegistration(event)">
+                    <!-- Profile Preview -->
+                    <div class="register-profile-preview">
+                        <img src="${profile?.pictureUrl || this.config.BASE_URL + '/assets/images/avatar-placeholder.png'}" 
+                             alt="Profile" class="register-avatar"
+                             onerror="this.src='${this.config.BASE_URL}/assets/images/avatar-placeholder.png'">
+                        <div class="register-profile-info">
+                            <p class="register-profile-name">${profile?.displayName || 'ผู้ใช้'}</p>
+                            <p class="register-profile-hint">ข้อมูลจาก LINE</p>
+                        </div>
+                    </div>
+
+                    <!-- Required Fields -->
+                    <div class="form-section">
+                        <h3 class="form-section-title">ข้อมูลส่วนตัว <span class="required">*</span></h3>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="first_name">ชื่อ <span class="required">*</span></label>
+                                <input type="text" id="first_name" name="first_name" required placeholder="ชื่อจริง">
+                            </div>
+                            <div class="form-group">
+                                <label for="last_name">นามสกุล</label>
+                                <input type="text" id="last_name" name="last_name" placeholder="นามสกุล">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="birthday">วันเกิด <span class="required">*</span></label>
+                                <input type="date" id="birthday" name="birthday" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="gender">เพศ <span class="required">*</span></label>
+                                <select id="gender" name="gender" required>
+                                    <option value="">เลือก</option>
+                                    <option value="male">ชาย</option>
+                                    <option value="female">หญิง</option>
+                                    <option value="other">อื่นๆ</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="phone">เบอร์โทรศัพท์</label>
+                            <input type="tel" id="phone" name="phone" placeholder="0812345678" pattern="[0-9]{9,10}">
+                        </div>
+                    </div>
+
+                    <!-- Health Info -->
+                    <div class="form-section">
+                        <h3 class="form-section-title">ข้อมูลสุขภาพ (ถ้ามี)</h3>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="weight">น้ำหนัก (กก.)</label>
+                                <input type="number" id="weight" name="weight" placeholder="60" min="1" max="300" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label for="height">ส่วนสูง (ซม.)</label>
+                                <input type="number" id="height" name="height" placeholder="170" min="50" max="250">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="drug_allergies">แพ้ยา</label>
+                            <textarea id="drug_allergies" name="drug_allergies" rows="2" placeholder="ระบุยาที่แพ้ (ถ้ามี)"></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="medical_conditions">โรคประจำตัว</label>
+                            <textarea id="medical_conditions" name="medical_conditions" rows="2" placeholder="ระบุโรคประจำตัว (ถ้ามี)"></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Address -->
+                    <div class="form-section">
+                        <h3 class="form-section-title">ที่อยู่จัดส่ง (ถ้ามี)</h3>
+                        
+                        <div class="form-group">
+                            <label for="address">ที่อยู่</label>
+                            <textarea id="address" name="address" rows="2" placeholder="บ้านเลขที่ ซอย ถนน"></textarea>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="district">เขต/อำเภอ</label>
+                                <input type="text" id="district" name="district" placeholder="เขต/อำเภอ">
+                            </div>
+                            <div class="form-group">
+                                <label for="province">จังหวัด</label>
+                                <input type="text" id="province" name="province" placeholder="จังหวัด">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="postal_code">รหัสไปรษณีย์</label>
+                            <input type="text" id="postal_code" name="postal_code" placeholder="10xxx" pattern="[0-9]{5}">
+                        </div>
+                    </div>
+
+                    <!-- Consent -->
+                    <div class="form-section">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="consent" name="consent" required>
+                            <span>ยอมรับ <a href="#" onclick="window.liffApp.showTerms(); return false;">ข้อกำหนดและเงื่อนไข</a> และ <a href="#" onclick="window.liffApp.showPrivacy(); return false;">นโยบายความเป็นส่วนตัว</a></span>
+                        </label>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <button type="submit" id="register-submit-btn" class="btn btn-primary btn-block btn-lg">
+                        <i class="fas fa-user-plus"></i> สมัครสมาชิก
+                    </button>
+                </form>
+            </div>
+        `;
+    }
+
+    /**
+     * Submit registration form
+     */
+    async submitRegistration(event) {
+        event.preventDefault();
+        
+        const profile = window.store?.get('profile');
+        if (!profile?.userId) {
+            this.showToast('กรุณาเข้าสู่ระบบผ่าน LINE ก่อน', 'warning');
+            return;
+        }
+
+        const form = document.getElementById('register-form');
+        const btn = document.getElementById('register-submit-btn');
+        
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        // Disable button
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังสมัคร...';
+
+        try {
+            const formData = new FormData(form);
+            const data = {
+                action: 'register',
+                line_user_id: profile.userId,
+                line_account_id: this.config.ACCOUNT_ID,
+                first_name: formData.get('first_name'),
+                last_name: formData.get('last_name'),
+                birthday: formData.get('birthday'),
+                gender: formData.get('gender'),
+                phone: formData.get('phone'),
+                weight: formData.get('weight'),
+                height: formData.get('height'),
+                drug_allergies: formData.get('drug_allergies'),
+                medical_conditions: formData.get('medical_conditions'),
+                address: formData.get('address'),
+                district: formData.get('district'),
+                province: formData.get('province'),
+                postal_code: formData.get('postal_code')
+            };
+
+            const response = await fetch(`${this.config.BASE_URL}/api/member.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showToast('สมัครสมาชิกสำเร็จ!', 'success');
+                
+                // Reload member data
+                await this.loadMemberData();
+                
+                // Navigate to member card
+                setTimeout(() => {
+                    window.router.navigate('/member');
+                }, 1000);
+            } else {
+                this.showToast(result.message || 'ไม่สามารถสมัครได้', 'error');
+            }
+        } catch (error) {
+            console.error('Registration error:', error);
+            this.showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-user-plus"></i> สมัครสมาชิก';
+        }
+    }
+
+    /**
+     * Show terms of service
+     */
+    showTerms() {
+        window.open(`${this.config.BASE_URL}/terms-of-service.php`, '_blank');
+    }
+
+    /**
+     * Show privacy policy
+     */
+    showPrivacy() {
+        window.open(`${this.config.BASE_URL}/privacy-policy.php`, '_blank');
     }
 
     /**
