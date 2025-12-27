@@ -23,14 +23,20 @@ if (class_exists('Database') && file_exists(__DIR__ . '/../classes/AdminAuth.php
 
 // ตรวจสอบว่าล็อกอินหรือยัง
 if (!isset($_SESSION['admin_user'])) {
-    // Determine redirect path based on current location
-    $currentPath = $_SERVER['PHP_SELF'];
-    $isInSubfolder = strpos($currentPath, '/shop/') !== false || 
-                     strpos($currentPath, '/user/') !== false ||
-                     strpos($currentPath, '/auth/') !== false;
-    $redirectPath = $isInSubfolder ? '../auth/login.php' : 'auth/login.php';
+    // Use absolute path to avoid relative path issues
+    // Get the base URL dynamically
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+    $host = $_SERVER['HTTP_HOST'];
     
-    header('Location: ' . (defined('AUTH_REDIRECT') ? AUTH_REDIRECT : $redirectPath));
+    // Determine base path (remove /admin, /shop, /user, /auth from current path)
+    $scriptPath = dirname($_SERVER['SCRIPT_NAME']);
+    $basePath = preg_replace('#/(admin|shop|user|auth).*$#', '', $scriptPath);
+    $basePath = rtrim($basePath, '/');
+    
+    // Build absolute login URL
+    $loginUrl = $basePath . '/auth/login.php';
+    
+    header('Location: ' . (defined('AUTH_REDIRECT') ? AUTH_REDIRECT : $loginUrl));
     exit;
 }
 

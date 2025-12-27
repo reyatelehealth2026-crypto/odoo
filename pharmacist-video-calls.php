@@ -315,14 +315,9 @@ include __DIR__ . '/includes/header.php';
 <div class="video-calls-container">
     <div class="calls-header">
         <h1><i class="fas fa-video"></i> วิดีโอคอล - รับสาย</h1>
-        <div style="display: flex; gap: 12px; align-items: center;">
-            <button onclick="debugCalls()" class="btn btn-sm btn-secondary" style="padding: 8px 16px; border-radius: 8px; background: #6B7280; color: white; border: none; cursor: pointer;">
-                <i class="fas fa-bug"></i> Debug
-            </button>
-            <div class="status-badge online">
-                <span class="pulse-dot"></span>
-                <span>พร้อมรับสาย</span>
-            </div>
+        <div class="status-badge online">
+            <span class="pulse-dot"></span>
+            <span>พร้อมรับสาย</span>
         </div>
     </div>
     
@@ -345,15 +340,6 @@ include __DIR__ . '/includes/header.php';
                 <span>🔴</span> บันทึก
             </button>
         </div>
-    </div>
-    
-    <!-- Debug Panel -->
-    <div id="debug-panel" style="display: none; background: #1F2937; color: #10B981; padding: 16px; border-radius: 12px; margin-bottom: 20px; font-family: monospace; font-size: 13px; max-height: 300px; overflow: auto;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-            <strong>🔍 Debug Info</strong>
-            <button onclick="document.getElementById('debug-panel').style.display='none'" style="background: none; border: none; color: #EF4444; cursor: pointer;">✕</button>
-        </div>
-        <pre id="debug-content" style="margin: 0; white-space: pre-wrap;"></pre>
     </div>
     
     <div id="calls-list" class="calls-grid">
@@ -401,12 +387,8 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <script>
-console.log('📹 Pharmacist Video Calls - Script loaded');
-
 const API_URL = '<?= rtrim(BASE_URL, "/") ?>/liff-video-call-pro.php';
 const LINE_ACCOUNT_ID = <?= (int)$lineAccountId ?>;
-
-console.log('📹 Config:', { API_URL, LINE_ACCOUNT_ID });
 
 const rtcConfig = {
     iceServers: [
@@ -430,30 +412,17 @@ let offerReceived = false;
 
 // Poll for incoming calls
 async function checkIncomingCalls() {
-    console.log('📹 Checking incoming calls...');
     try {
-        const url = `${API_URL}?action=check_calls&account_id=${LINE_ACCOUNT_ID}`;
-        console.log('📹 Fetching:', url);
-        const res = await fetch(url);
+        const res = await fetch(`${API_URL}?action=check_calls&account_id=${LINE_ACCOUNT_ID}`);
         const data = await res.json();
-        console.log('📹 Response:', data);
-        
-        // Show debug info
-        if (data.debug) {
-            console.log('📹 Debug - hasAppointmentId:', data.debug.hasAppointmentId);
-            console.log('📹 Debug - SQL:', data.debug.sql);
-        }
         
         if (data.success && data.calls?.length > 0) {
-            console.log('📹 Found', data.calls.length, 'calls');
-            console.log('📹 Calls data:', JSON.stringify(data.calls, null, 2));
             renderCalls(data.calls);
         } else {
-            console.log('📹 No calls found');
             renderEmptyState();
         }
     } catch (e) {
-        console.error('📹 Check calls error:', e);
+        console.error('Check calls error:', e);
     }
 }
 
@@ -575,7 +544,6 @@ async function setupPeerConnection() {
     
     // Handle remote stream
     peerConnection.ontrack = (event) => {
-        console.log('📹 Remote track received');
         document.getElementById('remote-video').srcObject = event.streams[0];
         document.getElementById('call-status-text').textContent = 'เชื่อมต่อแล้ว';
         document.getElementById('call-timer').style.display = 'inline';
@@ -592,7 +560,6 @@ async function setupPeerConnection() {
     // Handle connection state
     peerConnection.oniceconnectionstatechange = () => {
         const state = peerConnection.iceConnectionState;
-        console.log('📹 ICE state:', state);
         
         if (state === 'connected' || state === 'completed') {
             document.getElementById('call-status-text').textContent = 'เชื่อมต่อแล้ว';
@@ -636,8 +603,6 @@ function startSignalPolling() {
 async function handleSignal(signal) {
     if (!peerConnection && signal.signal_type !== 'hangup' && signal.signal_type !== 'message') return;
     
-    console.log('📹 Handling signal:', signal.signal_type);
-    
     try {
         if (signal.signal_type === 'offer') {
             if (offerReceived) return;
@@ -664,11 +629,9 @@ async function handleSignal(signal) {
             }
         } else if (signal.signal_type === 'hangup') {
             // Other party hung up
-            console.log('📹 Received hangup signal');
             endCurrentCall('ลูกค้าวางสายแล้ว');
         } else if (signal.signal_type === 'message') {
             // Received message from other party
-            console.log('📹 Received message:', signal.signal_data);
             showIncomingMessage(signal.signal_data);
         }
     } catch (e) {
@@ -840,23 +803,6 @@ function formatDuration(seconds) {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
     const s = (seconds % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
-}
-
-// Debug function - show all calls in database
-async function debugCalls() {
-    const panel = document.getElementById('debug-panel');
-    const content = document.getElementById('debug-content');
-    panel.style.display = 'block';
-    content.textContent = 'Loading...';
-    
-    try {
-        const res = await fetch(`${API_URL}?action=debug`);
-        const data = await res.json();
-        content.textContent = JSON.stringify(data, null, 2);
-        console.log('📹 Debug data:', data);
-    } catch (e) {
-        content.textContent = 'Error: ' + e.message;
-    }
 }
 
 // ==================== Quick Actions ====================
@@ -1041,13 +987,11 @@ function showQuickActionToast(message, type = 'success') {
 }
 
 // Start polling
-console.log('📹 Starting polling for incoming calls...');
 setInterval(checkIncomingCalls, 3000);
 checkIncomingCalls();
 
 // Initial call immediately
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('📹 DOM loaded, checking calls...');
     checkIncomingCalls();
 });
 </script>

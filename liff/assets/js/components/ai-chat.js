@@ -36,15 +36,10 @@ class AIChat {
      * @param {HTMLElement} container - Container element to render into
      */
     init(container) {
-        if (window.debugLog) window.debugLog('AIChat.init() called', 'info');
         this.container = container;
-        if (window.debugLog) window.debugLog('Calling render()...', 'info');
         this.render();
-        if (window.debugLog) window.debugLog('Calling setupEventListeners()...', 'info');
         this.setupEventListeners();
-        if (window.debugLog) window.debugLog('Calling showWelcomeMessage()...', 'info');
         this.showWelcomeMessage();
-        if (window.debugLog) window.debugLog('AIChat.init() complete', 'success');
     }
 
     /**
@@ -392,8 +387,6 @@ class AIChat {
      * @param {string} message - User message
      */
     async processMessage(message) {
-        console.log('[AI Chat] Processing message:', message);
-        
         // Client-side emergency check first (for immediate response)
         const clientEmergency = this.checkEmergencySymptoms(message);
         if (clientEmergency) {
@@ -406,7 +399,6 @@ class AIChat {
 
         try {
             const baseUrl = window.APP_CONFIG?.BASE_URL || '';
-            console.log('[AI Chat] Calling API:', `${baseUrl}/api/pharmacy-ai.php`);
             const response = await fetch(`${baseUrl}/api/pharmacy-ai.php`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -419,7 +411,6 @@ class AIChat {
             });
 
             const data = await response.json();
-            console.log('[AI Chat] API Response:', data);
 
             // Simulate realistic typing delay based on response length
             const typingDelay = Math.min(500 + (data.response?.length || 0) * 10, 2000);
@@ -1100,7 +1091,3 @@ if (typeof module !== 'undefined' && module.exports) {
 
 // Make available globally
 window.AIChat = AIChat;
-
-// Debug log when script loads
-if (window.debugLog) window.debugLog('ai-chat.js loaded, AIChat class available', 'success');
-console.log('✅ ai-chat.js loaded');
