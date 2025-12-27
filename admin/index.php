@@ -8,6 +8,10 @@
  * Requirements: 6.1, 6.3
  */
 
+// Debug mode
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
+
 // Set the base path for includes - we're in /admin/ folder
 define('ADMIN_BASE_PATH', dirname(__DIR__) . '/');
 
