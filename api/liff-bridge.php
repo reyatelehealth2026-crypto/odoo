@@ -8,21 +8,56 @@
  * - Send via API instead (push message)
  */
 
+// Suppress PHP errors from being output (they break JSON)
+error_reporting(0);
+ini_set('display_errors', 0);
+
 header('Content-Type: application/json; charset=utf-8');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    echo json_encode(['success' => true]);
     exit(0);
 }
 
+// Set up error handler to return JSON on fatal errors
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+        }
+        echo json_encode([
+            'success' => false,
+            'message' => 'Server error: ' . $error['message']
+        ]);
+    }
+});
+
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../classes/LineAPI.php';
-require_once __DIR__ . '/../classes/FlexTemplates.php';
 
-$db = Database::getInstance()->getConnection();
+// Try to load optional classes
+try {
+    require_once __DIR__ . '/../classes/LineAPI.php';
+} catch (Exception $e) {
+    // LineAPI not available
+}
+
+try {
+    require_once __DIR__ . '/../classes/FlexTemplates.php';
+} catch (Exception $e) {
+    // FlexTemplates not available
+}
+
+try {
+    $db = Database::getInstance()->getConnection();
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+    exit;
+}
 
 // Only accept POST requests
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
