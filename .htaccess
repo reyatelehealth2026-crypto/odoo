@@ -10,6 +10,8 @@ RewriteBase /
 # =====================================================
 # Redirect /liff-app to /liff/
 # =====================================================
+RewriteCond %{QUERY_STRING} ^(.*)$
+RewriteRule ^liff-app\.php$ /liff/?%1 [R=301,L]
 RewriteRule ^liff-app/?$ /liff/ [R=301,L]
 RewriteRule ^liff-app/(.*)$ /liff/$1 [R=301,L]
 
