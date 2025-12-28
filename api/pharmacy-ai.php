@@ -1,7 +1,7 @@
 <?php
 /**
- * Pharmacy AI API
- * API สำหรับ LIFF Pharmacy Consultation
+ * Pharmacy AI API - Enhanced Version
+ * API สำหรับ LIFF Pharmacy Consultation พร้อมข้อมูลธุรกิจครบถ้วน
  * Requirements: 7.1, 7.2, 7.3, 7.4, 7.5
  */
 header('Content-Type: application/json; charset=utf-8');
@@ -32,29 +32,31 @@ if ($action === 'log_emergency') {
     exit;
 }
 
+if ($action === 'get_context') {
+    // Return full business context for AI
+    echo json_encode(getFullBusinessContext($db, $userId));
+    exit;
+}
+
 if (empty($message)) {
     echo json_encode(['success' => false, 'error' => 'No message']);
     exit;
 }
 
 try {
-    // Get line_account_id
-    $lineAccountId = null;
-    $internalUserId = null;
+    // Get user data with full context
+    $userContext = getUserFullContext($db, $userId);
+    $lineAccountId = $userContext['line_account_id'] ?? null;
+    $internalUserId = $userContext['id'] ?? null;
     
-    if ($userId) {
-        $stmt = $db->prepare("SELECT id, line_account_id FROM users WHERE line_user_id = ? LIMIT 1");
-        $stmt->execute([$userId]);
-        $user = $stmt->fetch(PDO::FETCH_ASSOC);
-        $lineAccountId = $user['line_account_id'] ?? null;
-        $internalUserId = $user['id'] ?? null;
-    }
+    // Get business context
+    $businessContext = getBusinessContext($db, $lineAccountId);
     
     // Check for emergency symptoms first
     $emergencyCheck = checkEmergencySymptoms($message);
     
-    // Process message with built-in AI logic
-    $result = processPharmacyMessage($db, $message, $state, $triageData, $lineAccountId);
+    // Process message with enhanced AI logic (includes user & business context)
+    $result = processPharmacyMessage($db, $message, $state, $triageData, $lineAccountId, $userContext, $businessContext);
     
     // Get product recommendations if applicable
     $products = [];
@@ -71,7 +73,13 @@ try {
         'is_critical' => $emergencyCheck['is_critical'] ?? false,
         'emergency_info' => $emergencyCheck['is_critical'] ? $emergencyCheck : null,
         'products' => $products,
-        'suggest_pharmacist' => $result['suggest_pharmacist'] ?? false
+        'suggest_pharmacist' => $result['suggest_pharmacist'] ?? false,
+        'user_context' => [
+            'name' => $userContext['display_name'] ?? null,
+            'points' => $userContext['points'] ?? 0,
+            'tier' => $userContext['tier'] ?? 'bronze',
+            'has_allergies' => !empty($userContext['drug_allergies'])
+        ]
     ]);
     
 } catch (Exception $e) {
@@ -85,10 +93,202 @@ try {
 }
 
 /**
- * Process pharmacy message with built-in logic
+ * Get full user context including health profile, orders, points
  */
-function processPharmacyMessage($db, $message, $state, $triageData, $lineAccountId) {
+function getUserFullContext($db, $lineUserId) {
+    if (!$lineUserId) return [];
+    
+    try {
+        // Get user basic info + health data
+        $stmt = $db->prepare("
+            SELECT u.*, 
+                   uhp.allergies as health_allergies,
+                   uhp.medical_conditions as health_conditions,
+                   uhp.current_medications as health_medications
+            FROM users u
+            LEFT JOIN user_health_profiles uhp ON u.line_user_id = uhp.line_user_id
+            WHERE u.line_user_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$lineUserId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) return [];
+        
+        // Get recent orders
+        $stmt = $db->prepare("
+            SELECT t.id, t.order_number, t.total_amount, t.status, t.created_at,
+                   GROUP_CONCAT(ti.product_name SEPARATOR ', ') as products
+            FROM transactions t
+            LEFT JOIN transaction_items ti ON t.id = ti.transaction_id
+            WHERE t.user_id = ?
+            GROUP BY t.id
+            ORDER BY t.created_at DESC
+            LIMIT 5
+        ");
+        $stmt->execute([$user['id']]);
+        $user['recent_orders'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get frequently purchased products
+        $stmt = $db->prepare("
+            SELECT ti.product_name, COUNT(*) as purchase_count
+            FROM transaction_items ti
+            JOIN transactions t ON ti.transaction_id = t.id
+            WHERE t.user_id = ?
+            GROUP BY ti.product_name
+            ORDER BY purchase_count DESC
+            LIMIT 5
+        ");
+        $stmt->execute([$user['id']]);
+        $user['frequent_products'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get available rewards
+        $stmt = $db->prepare("
+            SELECT r.name, r.points_required, r.reward_type
+            FROM rewards r
+            WHERE r.is_active = 1 
+            AND r.points_required <= ?
+            AND (r.end_date IS NULL OR r.end_date >= CURDATE())
+            ORDER BY r.points_required ASC
+            LIMIT 3
+        ");
+        $stmt->execute([$user['points'] ?? 0]);
+        $user['available_rewards'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        return $user;
+        
+    } catch (Exception $e) {
+        error_log("getUserFullContext error: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Get business context - shop info, pharmacists, promotions
+ */
+function getBusinessContext($db, $lineAccountId) {
+    $context = [];
+    
+    try {
+        // Get shop settings
+        $stmt = $db->prepare("
+            SELECT shop_name, shop_description, shipping_fee, free_shipping_min, 
+                   contact_phone, is_open
+            FROM shop_settings 
+            WHERE line_account_id = ? OR line_account_id IS NULL
+            LIMIT 1
+        ");
+        $stmt->execute([$lineAccountId]);
+        $context['shop'] = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        
+        // Get available pharmacists
+        $stmt = $db->prepare("
+            SELECT id, name, specialty, rating, is_available
+            FROM pharmacists
+            WHERE is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL)
+            ORDER BY is_available DESC, rating DESC
+            LIMIT 5
+        ");
+        $stmt->execute([$lineAccountId]);
+        $context['pharmacists'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get active promotions/featured products
+        $stmt = $db->prepare("
+            SELECT id, name, price, sale_price, image_url
+            FROM business_items
+            WHERE is_active = 1 AND is_featured = 1
+            AND (line_account_id = ? OR line_account_id IS NULL)
+            ORDER BY sold_count DESC
+            LIMIT 6
+        ");
+        $stmt->execute([$lineAccountId]);
+        $context['featured_products'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get product categories
+        $stmt = $db->prepare("
+            SELECT id, name, description
+            FROM item_categories
+            WHERE is_active = 1 AND (line_account_id = ? OR line_account_id IS NULL)
+            ORDER BY sort_order ASC
+            LIMIT 10
+        ");
+        $stmt->execute([$lineAccountId]);
+        $context['categories'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Get points settings
+        $stmt = $db->prepare("
+            SELECT points_per_baht, min_order_for_points
+            FROM points_settings
+            WHERE line_account_id = ? OR line_account_id IS NULL
+            LIMIT 1
+        ");
+        $stmt->execute([$lineAccountId]);
+        $context['points_settings'] = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['points_per_baht' => 1];
+        
+        // Get low stock alerts (for pharmacist)
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as low_stock_count
+            FROM business_items
+            WHERE is_active = 1 AND stock <= min_stock AND stock > 0
+            AND (line_account_id = ? OR line_account_id IS NULL)
+        ");
+        $stmt->execute([$lineAccountId]);
+        $context['low_stock_count'] = $stmt->fetchColumn();
+        
+        return $context;
+        
+    } catch (Exception $e) {
+        error_log("getBusinessContext error: " . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Get full business context for external AI integration
+ */
+function getFullBusinessContext($db, $lineUserId) {
+    $lineAccountId = null;
+    
+    if ($lineUserId) {
+        $stmt = $db->prepare("SELECT line_account_id FROM users WHERE line_user_id = ? LIMIT 1");
+        $stmt->execute([$lineUserId]);
+        $lineAccountId = $stmt->fetchColumn();
+    }
+    
+    return [
+        'success' => true,
+        'user' => getUserFullContext($db, $lineUserId),
+        'business' => getBusinessContext($db, $lineAccountId),
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
+}
+
+/**
+ * Process pharmacy message with enhanced AI logic
+ * Now includes user health profile and business context
+ */
+function processPharmacyMessage($db, $message, $state, $triageData, $lineAccountId, $userContext = [], $businessContext = []) {
     $lowerMessage = mb_strtolower($message, 'UTF-8');
+    
+    // Personalized greeting with user data
+    $userName = $userContext['display_name'] ?? $userContext['first_name'] ?? '';
+    $userPoints = $userContext['points'] ?? 0;
+    $userTier = $userContext['tier'] ?? 'bronze';
+    $userAllergies = $userContext['drug_allergies'] ?? $userContext['health_allergies'] ?? '';
+    $userConditions = $userContext['chronic_diseases'] ?? $userContext['health_conditions'] ?? '';
+    $shopName = $businessContext['shop']['shop_name'] ?? 'ร้านยา';
+    
+    // Check for allergy warnings in product recommendations
+    $allergyWarning = '';
+    if (!empty($userAllergies)) {
+        $allergyWarning = "\n\n⚠️ หมายเหตุ: คุณมีประวัติแพ้ยา: {$userAllergies}\nกรุณาตรวจสอบส่วนประกอบก่อนใช้ยาทุกครั้งค่ะ";
+    }
+    
+    // Check for condition warnings
+    $conditionWarning = '';
+    if (!empty($userConditions)) {
+        $conditionWarning = "\n\n💊 โรคประจำตัว: {$userConditions}\nบางยาอาจไม่เหมาะกับโรคประจำตัวของคุณ กรุณาปรึกษาเภสัชกรก่อนใช้ค่ะ";
+    }
     
     // Specific follow-up responses (check these FIRST before general symptoms)
     $followUpResponses = [
@@ -216,6 +416,70 @@ function processPharmacyMessage($db, $message, $state, $triageData, $lineAccount
                 'suggest_pharmacist' => $data['suggest_pharmacist'] ?? false
             ];
         }
+    }
+    
+    // User account related keywords
+    $accountKeywords = [
+        'แต้ม' => true, 'แต้มสะสม' => true, 'คะแนน' => true, 'point' => true,
+        'ออเดอร์' => true, 'คำสั่งซื้อ' => true, 'order' => true,
+        'ยาที่เคยซื้อ' => true, 'ประวัติซื้อ' => true, 'สั่งซ้ำ' => true
+    ];
+    
+    // Check for points inquiry
+    if (mb_strpos($lowerMessage, 'แต้ม') !== false || mb_strpos($lowerMessage, 'point') !== false || mb_strpos($lowerMessage, 'คะแนน') !== false) {
+        $availableRewards = $userContext['available_rewards'] ?? [];
+        $rewardsText = count($availableRewards) > 0 
+            ? "\n\n🎁 รางวัลที่แลกได้:\n" . implode("\n", array_map(fn($r) => "• {$r['name']} ({$r['points_required']} แต้ม)", $availableRewards))
+            : "\n\nยังไม่มีรางวัลที่แลกได้ในขณะนี้";
+        
+        return [
+            'response' => "🎁 ข้อมูลแต้มสะสมของคุณ" . ($userName ? " คุณ{$userName}" : "") . "\n\n💰 แต้มคงเหลือ: {$userPoints} แต้ม\n⭐ ระดับสมาชิก: {$userTier}{$rewardsText}",
+            'state' => 'points_info',
+            'data' => $triageData,
+            'quick_replies' => [
+                ['label' => '🎁 แลกรางวัล', 'text' => 'แลกรางวัล'],
+                ['label' => '📜 ประวัติแต้ม', 'text' => 'ประวัติแต้ม'],
+                ['label' => '🏠 กลับหน้าหลัก', 'text' => 'กลับหน้าหลัก']
+            ]
+        ];
+    }
+    
+    // Check for order inquiry
+    if (mb_strpos($lowerMessage, 'ออเดอร์') !== false || mb_strpos($lowerMessage, 'คำสั่งซื้อ') !== false || mb_strpos($lowerMessage, 'order') !== false) {
+        $recentOrders = $userContext['recent_orders'] ?? [];
+        $ordersText = count($recentOrders) > 0 
+            ? implode("\n\n", array_map(fn($o) => "🛒 #{$o['order_number']}\n   สถานะ: {$o['status']}\n   ยอด: ฿" . number_format($o['total_amount'], 0), array_slice($recentOrders, 0, 3)))
+            : "ยังไม่มีประวัติการสั่งซื้อ";
+        
+        return [
+            'response' => "📦 ออเดอร์ล่าสุดของคุณ\n\n{$ordersText}",
+            'state' => 'order_info',
+            'data' => $triageData,
+            'quick_replies' => [
+                ['label' => '🛒 ดูทั้งหมด', 'text' => 'ดูออเดอร์ทั้งหมด'],
+                ['label' => '🏪 ไปร้านค้า', 'text' => 'ไปร้านค้า'],
+                ['label' => '🏠 กลับหน้าหลัก', 'text' => 'กลับหน้าหลัก']
+            ]
+        ];
+    }
+    
+    // Check for reorder / purchase history
+    if (mb_strpos($lowerMessage, 'ยาที่เคยซื้อ') !== false || mb_strpos($lowerMessage, 'สั่งซ้ำ') !== false || mb_strpos($lowerMessage, 'ประวัติซื้อ') !== false) {
+        $frequentProducts = $userContext['frequent_products'] ?? [];
+        $productsText = count($frequentProducts) > 0 
+            ? implode("\n", array_map(fn($p) => "• {$p['product_name']} (ซื้อ {$p['purchase_count']} ครั้ง)", $frequentProducts))
+            : "ยังไม่มีประวัติการซื้อยา";
+        
+        return [
+            'response' => "💊 ยาที่คุณเคยซื้อบ่อย\n\n{$productsText}\n\nต้องการสั่งซื้อซ้ำไหมคะ?",
+            'state' => 'reorder',
+            'data' => $triageData,
+            'quick_replies' => [
+                ['label' => '🔄 สั่งซื้อซ้ำ', 'text' => 'สั่งซื้อยาเดิม'],
+                ['label' => '🏪 ไปร้านค้า', 'text' => 'ไปร้านค้า'],
+                ['label' => '🏠 กลับหน้าหลัก', 'text' => 'กลับหน้าหลัก']
+            ]
+        ];
     }
     
     // Symptom keywords mapping (general symptoms)
@@ -351,15 +615,20 @@ function processPharmacyMessage($db, $message, $state, $triageData, $lineAccount
         ];
     }
     
-    // Default response
+    // Default response - personalized with user data
+    $greeting = $userName ? "สวัสดีค่ะ คุณ{$userName} 👋" : "สวัสดีค่ะ 👋";
+    $pointsInfo = $userPoints > 0 ? "\n\n🎁 คุณมี {$userPoints} แต้มสะสม" : "";
+    $allergyInfo = !empty($userAllergies) ? "\n⚠️ ยาที่แพ้: {$userAllergies}" : "";
+    
     return [
-        'response' => "ขอบคุณที่ติดต่อมาค่ะ\n\nดิฉันพร้อมช่วยเหลือเรื่อง:\n• ประเมินอาการเบื้องต้น\n• แนะนำยาที่เหมาะสม\n• นัดปรึกษาเภสัชกร\n\nบอกอาการหรือเลือกจากเมนูด้านล่างได้เลยค่ะ",
+        'response' => "{$greeting}\n\nยินดีต้อนรับสู่ {$shopName} ค่ะ\nดิฉันพร้อมช่วยเหลือเรื่อง:\n• ประเมินอาการเบื้องต้น\n• แนะนำยาที่เหมาะสม\n• นัดปรึกษาเภสัชกร{$pointsInfo}{$allergyInfo}\n\nบอกอาการหรือเลือกจากเมนูด้านล่างได้เลยค่ะ",
         'state' => 'greeting',
         'data' => $triageData,
         'quick_replies' => [
             ['label' => '🤒 มีอาการป่วย', 'text' => 'มีอาการป่วย'],
             ['label' => '💊 ถามเรื่องยา', 'text' => 'ถามเรื่องยา'],
             ['label' => '👨‍⚕️ ปรึกษาเภสัชกร', 'text' => 'ปรึกษาเภสัชกร'],
+            ['label' => '🎁 ดูแต้มสะสม', 'text' => 'ดูแต้มสะสม'],
             ['label' => '🏪 ไปร้านค้า', 'text' => 'ไปร้านค้า']
         ]
     ];
