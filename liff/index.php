@@ -133,7 +133,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <!-- App Styles -->
-    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=20251228c">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=20251228d">
 </head>
 <body>
     <!-- Loading Overlay - Shows immediately (Requirement 1.1) -->
@@ -184,6 +184,24 @@ $currentPage = $pages[$page] ?? $pages['home'];
     <!-- Modal Container -->
     <div id="modal-container" class="modal-container hidden"></div>
 
+    <!-- Floating Cart Summary Bar (outside app-content for proper fixed positioning) -->
+    <div id="cart-summary-bar" class="cart-summary-bar">
+        <div class="cart-summary-info">
+            <div class="cart-summary-icon">
+                <i class="fas fa-shopping-cart"></i>
+                <span id="cart-summary-badge" class="cart-summary-badge">0</span>
+            </div>
+            <div class="cart-summary-text">
+                <span id="cart-summary-count" class="cart-summary-count">0 รายการ</span>
+                <span id="cart-summary-total" class="cart-summary-total">฿0</span>
+            </div>
+        </div>
+        <button class="cart-summary-btn" onclick="window.router.navigate('/cart')">
+            ดูตะกร้า
+            <i class="fas fa-chevron-right"></i>
+        </button>
+    </div>
+
     <!-- App Configuration -->
     <script>
         // Global error handler to catch JS errors (production - console only)
@@ -211,7 +229,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
     </script>
 
     <!-- App Scripts -->
-    <?php $v = '20251228c'; // Cache bust version ?>
+    <?php $v = '20251228d'; // Cache bust version ?>
     <script>window.debugLog('Loading scripts...', 'info');</script>
     <script src="<?= $baseUrl ?>/liff/assets/js/store.js?v=<?= $v ?>" onerror="window.debugLog('FAILED: store.js', 'error')"></script>
     <script>window.debugLog('store.js loaded', 'success');</script>

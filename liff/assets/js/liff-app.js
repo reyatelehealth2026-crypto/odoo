@@ -303,6 +303,18 @@ class LiffApp {
             this.removeCheckoutSubmitBar();
         }
         
+        // Show/hide cart summary bar based on page (only show on shop page)
+        const cartSummaryBar = document.getElementById('cart-summary-bar');
+        if (cartSummaryBar) {
+            if (route.page === 'shop') {
+                // Update and show cart summary bar on shop page
+                this.updateCartSummaryBar();
+            } else {
+                // Hide on other pages
+                cartSummaryBar.classList.remove('visible');
+            }
+        }
+        
         // Hide/show bottom nav based on page
         const bottomNav = document.getElementById('bottom-nav');
         if (bottomNav) {
@@ -1055,24 +1067,6 @@ class LiffApp {
                 <div id="shop-load-more" class="shop-load-more hidden">
                     <div class="shop-load-more-spinner"></div>
                     <span class="shop-load-more-text">กำลังโหลดเพิ่มเติม...</span>
-                </div>
-
-                <!-- Floating Cart Summary Bar (Requirement 2.5) -->
-                <div id="cart-summary-bar" class="cart-summary-bar">
-                    <div class="cart-summary-info">
-                        <div class="cart-summary-icon">
-                            <i class="fas fa-shopping-cart"></i>
-                            <span id="cart-summary-badge" class="cart-summary-badge">0</span>
-                        </div>
-                        <div class="cart-summary-text">
-                            <span id="cart-summary-count" class="cart-summary-count">0 รายการ</span>
-                            <span id="cart-summary-total" class="cart-summary-total">฿0</span>
-                        </div>
-                    </div>
-                    <button class="cart-summary-btn" onclick="window.router.navigate('/cart')">
-                        ดูตะกร้า
-                        <i class="fas fa-chevron-right"></i>
-                    </button>
                 </div>
             </div>
         `;
