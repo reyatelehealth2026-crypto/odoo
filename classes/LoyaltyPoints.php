@@ -158,12 +158,29 @@ class LoyaltyPoints
 
     public function getRewards($activeOnly = true)
     {
-        $sql = "SELECT * FROM rewards WHERE (line_account_id = ? OR line_account_id IS NULL)";
-        if ($activeOnly) $sql .= " AND is_active = 1";
-        $sql .= " ORDER BY points_required ASC";
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$this->lineAccountId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        try {
+            $hasLineAccountId = $this->columnExists('rewards', 'line_account_id');
+            $hasIsActive = $this->columnExists('rewards', 'is_active');
+            
+            $sql = "SELECT * FROM rewards WHERE 1=1";
+            $params = [];
+            
+            if ($hasLineAccountId) {
+                $sql .= " AND (line_account_id = ? OR line_account_id IS NULL)";
+                $params[] = $this->lineAccountId;
+            }
+            
+            if ($activeOnly && $hasIsActive) {
+                $sql .= " AND is_active = 1";
+            }
+            
+            $sql .= " ORDER BY points_required ASC";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            return [];
+        }
     }
 
     public function getReward($rewardId)
