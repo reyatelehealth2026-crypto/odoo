@@ -1367,7 +1367,7 @@ class AIChat {
             if (window.store) {
                 // Fetch product data first
                 const config = window.store.get('config');
-                const response = await fetch(`${config?.baseUrl || ''}/api/shop-products.php?action=get_product&id=${productId}`);
+                const response = await fetch(`${config?.baseUrl || ''}/api/shop-products.php?product_id=${productId}`);
                 const data = await response.json();
                 
                 if (data.success && data.product) {
