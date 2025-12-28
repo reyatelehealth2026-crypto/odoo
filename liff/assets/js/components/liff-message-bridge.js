@@ -57,6 +57,8 @@ class LiffMessageBridge {
      */
     async sendActionMessage(action, data = {}) {
         console.log('📨 LiffMessageBridge.sendActionMessage:', action, data);
+        console.log('📨 this.baseUrl:', this.baseUrl);
+        console.log('📨 this.accountId:', this.accountId);
         
         // Generate message from template
         const messageGenerator = this.messageTemplates[action];
@@ -78,13 +80,13 @@ class LiffMessageBridge {
             const liffAvailable = this.isLiffSendAvailable();
             console.log('📨 LIFF sendMessages available:', liffAvailable);
             
-            // Try LIFF sendMessages first
+            // Try LIFF sendMessages first (only if in LINE app)
             if (liffAvailable) {
                 console.log('📨 Sending via LIFF...');
                 result = await this.sendViaLiff(message, action, data);
             } else {
                 // Fallback to API (Requirement 20.10)
-                console.log('📨 Sending via API fallback...');
+                console.log('📨 LIFF not available, sending via API fallback...');
                 result = await this.sendViaApi(action, data, message);
             }
             
@@ -149,32 +151,43 @@ class LiffMessageBridge {
      * @returns {Promise<{success: boolean, method: string}>}
      */
     async sendViaApi(action, data, message) {
+        console.log('🌐 sendViaApi called:', { action, data, message });
+        
         try {
             const userId = window.store?.get('profile')?.userId || '';
+            console.log('🌐 User ID for API:', userId);
+            console.log('🌐 API URL:', `${this.baseUrl}/api/liff-bridge.php`);
             
             if (!userId) {
-                console.warn('No user ID available for API fallback');
+                console.warn('🌐 No user ID available for API fallback');
                 return { success: false, method: 'api', error: 'No user ID' };
             }
+
+            const requestBody = {
+                action: action,
+                data: data,
+                message: message,
+                line_user_id: userId,
+                line_account_id: this.accountId
+            };
+            console.log('🌐 Request body:', requestBody);
 
             const response = await fetch(`${this.baseUrl}/api/liff-bridge.php`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    action: action,
-                    data: data,
-                    message: message,
-                    line_user_id: userId,
-                    line_account_id: this.accountId
-                })
+                body: JSON.stringify(requestBody)
             });
+
+            console.log('🌐 Response status:', response.status);
 
             // Handle empty or non-JSON responses
             const text = await response.text();
+            console.log('🌐 Response text:', text);
+            
             if (!text || text.trim() === '') {
-                console.warn('API returned empty response');
+                console.warn('🌐 API returned empty response');
                 return { success: false, method: 'api', error: 'Empty response from server' };
             }
 
@@ -182,19 +195,22 @@ class LiffMessageBridge {
             try {
                 result = JSON.parse(text);
             } catch (parseError) {
-                console.error('API returned invalid JSON:', text.substring(0, 200));
+                console.error('🌐 API returned invalid JSON:', text.substring(0, 200));
                 return { success: false, method: 'api', error: 'Invalid JSON response' };
             }
+            
+            console.log('🌐 Parsed result:', result);
             
             if (result.success) {
                 console.log('✅ API message sent:', action);
                 return { success: true, method: 'api' };
             } else {
+                console.warn('🌐 API returned error:', result.message);
                 return { success: false, method: 'api', error: result.message };
             }
 
         } catch (error) {
-            console.error('API fallback failed:', error);
+            console.error('🌐 API fallback failed:', error);
             return { success: false, method: 'api', error: error.message };
         }
     }
