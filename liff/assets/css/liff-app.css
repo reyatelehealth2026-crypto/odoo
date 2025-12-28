@@ -10644,11 +10644,12 @@ body:has(.ai-chat-page) .bottom-nav {
 .health-profile-page .modal-content {
     width: 100%;
     max-width: 500px;
-    max-height: 90vh;
-    background: var(--bg-white);
+    max-height: 85vh;
+    background: #FFFFFF;
     border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
     overflow: hidden;
     animation: slideUp 0.3s ease;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.2);
 }
 
 .health-profile-page .modal-header {
@@ -10657,15 +10658,16 @@ body:has(.ai-chat-page) .bottom-nav {
     justify-content: space-between;
     padding: var(--space-4);
     border-bottom: 1px solid var(--border);
+    background: #FFFFFF;
 }
 
 .health-profile-page .modal-header h3 {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: 16px;
+    font-size: 17px;
     font-weight: 600;
-    color: var(--text-primary);
+    color: #1F2937;
 }
 
 .health-profile-page .modal-header h3 i {
@@ -10696,7 +10698,8 @@ body:has(.ai-chat-page) .bottom-nav {
 .health-profile-page .modal-body {
     padding: var(--space-4);
     overflow-y: auto;
-    max-height: calc(90vh - 140px);
+    max-height: calc(85vh - 140px);
+    background: #FFFFFF;
 }
 
 /* Modal Footer */
@@ -10743,9 +10746,9 @@ body:has(.ai-chat-page) .bottom-nav {
 
 .health-profile-page .form-group label {
     display: block;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
     margin-bottom: var(--space-2);
 }
 
@@ -10754,12 +10757,12 @@ body:has(.ai-chat-page) .bottom-nav {
 .health-profile-page .form-group textarea {
     width: 100%;
     padding: var(--space-3);
-    border: 1px solid var(--border);
+    border: 1.5px solid #D1D5DB;
     border-radius: var(--radius-md);
-    font-size: 15px;
-    color: var(--text-primary);
-    background: var(--bg-white);
-    transition: border-color 0.2s;
+    font-size: 16px;
+    color: #1F2937;
+    background: #F9FAFB;
+    transition: border-color 0.2s, background 0.2s;
 }
 
 .health-profile-page .form-group input:focus,
@@ -10767,6 +10770,12 @@ body:has(.ai-chat-page) .bottom-nav {
 .health-profile-page .form-group textarea:focus {
     outline: none;
     border-color: var(--primary);
+    background: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(17, 176, 166, 0.1);
+}
+
+.health-profile-page .form-group input::placeholder {
+    color: #9CA3AF;
 }
 
 .health-profile-page .form-group input.disabled {
