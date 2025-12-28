@@ -22,7 +22,7 @@ class AIChat {
         
         // New: Triage and AI mode settings
         this.triageMode = options.triageMode || false;
-        this.useGemini = options.useGemini || false;
+        this.useGemini = options.useGemini !== false; // Default to true for conversation history
         this.showDrugInteractions = options.showDrugInteractions !== false;
         
         // Quick symptom buttons configuration
