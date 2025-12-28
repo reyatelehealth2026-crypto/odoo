@@ -13717,3 +13717,1779 @@ body:has(.ai-chat-page) .bottom-nav {
         font-size: 10px;
     }
 }
+
+
+/* ==================== Points Dashboard ==================== */
+/* Requirements: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7, 21.8 */
+
+.points-dashboard {
+    padding: var(--space-4);
+    padding-bottom: calc(var(--space-8) + var(--safe-area-bottom));
+}
+
+.points-dashboard-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+    padding: var(--space-2) 0;
+}
+
+.points-dashboard-header .page-title {
+    flex: 1;
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.points-dashboard-header .header-action-btn {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-gray);
+    border: none;
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.points-dashboard-header .header-action-btn:active {
+    background: var(--border);
+    transform: scale(0.95);
+}
+
+/* Points Balance Card - Large (Requirement 21.1) */
+.points-balance-card-large {
+    position: relative;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-radius: var(--radius-2xl);
+    padding: var(--space-8) var(--space-6);
+    margin-bottom: var(--space-4);
+    overflow: hidden;
+    text-align: center;
+    color: white;
+}
+
+.points-balance-card-large .points-balance-bg {
+    position: absolute;
+    top: -50%;
+    right: -30%;
+    width: 200px;
+    height: 200px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+}
+
+.points-balance-card-large .points-balance-content {
+    position: relative;
+    z-index: 1;
+}
+
+.points-balance-card-large .points-balance-icon {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto var(--space-4);
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+}
+
+.points-balance-card-large .points-balance-label {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-bottom: var(--space-2);
+}
+
+.points-balance-card-large .points-balance-value {
+    font-size: 48px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: var(--space-1);
+}
+
+.points-balance-card-large .points-balance-unit {
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+/* Points Summary Card (Requirement 21.2) */
+.points-summary-card {
+    display: flex;
+    align-items: center;
+    background: var(--bg-white);
+    border-radius: var(--radius-xl);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-sm);
+}
+
+.points-summary-item {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.points-summary-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.points-summary-icon.earned {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.points-summary-icon.used {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.points-summary-icon.expired {
+    background: var(--bg-gray);
+    color: var(--text-muted);
+}
+
+.points-summary-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.points-summary-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.points-summary-value {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.points-summary-value.earned {
+    color: var(--success);
+}
+
+.points-summary-value.used {
+    color: var(--danger);
+}
+
+.points-summary-value.expired {
+    color: var(--text-muted);
+}
+
+.points-summary-divider {
+    width: 1px;
+    height: 40px;
+    background: var(--border-light);
+    margin: 0 var(--space-2);
+}
+
+/* Tier Progress Card (Requirements 21.3, 21.4) */
+.tier-progress-card {
+    background: var(--bg-white);
+    border-radius: var(--radius-xl);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-sm);
+}
+
+.tier-progress-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.tier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.tier-badge i {
+    font-size: 14px;
+}
+
+.tier-next {
+    text-align: right;
+}
+
+.tier-next-label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.tier-next-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.tier-progress-bar-container {
+    margin-bottom: var(--space-3);
+}
+
+.tier-progress-bar {
+    height: 8px;
+    background: var(--bg-gray);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-bottom: var(--space-2);
+}
+
+.tier-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), var(--secondary));
+    border-radius: var(--radius-full);
+    transition: width 0.5s ease;
+}
+
+.tier-progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.tier-progress-info {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: var(--primary-light);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--primary-dark);
+}
+
+.tier-progress-info i {
+    font-size: 14px;
+}
+
+/* Points Expiry Warning (Requirement 21.8) */
+.points-expiry-warning {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: var(--warning-light);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.expiry-warning-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--warning);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.expiry-warning-content {
+    flex: 1;
+}
+
+.expiry-warning-title {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--warning);
+    margin-bottom: 2px;
+}
+
+.expiry-warning-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.expiry-warning-action {
+    padding: var(--space-2) var(--space-4);
+    background: var(--warning);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    min-height: 36px;
+}
+
+.expiry-warning-action:active {
+    opacity: 0.9;
+    transform: scale(0.98);
+}
+
+/* Pending Points Card (Requirement 21.5) */
+.pending-points-card {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    background: var(--info-light);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.pending-points-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--info);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.pending-points-content {
+    flex: 1;
+}
+
+.pending-points-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.pending-points-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--info);
+}
+
+.pending-points-date {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+/* Recent Transactions Section (Requirement 21.6) */
+.recent-transactions-section {
+    background: var(--bg-white);
+    border-radius: var(--radius-xl);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow-sm);
+}
+
+.recent-transactions-section .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-4);
+}
+
+.recent-transactions-section .section-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.view-all-link {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: 13px;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.view-all-link i {
+    font-size: 10px;
+}
+
+.transactions-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.transaction-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+}
+
+.transaction-item:not(:last-child) {
+    border-bottom: 1px solid var(--border-light);
+    padding-bottom: var(--space-3);
+}
+
+.transaction-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.transaction-icon.earned {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.transaction-icon.used {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.transaction-icon.expired {
+    background: var(--bg-gray);
+    color: var(--text-muted);
+}
+
+.transaction-details {
+    flex: 1;
+    min-width: 0;
+}
+
+.transaction-description {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.transaction-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.transaction-ref {
+    background: var(--bg-gray);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+}
+
+.transaction-points {
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.transaction-points.earned {
+    color: var(--success);
+}
+
+.transaction-points.used {
+    color: var(--danger);
+}
+
+.transaction-points.expired {
+    color: var(--text-muted);
+}
+
+.empty-transactions {
+    text-align: center;
+    padding: var(--space-8) var(--space-4);
+    color: var(--text-muted);
+}
+
+.empty-transactions i {
+    font-size: 40px;
+    margin-bottom: var(--space-3);
+    opacity: 0.5;
+}
+
+.empty-transactions p {
+    font-size: 14px;
+}
+
+/* Points Actions */
+.points-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+}
+
+/* Zero Balance State (Requirement 21.7) */
+.zero-balance-state {
+    text-align: center;
+    padding: var(--space-8) var(--space-4);
+}
+
+.zero-balance-illustration {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto var(--space-6);
+    background: linear-gradient(135deg, var(--primary-light), var(--secondary-light));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.zero-balance-illustration i {
+    font-size: 56px;
+    color: var(--primary);
+}
+
+.zero-balance-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-3);
+}
+
+.zero-balance-message {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: var(--space-6);
+}
+
+.zero-balance-benefits {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
+}
+
+.benefit-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-gray);
+    border-radius: var(--radius-lg);
+}
+
+.benefit-item i {
+    font-size: 20px;
+    color: var(--primary);
+}
+
+.benefit-item span {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* Skeleton for Points Dashboard */
+.points-balance-card-large.skeleton-card {
+    background: var(--bg-gray);
+}
+
+
+/* ==================== Points History Transaction Styling ==================== */
+/* Requirements: 22.3, 22.4, 22.5 - Transaction type styling */
+/* 22.3: Green/plus for earned, 22.4: Red/minus for redeemed, 22.5: Gray for expired */
+
+/* Points History Page Layout */
+.points-history-page {
+    min-height: 100vh;
+    background: var(--bg-light);
+    padding-bottom: calc(70px + var(--safe-area-bottom));
+}
+
+.points-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4);
+    padding-top: calc(var(--space-4) + var(--safe-area-top));
+    background: var(--bg-white);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    box-shadow: var(--shadow-sm);
+}
+
+.points-history-header .back-btn {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: var(--text-primary);
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: var(--radius-full);
+    transition: background var(--transition-fast);
+}
+
+.points-history-header .back-btn:active {
+    background: var(--bg-gray);
+}
+
+.points-history-header .page-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.points-history-header .header-spacer {
+    width: var(--touch-target-min);
+}
+
+/* Points Summary Header */
+.points-summary-header {
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    padding: var(--space-5);
+    margin: var(--space-4);
+    border-radius: var(--radius-xl);
+    color: white;
+}
+
+.summary-balance {
+    text-align: center;
+    margin-bottom: var(--space-4);
+}
+
+.summary-balance .balance-label {
+    display: block;
+    font-size: 12px;
+    opacity: 0.9;
+    margin-bottom: var(--space-1);
+}
+
+.summary-balance .balance-value {
+    display: block;
+    font-size: 32px;
+    font-weight: 700;
+}
+
+.summary-stats {
+    display: flex;
+    justify-content: space-around;
+    padding-top: var(--space-3);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.summary-stats .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+}
+
+.summary-stats .stat-item i {
+    font-size: 16px;
+    opacity: 0.9;
+}
+
+.summary-stats .stat-value {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.summary-stats .stat-label {
+    font-size: 10px;
+    opacity: 0.8;
+}
+
+/* Requirement 22.3: Green styling for earned */
+.summary-stats .stat-item.earned i,
+.summary-stats .stat-item.earned .stat-value {
+    color: #86EFAC; /* Light green for visibility on gradient */
+}
+
+/* Requirement 22.4: Red styling for used/redeemed */
+.summary-stats .stat-item.used i,
+.summary-stats .stat-item.used .stat-value {
+    color: #FCA5A5; /* Light red for visibility on gradient */
+}
+
+/* Requirement 22.5: Gray styling for expired */
+.summary-stats .stat-item.expired i,
+.summary-stats .stat-item.expired .stat-value {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* Filter Tabs Container */
+.filter-tabs-container {
+    padding: 0 var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+.filter-tabs {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.filter-tabs::-webkit-scrollbar {
+    display: none;
+}
+
+.filter-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    min-height: var(--touch-target-min);
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all var(--transition-fast);
+}
+
+.filter-tab i {
+    font-size: 14px;
+}
+
+.filter-tab:active {
+    transform: scale(0.98);
+}
+
+.filter-tab.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+/* Transactions Container */
+.transactions-container {
+    padding: 0 var(--space-4);
+}
+
+/* Transaction Item - Updated styling for Requirements 22.3, 22.4, 22.5 */
+.transactions-list .transaction-item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-2);
+    box-shadow: var(--shadow-sm);
+}
+
+/* Transaction Icon - Base styling */
+.tx-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+/* Requirement 22.3: Green/plus for earned transactions */
+.tx-icon.bg-earned {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+/* Requirement 22.4: Red/minus for redeemed transactions */
+.tx-icon.bg-used {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+/* Requirement 22.5: Gray for expired transactions */
+.tx-icon.bg-expired {
+    background: var(--bg-gray);
+    color: var(--text-muted);
+}
+
+/* Transaction Content */
+.tx-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.tx-main {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin-bottom: var(--space-1);
+}
+
+.tx-description {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Transaction Points - Type-specific styling */
+.tx-points {
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Requirement 22.3: Green color for earned points */
+.tx-points.earned {
+    color: var(--success);
+}
+
+/* Requirement 22.4: Red color for redeemed/used points */
+.tx-points.used {
+    color: var(--danger);
+}
+
+/* Requirement 22.5: Gray color for expired points */
+.tx-points.expired {
+    color: var(--text-muted);
+}
+
+/* Transaction Meta */
+.tx-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.tx-meta-left {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.tx-reference {
+    background: var(--bg-gray);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.tx-date {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.tx-balance {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+
+/* Load More Trigger */
+.load-more-trigger {
+    padding: var(--space-4);
+    text-align: center;
+}
+
+.load-more-trigger .loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.load-more-trigger .loading-spinner i {
+    font-size: 16px;
+    color: var(--primary);
+}
+
+/* End of List */
+.end-of-list {
+    padding: var(--space-4);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+/* Empty State for Points History */
+.points-history-page .empty-state {
+    padding: var(--space-8) var(--space-4);
+    text-align: center;
+}
+
+.points-history-page .empty-illustration {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-4);
+    background: var(--bg-gray);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.points-history-page .empty-illustration i {
+    font-size: 32px;
+    color: var(--text-muted);
+}
+
+.points-history-page .empty-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-2);
+}
+
+.points-history-page .empty-message {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: var(--space-4);
+    line-height: 1.5;
+}
+
+/* Skeleton Loading for Transactions */
+.skeleton-list .skeleton-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-2);
+}
+
+.skeleton-list .skeleton-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-full);
+    flex-shrink: 0;
+}
+
+
+
+/* ==================== Rewards Catalog ==================== */
+/* Requirements: 23.1, 23.2, 23.3, 23.4, 23.5, 23.6, 23.7, 23.8, 23.9, 23.10, 23.11 */
+
+.rewards-catalog-page {
+    min-height: 100vh;
+    background: var(--bg-light);
+    padding-bottom: calc(var(--space-8) + var(--safe-area-bottom));
+}
+
+/* Rewards Header */
+.rewards-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--bg-white);
+    position: sticky;
+    top: 0;
+    z-index: var(--z-sticky);
+    box-shadow: var(--shadow-sm);
+}
+
+.rewards-header .page-title {
+    flex: 1;
+    font-size: 18px;
+    font-weight: 600;
+    margin: 0;
+    text-align: center;
+}
+
+.rewards-header .back-btn,
+.rewards-header .header-action-btn {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.rewards-header .back-btn:active,
+.rewards-header .header-action-btn:active {
+    background: var(--bg-gray);
+    transform: scale(0.95);
+}
+
+/* Rewards Points Card */
+.rewards-points-card {
+    position: relative;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: var(--radius-2xl);
+    padding: var(--space-5);
+    margin: var(--space-4);
+    overflow: hidden;
+    color: white;
+    box-shadow: var(--shadow-lg);
+}
+
+.rewards-points-bg {
+    position: absolute;
+    top: -30%;
+    right: -20%;
+    width: 150px;
+    height: 150px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+}
+
+.rewards-points-content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.rewards-points-label {
+    font-size: 13px;
+    opacity: 0.9;
+    display: block;
+    margin-bottom: var(--space-1);
+}
+
+.rewards-points-value {
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.rewards-points-icon {
+    width: 56px;
+    height: 56px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+/* Rewards Tabs */
+.rewards-tabs {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-4);
+    margin-bottom: var(--space-4);
+    background: var(--bg-gray);
+    margin-left: var(--space-4);
+    margin-right: var(--space-4);
+    border-radius: var(--radius-xl);
+    padding: var(--space-1);
+}
+
+.rewards-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-lg);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    min-height: var(--touch-target-min);
+}
+
+.rewards-tab.active {
+    background: var(--bg-white);
+    color: #764ba2;
+    box-shadow: var(--shadow-sm);
+}
+
+.rewards-tab i {
+    font-size: 14px;
+}
+
+/* Rewards Grid (Requirement 23.1) */
+.rewards-content {
+    padding: 0 var(--space-4);
+}
+
+.rewards-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+}
+
+/* Reward Card (Requirements 23.2, 23.3, 23.4, 23.5) */
+.reward-card {
+    background: var(--bg-white);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.reward-card:active {
+    transform: scale(0.98);
+}
+
+.reward-card.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.reward-card.out-of-stock .reward-card-image::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+}
+
+.reward-card-image {
+    position: relative;
+    height: 120px;
+    background: var(--bg-gray);
+    overflow: hidden;
+}
+
+.reward-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.reward-card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    color: var(--text-muted);
+}
+
+/* Reward Badges (Requirements 23.3, 23.4) */
+.reward-badge {
+    position: absolute;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+    z-index: 2;
+}
+
+.out-of-stock-badge {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: var(--danger);
+    color: white;
+}
+
+.limited-stock-badge {
+    top: var(--space-2);
+    left: var(--space-2);
+    background: var(--warning);
+    color: white;
+}
+
+.reward-points-badge {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    background: #764ba2;
+    color: white;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.reward-points-badge i {
+    font-size: 10px;
+}
+
+/* Reward Card Info */
+.reward-card-info {
+    padding: var(--space-3);
+}
+
+.reward-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-1);
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.reward-card-desc {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Insufficient Points Display (Requirement 23.5) */
+.reward-points-needed {
+    font-size: 11px;
+    color: var(--danger);
+    margin-top: var(--space-2);
+    font-weight: 500;
+}
+
+/* Reward Detail Modal (Requirement 23.6) */
+.reward-detail-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.reward-detail-modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.reward-detail-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.reward-detail-content {
+    position: relative;
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    background: var(--bg-white);
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    overflow: hidden;
+    transform: translateY(100%);
+    transition: transform 0.3s ease;
+}
+
+.reward-detail-modal.active .reward-detail-content {
+    transform: translateY(0);
+}
+
+.reward-detail-close {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    width: 32px;
+    height: 32px;
+    background: rgba(0, 0, 0, 0.5);
+    border: none;
+    border-radius: var(--radius-full);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+}
+
+.reward-detail-image {
+    height: 180px;
+    background: var(--bg-gray);
+}
+
+.reward-detail-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.reward-detail-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 60px;
+    color: var(--text-muted);
+}
+
+.reward-detail-body {
+    padding: var(--space-5);
+    padding-bottom: calc(var(--space-5) + var(--safe-area-bottom));
+}
+
+.reward-detail-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-2);
+}
+
+.reward-detail-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-4);
+    line-height: 1.5;
+}
+
+.reward-detail-points {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4);
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+}
+
+.reward-detail-points-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.reward-detail-points-value {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 20px;
+    font-weight: 700;
+    color: #764ba2;
+}
+
+.reward-detail-stock {
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-bottom: var(--space-4);
+}
+
+.reward-detail-stock i {
+    margin-right: var(--space-1);
+}
+
+.reward-expiry-warning {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background: var(--warning-light);
+    border-radius: var(--radius-md);
+    font-size: 12px;
+    color: var(--warning);
+    margin-bottom: var(--space-4);
+}
+
+.reward-detail-terms {
+    padding: var(--space-3);
+    background: var(--bg-gray);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
+}
+
+.reward-detail-terms h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-2);
+}
+
+.reward-detail-terms p {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.reward-detail-actions {
+    display: flex;
+    gap: var(--space-3);
+}
+
+.reward-detail-actions .btn {
+    flex: 1;
+    min-height: var(--touch-target-min);
+}
+
+/* Redemption Success Modal (Requirement 23.8) */
+.redemption-success-modal {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.redemption-success-modal.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.redemption-success-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.redemption-success-content {
+    position: relative;
+    width: 100%;
+    max-width: 340px;
+    background: var(--bg-white);
+    border-radius: var(--radius-2xl);
+    padding: var(--space-8) var(--space-6);
+    text-align: center;
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+}
+
+.redemption-success-modal.active .redemption-success-content {
+    transform: scale(1);
+}
+
+.confetti-container {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.confetti-piece {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    top: -20px;
+    animation: confetti-fall 3s ease-out forwards;
+}
+
+@keyframes confetti-fall {
+    0% {
+        transform: translateY(0) rotate(0deg);
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(400px) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+.success-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-4);
+    background: var(--success-light);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    color: var(--success);
+}
+
+.success-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-2);
+}
+
+.success-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-4);
+}
+
+.redemption-code-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    background: var(--bg-gray);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+}
+
+.redemption-code {
+    font-size: 24px;
+    font-weight: 700;
+    color: #764ba2;
+    letter-spacing: 2px;
+}
+
+.copy-code-btn {
+    width: 36px;
+    height: 36px;
+    background: var(--bg-white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.copy-code-btn:active {
+    background: var(--primary-light);
+    color: var(--primary);
+}
+
+.success-note {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: 0 0 var(--space-4);
+}
+
+/* My Rewards List (Requirement 23.10) */
+.my-rewards-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.redemption-card {
+    display: flex;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    background: var(--bg-white);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-sm);
+}
+
+.redemption-card-image {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--bg-gray);
+}
+
+.redemption-card-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.redemption-card-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: var(--text-muted);
+}
+
+.redemption-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.redemption-card-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-1);
+}
+
+.redemption-card-date {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin: 0 0 var(--space-2);
+}
+
+.redemption-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+
+/* Redemption Status (Requirement 23.10) */
+.redemption-status {
+    display: inline-flex;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status-pending {
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
+.status-approved {
+    background: var(--info-light);
+    color: var(--info);
+}
+
+.status-delivered {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.status-cancelled {
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.redemption-card-code {
+    font-size: 11px;
+    background: var(--bg-gray);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+}
+
+/* Redemption Expiry Warning (Requirement 23.11) */
+.redemption-expiry-warning {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    background: var(--warning-light);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    color: var(--warning);
+}
+
+.redemption-expired {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-top: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    background: var(--danger-light);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    color: var(--danger);
+}
+
+/* Rewards Toast */
+.rewards-toast {
+    position: fixed;
+    bottom: calc(80px + var(--safe-area-bottom));
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--text-primary);
+    color: white;
+    border-radius: var(--radius-full);
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: var(--z-toast);
+}
+
+.rewards-toast.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+.rewards-toast.success {
+    background: var(--success);
+}
+
+.rewards-toast.error {
+    background: var(--danger);
+}
+
+/* Empty State */
+.rewards-catalog-page .empty-state {
+    padding: var(--space-12) var(--space-4);
+    text-align: center;
+}
+
+.rewards-catalog-page .empty-state-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto var(--space-4);
+    background: var(--bg-gray);
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    color: var(--text-muted);
+}
+
+.rewards-catalog-page .empty-state-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-2);
+}
+
+.rewards-catalog-page .empty-state-text {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-4);
+}

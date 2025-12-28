@@ -271,9 +271,12 @@ class LiffApp {
         // Redeem points page
         window.router.register('redeem', () => this.renderRedeemPage());
         
+        // Points Dashboard page - Requirements: 21.1-21.8
+        window.router.register('points', () => this.renderPointsDashboardPage());
+        
         // Other pages - placeholder for now
         const placeholderPages = [
-            'points', 'coupons', 'symptom'
+            'coupons', 'symptom'
         ];
         
         placeholderPages.forEach(page => {
@@ -7282,6 +7285,101 @@ class LiffApp {
     showRewardDetail(rewardId) {
         // TODO: Show reward detail modal
         this.showToast('เร็วๆ นี้', 'info');
+    }
+
+    /**
+     * Render Points Dashboard page
+     * Requirements: 21.1, 21.2, 21.3, 21.4, 21.5, 21.6, 21.7, 21.8
+     */
+    renderPointsDashboardPage() {
+        // Initialize points dashboard component
+        if (!this.pointsDashboard) {
+            this.pointsDashboard = new PointsDashboard({
+                baseUrl: this.config.BASE_URL,
+                accountId: this.config.ACCOUNT_ID
+            });
+        }
+
+        // Load data after render
+        setTimeout(() => this.loadPointsDashboardData(), 100);
+
+        // Return skeleton initially
+        return this.pointsDashboard.renderSkeleton();
+    }
+
+    /**
+     * Load points dashboard data from API
+     */
+    async loadPointsDashboardData() {
+        const profile = window.store?.get('profile');
+        
+        if (!profile?.userId) {
+            // Show login prompt
+            const container = document.querySelector('.points-dashboard');
+            if (container) {
+                container.innerHTML = `
+                    <div class="points-dashboard-header">
+                        <button class="back-btn" onclick="window.router.back()">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <h1 class="page-title">คะแนนสะสม</h1>
+                        <div style="width: 44px;"></div>
+                    </div>
+                    <div class="zero-balance-state">
+                        <div class="zero-balance-illustration">
+                            <i class="fas fa-user-lock"></i>
+                        </div>
+                        <h2 class="zero-balance-title">กรุณาเข้าสู่ระบบ</h2>
+                        <p class="zero-balance-message">
+                            เข้าสู่ระบบเพื่อดูคะแนนสะสมของคุณ
+                        </p>
+                        <button class="btn btn-primary btn-lg btn-block" onclick="window.liffApp.login()">
+                            <i class="fab fa-line"></i> เข้าสู่ระบบ LINE
+                        </button>
+                    </div>
+                `;
+            }
+            return;
+        }
+
+        try {
+            const data = await this.pointsDashboard.loadPointsData(profile.userId);
+            
+            if (data) {
+                const container = document.querySelector('.app-content');
+                if (container) {
+                    container.innerHTML = this.pointsDashboard.render(data);
+                    
+                    // Animate counter after render
+                    setTimeout(() => this.pointsDashboard.animateCounter(), 100);
+                }
+            } else {
+                // Show error state
+                const container = document.querySelector('.points-dashboard');
+                if (container) {
+                    container.innerHTML = `
+                        <div class="points-dashboard-header">
+                            <button class="back-btn" onclick="window.router.back()">
+                                <i class="fas fa-arrow-left"></i>
+                            </button>
+                            <h1 class="page-title">คะแนนสะสม</h1>
+                            <div style="width: 44px;"></div>
+                        </div>
+                        <div class="error-state" style="padding: 40px 20px; text-align: center;">
+                            <i class="fas fa-exclamation-circle" style="font-size: 48px; color: var(--text-muted); margin-bottom: 16px;"></i>
+                            <h3 style="margin-bottom: 8px;">ไม่สามารถโหลดข้อมูลได้</h3>
+                            <p style="color: var(--text-secondary); margin-bottom: 16px;">กรุณาลองใหม่อีกครั้ง</p>
+                            <button class="btn btn-primary" onclick="window.liffApp.loadPointsDashboardData()">
+                                <i class="fas fa-redo"></i> ลองใหม่
+                            </button>
+                        </div>
+                    `;
+                }
+            }
+        } catch (error) {
+            console.error('Error loading points dashboard:', error);
+            this.showToast('ไม่สามารถโหลดข้อมูลได้', 'error');
+        }
     }
 
     /**

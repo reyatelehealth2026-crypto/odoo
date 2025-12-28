@@ -49,6 +49,69 @@ class LoyaltyPoints
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total_points' => 0, 'available_points' => 0, 'used_points' => 0];
     }
 
+    /**
+     * Get user tier information
+     * Requirements: 21.3, 21.4 - Display tier status with progress bar
+     * @param int $userId User ID
+     * @return array Tier information
+     */
+    public function getUserTier($userId)
+    {
+        $userPoints = $this->getUserPoints($userId);
+        $totalPoints = (int)$userPoints['total_points'];
+        
+        // Default tier thresholds
+        $tiers = [
+            ['name' => 'Silver', 'min_points' => 0, 'next_tier' => 'Gold', 'next_points' => 2000],
+            ['name' => 'Gold', 'min_points' => 2000, 'next_tier' => 'Platinum', 'next_points' => 5000],
+            ['name' => 'Platinum', 'min_points' => 5000, 'next_tier' => 'VIP', 'next_points' => 10000],
+            ['name' => 'VIP', 'min_points' => 10000, 'next_tier' => null, 'next_points' => null]
+        ];
+        
+        // Try to load custom tier settings
+        try {
+            $stmt = $this->db->prepare("SELECT * FROM tier_settings WHERE line_account_id = ? OR line_account_id IS NULL ORDER BY min_points ASC");
+            $stmt->execute([$this->lineAccountId]);
+            $customTiers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($customTiers)) {
+                $tiers = [];
+                foreach ($customTiers as $i => $tier) {
+                    $nextTier = isset($customTiers[$i + 1]) ? $customTiers[$i + 1] : null;
+                    $tiers[] = [
+                        'name' => $tier['name'],
+                        'min_points' => (int)$tier['min_points'],
+                        'next_tier' => $nextTier ? $nextTier['name'] : null,
+                        'next_points' => $nextTier ? (int)$nextTier['min_points'] : null
+                    ];
+                }
+            }
+        } catch (Exception $e) {
+            // Use default tiers
+        }
+        
+        // Determine current tier
+        $currentTier = $tiers[0];
+        foreach ($tiers as $tier) {
+            if ($totalPoints >= $tier['min_points']) {
+                $currentTier = $tier;
+            }
+        }
+        
+        // Calculate points to next tier
+        $pointsToNext = $currentTier['next_points'] 
+            ? max(0, $currentTier['next_points'] - $totalPoints)
+            : 0;
+        
+        return [
+            'name' => $currentTier['name'],
+            'current_points' => $totalPoints,
+            'min_points' => $currentTier['min_points'],
+            'next_tier_name' => $currentTier['next_tier'] ?? 'Max Level',
+            'next_tier_points' => $currentTier['next_points'] ?? $totalPoints,
+            'points_to_next' => $pointsToNext
+        ];
+    }
+
     public function addPoints($userId, $points, $referenceType = null, $referenceId = null, $description = null)
     {
         if ($points <= 0) return false;
@@ -110,19 +173,53 @@ class LoyaltyPoints
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
+    /**
+     * Create a new reward
+     * Requirements 24.2, 24.3, 24.4: Capture name, description, image, points, stock, validity period
+     * Support reward types: Discount Coupon, Free Shipping, Physical Gift, Product Voucher
+     * @param array $data Reward data
+     * @return int New reward ID
+     */
     public function createReward($data)
     {
-        $stmt = $this->db->prepare("INSERT INTO rewards (line_account_id, name, description, image_url, points_required, reward_type, reward_value, stock, max_per_user, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$this->lineAccountId, $data['name'], $data['description'] ?? null, $data['image_url'] ?? null, $data['points_required'], $data['reward_type'] ?? 'gift', $data['reward_value'] ?? null, $data['stock'] ?? -1, $data['max_per_user'] ?? 0, $data['is_active'] ?? 1]);
+        $sql = "INSERT INTO rewards (line_account_id, name, description, image_url, points_required, reward_type, reward_value, stock, max_per_user, is_active, start_date, end_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            $this->lineAccountId, 
+            $data['name'], 
+            $data['description'] ?? null, 
+            $data['image_url'] ?? null, 
+            $data['points_required'], 
+            $data['reward_type'] ?? 'gift', 
+            $data['reward_value'] ?? null, 
+            $data['stock'] ?? -1, 
+            $data['max_per_user'] ?? 0, 
+            $data['is_active'] ?? 1,
+            $data['start_date'] ?? null,
+            $data['end_date'] ?? null
+        ]);
         return $this->db->lastInsertId();
     }
 
+    /**
+     * Update reward details
+     * Requirement 24.5: Update reward details with immediate reflection in LIFF
+     * Requirement 24.6: Disable reward (hide from catalog while preserving existing redemptions)
+     * @param int $rewardId Reward ID
+     * @param array $data Data to update
+     * @return bool Success status
+     */
     public function updateReward($rewardId, $data)
     {
         $fields = [];
         $values = [];
-        foreach (['name', 'description', 'image_url', 'points_required', 'stock', 'max_per_user', 'is_active'] as $field) {
-            if (isset($data[$field])) { $fields[] = "{$field} = ?"; $values[] = $data[$field]; }
+        $allowedFields = ['name', 'description', 'image_url', 'points_required', 'reward_type', 'reward_value', 'stock', 'max_per_user', 'is_active', 'start_date', 'end_date'];
+        
+        foreach ($allowedFields as $field) {
+            if (isset($data[$field])) { 
+                $fields[] = "{$field} = ?"; 
+                $values[] = $data[$field]; 
+            }
         }
         if (empty($fields)) return false;
         $values[] = $rewardId;
@@ -136,6 +233,13 @@ class LoyaltyPoints
         return $stmt->execute([$rewardId]);
     }
 
+    /**
+     * Redeem a reward for a user
+     * Requirements: 23.7 - Deduct points and generate unique redemption code
+     * @param int $userId User ID
+     * @param int $rewardId Reward ID
+     * @return array Result with success status, message, and redemption code
+     */
     public function redeemReward($userId, $rewardId)
     {
         $reward = $this->getReward($rewardId);
@@ -145,18 +249,71 @@ class LoyaltyPoints
         $userPoints = $this->getUserPoints($userId);
         if ($userPoints['available_points'] < $reward['points_required']) return ['success' => false, 'message' => 'Not enough points'];
 
-        if (!$this->deductPoints($userId, $reward['points_required'], 'reward', $rewardId, "Redeemed: {$reward['name']}")) return ['success' => false, 'message' => 'Failed to deduct points'];
+        // Deduct points (Requirement 23.7)
+        if (!$this->deductPoints($userId, $reward['points_required'], 'reward', $rewardId, "Redeemed: {$reward['name']}")) {
+            return ['success' => false, 'message' => 'Failed to deduct points'];
+        }
 
+        // Update stock if limited
         if ($reward['stock'] > 0) {
             $stmt = $this->db->prepare("UPDATE rewards SET stock = stock - 1 WHERE id = ? AND stock > 0");
             $stmt->execute([$rewardId]);
         }
 
-        $code = 'RW' . strtoupper(substr(md5(uniqid()), 0, 8));
-        $stmt = $this->db->prepare("INSERT INTO reward_redemptions (user_id, reward_id, line_account_id, points_used, redemption_code) VALUES (?, ?, ?, ?, ?)");
-        $stmt->execute([$userId, $rewardId, $this->lineAccountId, $reward['points_required'], $code]);
+        // Generate unique redemption code (Requirement 23.7)
+        $code = $this->generateUniqueRedemptionCode();
+        
+        // Calculate expiry date if reward has validity period
+        $expiresAt = null;
+        if (!empty($reward['valid_until'])) {
+            $expiresAt = $reward['valid_until'];
+        } elseif (!empty($reward['validity_days'])) {
+            $expiresAt = date('Y-m-d H:i:s', strtotime("+{$reward['validity_days']} days"));
+        }
+        
+        $stmt = $this->db->prepare("INSERT INTO reward_redemptions (user_id, reward_id, line_account_id, points_used, redemption_code, expires_at) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$userId, $rewardId, $this->lineAccountId, $reward['points_required'], $code, $expiresAt]);
 
-        return ['success' => true, 'message' => 'Success!', 'redemption_code' => $code, 'reward' => $reward];
+        return [
+            'success' => true, 
+            'message' => 'Success!', 
+            'redemption_code' => $code, 
+            'reward' => $reward,
+            'redemption_id' => $this->db->lastInsertId(),
+            'expires_at' => $expiresAt
+        ];
+    }
+
+    /**
+     * Generate a unique redemption code
+     * Requirements: 23.7 - Generate unique redemption code
+     * @return string Unique redemption code
+     */
+    private function generateUniqueRedemptionCode()
+    {
+        $maxAttempts = 10;
+        $attempt = 0;
+        
+        do {
+            // Generate code: RW + timestamp component + random component
+            $timestamp = base_convert(time(), 10, 36);
+            $random = strtoupper(substr(bin2hex(random_bytes(4)), 0, 6));
+            $code = 'RW' . strtoupper(substr($timestamp, -4)) . $random;
+            
+            // Check if code already exists
+            $stmt = $this->db->prepare("SELECT COUNT(*) FROM reward_redemptions WHERE redemption_code = ?");
+            $stmt->execute([$code]);
+            $exists = $stmt->fetchColumn() > 0;
+            
+            $attempt++;
+        } while ($exists && $attempt < $maxAttempts);
+        
+        // Fallback to UUID-based code if still not unique
+        if ($exists) {
+            $code = 'RW' . strtoupper(substr(md5(uniqid(mt_rand(), true)), 0, 10));
+        }
+        
+        return $code;
     }
 
     public function getUserRedemptions($userId, $limit = 20)
@@ -164,6 +321,60 @@ class LoyaltyPoints
         $stmt = $this->db->prepare("SELECT rr.*, r.name as reward_name, r.image_url as reward_image FROM reward_redemptions rr JOIN rewards r ON rr.reward_id = r.id WHERE rr.user_id = ? ORDER BY rr.created_at DESC LIMIT ?");
         $stmt->execute([$userId, $limit]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Get redemptions expiring soon (within specified days)
+     * Requirements: 23.11 - Display expiry countdown and send reminder 3 days before
+     * @param int $daysBeforeExpiry Days before expiry to check
+     * @return array Redemptions expiring soon
+     */
+    public function getExpiringRedemptions($daysBeforeExpiry = 3)
+    {
+        $stmt = $this->db->prepare("
+            SELECT rr.*, r.name as reward_name, r.image_url as reward_image, 
+                   u.line_user_id, u.display_name
+            FROM reward_redemptions rr 
+            JOIN rewards r ON rr.reward_id = r.id 
+            JOIN users u ON rr.user_id = u.id
+            WHERE rr.status IN ('pending', 'approved')
+            AND rr.expires_at IS NOT NULL
+            AND rr.expires_at <= DATE_ADD(NOW(), INTERVAL ? DAY)
+            AND rr.expires_at > NOW()
+            AND (rr.expiry_reminder_sent IS NULL OR rr.expiry_reminder_sent = 0)
+            AND (rr.line_account_id = ? OR rr.line_account_id IS NULL)
+        ");
+        $stmt->execute([$daysBeforeExpiry, $this->lineAccountId]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Mark redemption as expiry reminder sent
+     * @param int $redemptionId Redemption ID
+     * @return bool Success status
+     */
+    public function markExpiryReminderSent($redemptionId)
+    {
+        $stmt = $this->db->prepare("UPDATE reward_redemptions SET expiry_reminder_sent = 1 WHERE id = ?");
+        return $stmt->execute([$redemptionId]);
+    }
+
+    /**
+     * Get redemption with expiry info
+     * @param int $redemptionId Redemption ID
+     * @return array|null Redemption with expiry info
+     */
+    public function getRedemptionWithExpiry($redemptionId)
+    {
+        $stmt = $this->db->prepare("
+            SELECT rr.*, r.name as reward_name, r.image_url as reward_image,
+                   DATEDIFF(rr.expires_at, NOW()) as days_until_expiry
+            FROM reward_redemptions rr 
+            JOIN rewards r ON rr.reward_id = r.id 
+            WHERE rr.id = ?
+        ");
+        $stmt->execute([$redemptionId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
     public function getAllRedemptions($status = null, $limit = 50)

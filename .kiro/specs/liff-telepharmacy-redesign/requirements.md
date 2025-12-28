@@ -21,6 +21,13 @@
 - **Drug_Interaction**: ปฏิกิริยาระหว่างยาที่อาจเป็นอันตรายเมื่อใช้ร่วมกัน
 - **Interaction_Severity**: ระดับความรุนแรงของปฏิกิริยาระหว่างยา (Mild, Moderate, Severe)
 - **Telecare_Dashboard**: หน้าแรกแบบ Dashboard สไตล์ Telecare ที่รวมบริการทั้งหมด
+- **Loyalty_Points**: คะแนนสะสมที่ได้รับจากการซื้อสินค้าและสามารถแลกเป็นรางวัลได้
+- **Points_Transaction**: รายการเคลื่อนไหวของคะแนน (ได้รับ/ใช้/หมดอายุ)
+- **Reward_Catalog**: รายการของรางวัลที่สามารถแลกได้ด้วยคะแนนสะสม
+- **Redemption_Code**: รหัสยืนยันการแลกรางวัลที่ระบบสร้างขึ้นโดยอัตโนมัติ
+- **Tier_Level**: ระดับสมาชิก (Silver/Gold/Platinum) ที่กำหนดสิทธิประโยชน์
+- **Points_Multiplier**: ตัวคูณคะแนนพิเศษสำหรับแคมเปญหรือระดับสมาชิก
+- **Points_Expiry**: วันหมดอายุของคะแนนสะสม
 
 ## Requirements
 
@@ -349,3 +356,102 @@
 10. WHEN liff.sendMessages() is not available (external browser) THEN the system SHALL fallback to API-based notification
 11. WHEN sending LIFF message THEN the system SHALL show a brief loading state and success feedback in LIFF UI
 12. WHEN bot receives order message THEN the system SHALL reply with order summary Flex Message including items, total, and tracking link
+
+
+### Requirement 21: Loyalty Points Dashboard
+
+**User Story:** As a LINE_User, I want to view my loyalty points balance and earning summary, so that I can track my rewards progress and plan my redemptions.
+
+#### Acceptance Criteria
+
+1. WHEN a LINE_User opens Points Dashboard THEN the system SHALL display current available points balance prominently with animated counter
+2. WHEN displaying Points Dashboard THEN the system SHALL show total earned points, used points, and expired points in a summary card
+3. WHEN displaying Points Dashboard THEN the system SHALL show current tier status (Silver/Gold/Platinum) with progress bar to next tier
+4. WHEN displaying tier progress THEN the system SHALL calculate and display points needed for next tier upgrade
+5. WHEN a LINE_User has pending points THEN the system SHALL display pending points with expected confirmation date
+6. WHEN displaying Points Dashboard THEN the system SHALL show recent transactions (last 5) with quick link to full history
+7. WHEN points balance is zero THEN the system SHALL display motivational message with "Start Shopping" call-to-action
+8. WHEN displaying Points Dashboard THEN the system SHALL show points expiry warning if points expire within 30 days
+9. WHEN serializing points data for display THEN the system SHALL encode using JSON format
+10. WHEN retrieving points data from API THEN the system SHALL decode JSON and reconstruct the points object
+
+
+### Requirement 22: Points History & Transactions
+
+**User Story:** As a LINE_User, I want to view my complete points transaction history, so that I can track how I earned and spent my loyalty points.
+
+#### Acceptance Criteria
+
+1. WHEN a LINE_User opens Points History THEN the system SHALL display transactions in chronological order (newest first)
+2. WHEN displaying a transaction THEN the system SHALL show transaction type icon, description, points amount, balance after, and timestamp
+3. WHEN displaying earn transactions THEN the system SHALL show green plus icon with positive points in green color
+4. WHEN displaying redeem transactions THEN the system SHALL show red minus icon with negative points in red color
+5. WHEN displaying expired transactions THEN the system SHALL show gray icon with "หมดอายุ" label
+6. WHEN a LINE_User filters transactions THEN the system SHALL provide filter tabs for All, Earned, Redeemed, and Expired
+7. WHEN a LINE_User scrolls to bottom THEN the system SHALL load more transactions using Infinite_Scroll pattern
+8. WHEN displaying transaction details THEN the system SHALL show reference order ID or reward name when applicable
+9. IF no transactions exist THEN the system SHALL display empty state with illustration and "Start Shopping" button
+10. WHEN displaying Points History THEN the system SHALL show summary totals for filtered period at top
+11. WHEN serializing transaction history for storage THEN the system SHALL encode using JSON format
+12. WHEN retrieving transaction history from API THEN the system SHALL decode JSON and reconstruct transaction objects
+
+
+### Requirement 23: Rewards Catalog & Redemption
+
+**User Story:** As a LINE_User, I want to browse and redeem rewards using my loyalty points, so that I can get valuable benefits from my purchases.
+
+#### Acceptance Criteria
+
+1. WHEN a LINE_User opens Rewards Catalog THEN the system SHALL display available rewards in a grid layout with images
+2. WHEN displaying a reward card THEN the system SHALL show reward image, name, points required, and stock availability
+3. WHEN a reward has limited stock THEN the system SHALL display remaining quantity with "เหลือ X ชิ้น" label
+4. WHEN a reward is out of stock THEN the system SHALL display "หมดแล้ว" badge and disable redemption
+5. WHEN a LINE_User has insufficient points THEN the system SHALL gray out unredeemable rewards and show points needed
+6. WHEN a LINE_User taps a reward THEN the system SHALL display reward detail modal with full description and terms
+7. WHEN a LINE_User confirms redemption THEN the system SHALL deduct points and generate unique redemption code
+8. WHEN redemption is successful THEN the system SHALL display success modal with redemption code and confetti animation
+9. WHEN redemption is successful THEN the system SHALL send LINE notification with redemption details and QR code
+10. WHEN displaying My Rewards tab THEN the system SHALL show all redeemed rewards with status (Pending/Approved/Delivered/Cancelled)
+11. WHEN a reward has expiry date THEN the system SHALL display expiry countdown and send reminder 3 days before
+12. WHEN serializing redemption data THEN the system SHALL encode using JSON format
+13. WHEN retrieving redemption data from API THEN the system SHALL decode JSON and reconstruct redemption object
+
+
+### Requirement 24: Admin Rewards Management
+
+**User Story:** As an Admin, I want to manage rewards catalog and redemption settings, so that I can control the loyalty program offerings.
+
+#### Acceptance Criteria
+
+1. WHEN an Admin opens Rewards Management THEN the system SHALL display list of all rewards with status, stock, and redemption count
+2. WHEN an Admin creates a new reward THEN the system SHALL capture name, description, image, points required, stock quantity, and validity period
+3. WHEN an Admin sets reward type THEN the system SHALL provide options for Discount Coupon, Free Shipping, Physical Gift, and Product Voucher
+4. WHEN an Admin sets stock quantity THEN the system SHALL allow unlimited (-1) or specific quantity with auto-disable when depleted
+5. WHEN an Admin edits a reward THEN the system SHALL update reward details and reflect changes immediately in LIFF
+6. WHEN an Admin disables a reward THEN the system SHALL hide reward from catalog but preserve existing redemptions
+7. WHEN an Admin views redemption requests THEN the system SHALL display list with user info, reward, code, and status
+8. WHEN an Admin approves a redemption THEN the system SHALL update status and send LINE notification to user
+9. WHEN an Admin marks redemption as delivered THEN the system SHALL record delivery timestamp and update status
+10. WHEN an Admin exports redemption report THEN the system SHALL generate CSV with all redemption data for selected period
+11. WHEN serializing reward configuration THEN the system SHALL encode using JSON format
+12. WHEN retrieving reward configuration from database THEN the system SHALL decode JSON and reconstruct reward settings
+
+
+### Requirement 25: Points Earning Rules Configuration
+
+**User Story:** As an Admin, I want to configure points earning rules, so that I can customize how customers earn loyalty points.
+
+#### Acceptance Criteria
+
+1. WHEN an Admin opens Points Settings THEN the system SHALL display current earning rules and multipliers
+2. WHEN an Admin sets base earning rate THEN the system SHALL allow configuration of points per baht spent (e.g., 1 point per 25 baht)
+3. WHEN an Admin creates bonus multiplier THEN the system SHALL allow time-limited campaigns (e.g., 2x points weekend)
+4. WHEN an Admin sets category bonus THEN the system SHALL allow different earning rates per product category
+5. WHEN an Admin sets tier multiplier THEN the system SHALL configure earning boost per membership tier (e.g., Gold = 1.5x)
+6. WHEN an Admin sets minimum order THEN the system SHALL configure minimum order amount to earn points
+7. WHEN an Admin sets points expiry THEN the system SHALL configure expiry period in months (e.g., 12 months from earn date)
+8. WHEN an Admin sets tier thresholds THEN the system SHALL configure points required for Silver, Gold, and Platinum tiers
+9. WHEN points rules change THEN the system SHALL apply new rules to future transactions only
+10. WHEN displaying earning rules to user THEN the system SHALL show current active rules and any bonus campaigns
+11. WHEN serializing points rules configuration THEN the system SHALL encode using JSON format
+12. WHEN retrieving points rules from database THEN the system SHALL decode JSON and reconstruct rules object

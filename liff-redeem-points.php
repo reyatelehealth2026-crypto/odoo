@@ -27,45 +27,16 @@ $baseUrl = rtrim(BASE_URL, '/');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>แลกของรางวัล - <?= htmlspecialchars($companyName) ?></title>
-    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css">
     <style>
-        body { font-family: 'Sarabun', sans-serif; background: #F8FAFC; }
-        .points-card { 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-        }
-        .reward-card {
-            transition: all 0.3s ease;
-        }
-        .reward-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-        }
-        .reward-card.disabled {
-            opacity: 0.6;
-            pointer-events: none;
-        }
-        .shimmer {
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-            background-size: 200% 100%;
-            animation: shimmer 1.5s infinite;
-        }
-        @keyframes shimmer {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-        .confetti {
-            position: fixed;
-            width: 10px;
-            height: 10px;
-            background: #f00;
-            animation: confetti-fall 3s ease-out forwards;
-        }
-        @keyframes confetti-fall {
-            0% { transform: translateY(-100vh) rotate(0deg); opacity: 1; }
-            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        body { 
+            font-family: 'Sarabun', sans-serif; 
+            background: var(--bg-light); 
+            margin: 0;
+            padding: 0;
         }
     </style>
 </head>
@@ -77,9 +48,14 @@ $baseUrl = rtrim(BASE_URL, '/');
                 <i class="fas fa-arrow-left text-xl"></i>
             </button>
             <h1 class="font-bold text-lg text-gray-800">แลกของรางวัล</h1>
-            <a href="liff-points-history.php?account=<?= $lineAccountId ?>" class="w-10 h-10 flex items-center justify-center text-gray-600">
-                <i class="fas fa-history text-xl"></i>
-            </a>
+            <div class="flex items-center gap-2">
+                <a href="liff-points-rules.php?account=<?= $lineAccountId ?>" class="w-10 h-10 flex items-center justify-center text-gray-600" title="กฎการสะสมคะแนน">
+                    <i class="fas fa-info-circle text-xl"></i>
+                </a>
+                <a href="liff-points-history.php?account=<?= $lineAccountId ?>" class="w-10 h-10 flex items-center justify-center text-gray-600" title="ประวัติคะแนน">
+                    <i class="fas fa-history text-xl"></i>
+                </a>
+            </div>
         </div>
     </div>
 

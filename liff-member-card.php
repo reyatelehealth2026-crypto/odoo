@@ -895,6 +895,10 @@ function goToRedeemPoints() {
     window.location.href = BASE_URL + '/liff-redeem-points.php?account=' + ACCOUNT_ID;
 }
 
+function goToPointsRules() {
+    window.location.href = BASE_URL + '/liff-points-rules.php?account=' + ACCOUNT_ID;
+}
+
 function goToAppointment() {
     window.location.href = BASE_URL + '/liff-appointment.php?account=' + ACCOUNT_ID;
 }

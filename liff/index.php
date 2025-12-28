@@ -247,6 +247,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
     <script src="<?= $baseUrl ?>/liff/assets/js/components/ai-chat.js?v=<?= $v ?>" onerror="window.debugLog('FAILED: ai-chat.js', 'error')"></script>
     <script>window.debugLog('ai-chat.js loaded, AIChat=' + (typeof AIChat), 'info');</script>
     <script src="<?= $baseUrl ?>/liff/assets/js/components/health-profile.js?v=<?= $v ?>" onerror="window.debugLog('FAILED: health-profile.js', 'error')"></script>
+    <script src="<?= $baseUrl ?>/liff/assets/js/components/points-dashboard.js?v=<?= $v ?>" onerror="window.debugLog('FAILED: points-dashboard.js', 'error')"></script>
     <script src="<?= $baseUrl ?>/liff/assets/js/liff-app.js?v=<?= $v ?>" onerror="window.debugLog('FAILED: liff-app.js', 'error')"></script>
     <script>window.debugLog('All scripts loaded!', 'success');</script>
 </body>
