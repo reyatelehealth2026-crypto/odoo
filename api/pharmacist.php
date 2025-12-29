@@ -236,6 +236,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $userId = (int)($input['user_id'] ?? 0);
             $drugs = $input['drugs'] ?? [];
             $pharmacistNote = $input['note'] ?? '';
+            $pharmacistName = $input['pharmacist_name'] ?? '';
+            $pharmacistLicense = $input['pharmacist_license'] ?? '';
             
             if (!$sessionId || !$userId || empty($drugs)) {
                 echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
@@ -254,7 +256,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try {
                     require_once __DIR__ . '/../modules/AIChat/Services/PharmacistNotifier.php';
                     $notifier = new \Modules\AIChat\Services\PharmacistNotifier();
-                    $lineSent = $notifier->sendApprovalToCustomer($userId, $triageData, $drugs);
+                    $lineSent = $notifier->sendApprovalToCustomer($userId, $triageData, $drugs, $pharmacistName, $pharmacistLicense, $pharmacistNote);
                 } catch (Exception $lineError) {
                     error_log("LINE send error (non-fatal): " . $lineError->getMessage());
                 }

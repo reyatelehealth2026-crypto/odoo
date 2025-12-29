@@ -400,7 +400,7 @@ require_once __DIR__ . '/includes/header.php';
             <div id="modalContent" class="p-6 overflow-y-auto max-h-[60vh]">
                 <!-- Content loaded via AJAX -->
             </div>
-            <div class="p-4 border-t bg-gray-50">
+            <div class="p-4 border-t bg-gray-50 overflow-y-auto max-h-[50vh]">
                 <!-- Drug Selection -->
                 <div id="drugSelection" class="mb-4 hidden">
                     <label class="block text-sm font-medium text-gray-700 mb-2">เลือกยาที่จะแนะนำ:</label>
@@ -409,11 +409,40 @@ require_once __DIR__ . '/includes/header.php';
                     </div>
                 </div>
                 
-                <!-- Pharmacist Note -->
+                <!-- Selected Drugs with Details -->
+                <div id="selectedDrugsDetails" class="mb-4 hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-pills text-green-500 mr-1"></i>รายละเอียดยาที่เลือก:
+                    </label>
+                    <div id="drugDetailsContainer" class="space-y-3">
+                        <!-- Drug detail forms will be added here -->
+                    </div>
+                </div>
+                
+                <!-- Pharmacist Info -->
+                <div class="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">
+                        <i class="fas fa-user-md text-blue-500 mr-1"></i>ข้อมูลเภสัชกร:
+                    </label>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="text-xs text-gray-500">ชื่อเภสัชกร</label>
+                            <input type="text" id="pharmacistName" value="<?= htmlspecialchars($_SESSION['display_name'] ?? $_SESSION['username'] ?? '') ?>" 
+                                   class="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500">
+                        </div>
+                        <div>
+                            <label class="text-xs text-gray-500">เลขใบอนุญาต</label>
+                            <input type="text" id="pharmacistLicense" placeholder="ภ.XXXXX" 
+                                   class="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- General Note -->
                 <div class="mb-4">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">หมายเหตุถึงลูกค้า:</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">หมายเหตุเพิ่มเติม:</label>
                     <textarea id="pharmacistNote" rows="2" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-green-500" 
-                              placeholder="เช่น ทานหลังอาหาร, หลีกเลี่ยงแอลกอฮอล์..."></textarea>
+                              placeholder="หมายเหตุทั่วไปถึงลูกค้า..."></textarea>
                 </div>
                 
                 <div class="flex justify-end gap-3">
@@ -557,9 +586,115 @@ function toggleDrug(id, name, price) {
     if (index > -1) {
         selectedDrugs.splice(index, 1);
     } else {
-        selectedDrugs.push({ id, name, price });
+        selectedDrugs.push({ 
+            id, 
+            name, 
+            price,
+            indication: '',
+            dosage: '1',
+            morning: false,
+            noon: false,
+            evening: false,
+            bedtime: false,
+            warning: '',
+            instructions: ''
+        });
     }
     console.log('Selected drugs:', selectedDrugs);
+    renderSelectedDrugDetails();
+}
+
+function renderSelectedDrugDetails() {
+    const container = document.getElementById('drugDetailsContainer');
+    const detailsSection = document.getElementById('selectedDrugsDetails');
+    
+    if (selectedDrugs.length === 0) {
+        detailsSection.classList.add('hidden');
+        container.innerHTML = '';
+        return;
+    }
+    
+    detailsSection.classList.remove('hidden');
+    
+    container.innerHTML = selectedDrugs.map((drug, idx) => `
+        <div class="p-3 bg-white border rounded-lg shadow-sm" data-drug-id="${drug.id}">
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-medium text-green-700">💊 ${drug.name}</span>
+                <span class="text-sm text-gray-500">฿${drug.price}</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2 text-sm">
+                <div class="col-span-2">
+                    <label class="text-xs text-gray-500">ข้อบ่งใช้</label>
+                    <input type="text" placeholder="เช่น บรรเทาอาการปวด ลดไข้" 
+                           onchange="updateDrugDetail(${drug.id}, 'indication', this.value)"
+                           value="${drug.indication || ''}"
+                           class="w-full px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-green-500">
+                </div>
+                
+                <div>
+                    <label class="text-xs text-gray-500">จำนวน (เม็ด/ครั้ง)</label>
+                    <input type="number" min="0.5" step="0.5" value="${drug.dosage || 1}"
+                           onchange="updateDrugDetail(${drug.id}, 'dosage', this.value)"
+                           class="w-full px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-green-500">
+                </div>
+                
+                <div>
+                    <label class="text-xs text-gray-500">เวลาทาน</label>
+                    <div class="flex flex-wrap gap-1 mt-1">
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" ${drug.morning ? 'checked' : ''} 
+                                   onchange="updateDrugDetail(${drug.id}, 'morning', this.checked)"
+                                   class="w-3 h-3 text-green-500 rounded">
+                            <span class="ml-1 text-xs">เช้า</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" ${drug.noon ? 'checked' : ''} 
+                                   onchange="updateDrugDetail(${drug.id}, 'noon', this.checked)"
+                                   class="w-3 h-3 text-green-500 rounded">
+                            <span class="ml-1 text-xs">กลางวัน</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" ${drug.evening ? 'checked' : ''} 
+                                   onchange="updateDrugDetail(${drug.id}, 'evening', this.checked)"
+                                   class="w-3 h-3 text-green-500 rounded">
+                            <span class="ml-1 text-xs">เย็น</span>
+                        </label>
+                        <label class="inline-flex items-center">
+                            <input type="checkbox" ${drug.bedtime ? 'checked' : ''} 
+                                   onchange="updateDrugDetail(${drug.id}, 'bedtime', this.checked)"
+                                   class="w-3 h-3 text-green-500 rounded">
+                            <span class="ml-1 text-xs">ก่อนนอน</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="col-span-2">
+                    <label class="text-xs text-gray-500">วิธีใช้</label>
+                    <input type="text" placeholder="เช่น ทานหลังอาหาร, ดื่มน้ำตาม" 
+                           onchange="updateDrugDetail(${drug.id}, 'instructions', this.value)"
+                           value="${drug.instructions || ''}"
+                           class="w-full px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-green-500">
+                </div>
+                
+                <div class="col-span-2">
+                    <label class="text-xs text-gray-500">คำเตือน</label>
+                    <input type="text" placeholder="เช่น ห้ามใช้ในผู้ที่แพ้ยา, ระวังในผู้ป่วยโรคตับ" 
+                           onchange="updateDrugDetail(${drug.id}, 'warning', this.value)"
+                           value="${drug.warning || ''}"
+                           class="w-full px-2 py-1 border rounded text-sm focus:ring-1 focus:ring-green-500">
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function updateDrugDetail(drugId, field, value) {
+    const drug = selectedDrugs.find(d => d.id === drugId);
+    if (drug) {
+        drug[field] = value;
+    }
+    console.log('Updated drug:', drug);
 }
 
 function buildDetailHTML(data) {
@@ -802,9 +937,38 @@ function approveAndSend() {
         return;
     }
     
+    // Get pharmacist info
+    const pharmacistName = document.getElementById('pharmacistName').value || '';
+    const pharmacistLicense = document.getElementById('pharmacistLicense').value || '';
+    
+    if (!pharmacistName) {
+        alert('กรุณากรอกชื่อเภสัชกร');
+        return;
+    }
+    
     if (!confirm('ยืนยันอนุมัติและส่งยาให้ลูกค้า?')) return;
     
     const note = document.getElementById('pharmacistNote').value;
+    
+    // Build drugs with timing info
+    const drugsWithDetails = selectedDrugs.map(drug => {
+        const timing = [];
+        if (drug.morning) timing.push('เช้า');
+        if (drug.noon) timing.push('กลางวัน');
+        if (drug.evening) timing.push('เย็น');
+        if (drug.bedtime) timing.push('ก่อนนอน');
+        
+        return {
+            id: drug.id,
+            name: drug.name,
+            price: drug.price,
+            indication: drug.indication || '',
+            dosage: drug.dosage || '1',
+            timing: timing.join(', ') || 'ตามอาการ',
+            instructions: drug.instructions || '',
+            warning: drug.warning || ''
+        };
+    });
     
     fetch('api/pharmacist.php', {
         method: 'POST',
@@ -813,8 +977,10 @@ function approveAndSend() {
             action: 'approve_drugs',
             session_id: currentNotificationId,
             user_id: currentUserId,
-            drugs: selectedDrugs,
-            note: note
+            drugs: drugsWithDetails,
+            note: note,
+            pharmacist_name: pharmacistName,
+            pharmacist_license: pharmacistLicense
         })
     })
     .then(r => {

@@ -130,9 +130,9 @@ class PharmacistNotifier
     /**
      * ส่ง Flex สรุปยาที่อนุมัติ
      */
-    public function sendApprovalToCustomer(int $userId, array $triageData, array $approvedDrugs): bool
+    public function sendApprovalToCustomer(int $userId, array $triageData, array $approvedDrugs, ?string $pharmacistName = null, ?string $pharmacistLicense = null, ?string $note = null): bool
     {
-        $flex = $this->buildApprovalFlex($triageData, $approvedDrugs);
+        $flex = $this->buildApprovalFlex($triageData, $approvedDrugs, $pharmacistName, $pharmacistLicense, $note);
         return $this->sendToCustomer($userId, '', $flex);
     }
     
@@ -449,9 +449,9 @@ class PharmacistNotifier
     }
     
     /**
-     * สร้าง Flex Message อนุมัติยา
+     * สร้าง Flex Message อนุมัติยา - พร้อมรายละเอียดครบถ้วน
      */
-    private function buildApprovalFlex(array $triageData, array $approvedDrugs): array
+    private function buildApprovalFlex(array $triageData, array $approvedDrugs, ?string $pharmacistName = null, ?string $pharmacistLicense = null, ?string $note = null): array
     {
         $drugContents = [];
         $total = 0;
@@ -460,15 +460,19 @@ class PharmacistNotifier
             $price = $drug['price'] ?? 0;
             $total += $price;
             
+            // Drug name and price
             $drugContents[] = [
                 'type' => 'box',
                 'layout' => 'horizontal',
+                'margin' => 'md',
                 'contents' => [
                     [
                         'type' => 'text',
                         'text' => '💊 ' . ($drug['name'] ?? 'ยา'),
                         'size' => 'sm',
-                        'flex' => 3
+                        'weight' => 'bold',
+                        'flex' => 3,
+                        'wrap' => true
                     ],
                     [
                         'type' => 'text',
@@ -476,6 +480,104 @@ class PharmacistNotifier
                         'size' => 'sm',
                         'align' => 'end',
                         'flex' => 1
+                    ]
+                ]
+            ];
+            
+            // Drug details
+            $details = [];
+            
+            if (!empty($drug['indication'])) {
+                $details[] = "📋 {$drug['indication']}";
+            }
+            
+            $dosageInfo = '';
+            if (!empty($drug['dosage'])) {
+                $dosageInfo = "ทาน {$drug['dosage']} เม็ด";
+            }
+            if (!empty($drug['timing'])) {
+                $dosageInfo .= " ({$drug['timing']})";
+            }
+            if ($dosageInfo) {
+                $details[] = "⏰ {$dosageInfo}";
+            }
+            
+            if (!empty($drug['instructions'])) {
+                $details[] = "📝 {$drug['instructions']}";
+            }
+            
+            if (!empty($drug['warning'])) {
+                $details[] = "⚠️ {$drug['warning']}";
+            }
+            
+            if (!empty($details)) {
+                $drugContents[] = [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'margin' => 'sm',
+                    'paddingStart' => '20px',
+                    'contents' => array_map(function($detail) {
+                        return [
+                            'type' => 'text',
+                            'text' => $detail,
+                            'size' => 'xs',
+                            'color' => '#666666',
+                            'wrap' => true
+                        ];
+                    }, $details)
+                ];
+            }
+        }
+        
+        // Pharmacist info section
+        $pharmacistSection = [];
+        if ($pharmacistName || $pharmacistLicense) {
+            $pharmacistSection = [
+                [
+                    'type' => 'separator',
+                    'margin' => 'lg'
+                ],
+                [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'margin' => 'md',
+                    'contents' => [
+                        [
+                            'type' => 'text',
+                            'text' => '👨‍⚕️ ออกโดย: ' . ($pharmacistName ?: '-'),
+                            'size' => 'xs',
+                            'color' => '#666666'
+                        ],
+                        [
+                            'type' => 'text',
+                            'text' => '📜 ใบอนุญาตเลขที่: ' . ($pharmacistLicense ?: '-'),
+                            'size' => 'xs',
+                            'color' => '#666666'
+                        ]
+                    ]
+                ]
+            ];
+        }
+        
+        // Note section
+        $noteSection = [];
+        if ($note) {
+            $noteSection = [
+                [
+                    'type' => 'box',
+                    'layout' => 'vertical',
+                    'margin' => 'md',
+                    'backgroundColor' => '#FEF3C7',
+                    'cornerRadius' => '8px',
+                    'paddingAll' => '10px',
+                    'contents' => [
+                        [
+                            'type' => 'text',
+                            'text' => '📌 ' . $note,
+                            'size' => 'xs',
+                            'color' => '#92400E',
+                            'wrap' => true
+                        ]
                     ]
                 ]
             ];
@@ -509,7 +611,7 @@ class PharmacistNotifier
                         [
                             [
                                 'type' => 'text',
-                                'text' => 'ยาที่แนะนำ',
+                                'text' => '💊 ยาที่แนะนำ',
                                 'weight' => 'bold',
                                 'size' => 'md'
                             ],
@@ -545,7 +647,9 @@ class PharmacistNotifier
                                     ]
                                 ]
                             ]
-                        ]
+                        ],
+                        $pharmacistSection,
+                        $noteSection
                     ),
                     'paddingAll' => '20px'
                 ],
