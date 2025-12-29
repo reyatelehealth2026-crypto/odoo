@@ -278,15 +278,27 @@ document.getElementById('drugSearch').addEventListener('input', function(e) {
     
     searchTimeout = setTimeout(() => {
         console.log('Searching for:', query, 'in', allDrugs.length, 'drugs');
+        
+        // Debug: show first drug name before and after trim
+        if (allDrugs.length > 0) {
+            const firstDrug = allDrugs[0];
+            console.log('First drug raw name:', JSON.stringify(firstDrug.name));
+            console.log('First drug trimmed:', JSON.stringify((firstDrug.name || '').trim()));
+        }
+        
         const results = allDrugs.filter(drug => {
             // Trim whitespace from drug names before comparing
             const name = (drug.name || '').trim().toLowerCase();
             const genericName = (drug.generic_name || '').trim().toLowerCase();
             const sku = (drug.sku || '').trim().toLowerCase();
-            return name.includes(query) || genericName.includes(query) || sku.includes(query);
+            const match = name.includes(query) || genericName.includes(query) || sku.includes(query);
+            return match;
         }).slice(0, 15);
         
         console.log('Found', results.length, 'results');
+        if (results.length > 0) {
+            console.log('First result:', results[0].name);
+        }
         showSearchResults(results);
     }, 150);
 });
