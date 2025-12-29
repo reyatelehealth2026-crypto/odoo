@@ -286,10 +286,10 @@ require_once __DIR__ . '/includes/header.php';
                             </div>
                             
                             <div class="flex flex-col gap-2">
-                                <button onclick="viewDetail(<?= $sessionId ?>)" 
-                                        class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600">
-                                    <i class="fas fa-eye mr-1"></i>ดู
-                                </button>
+                                <a href="dispense-drugs.php?session_id=<?= $sessionId ?>" 
+                                   class="px-3 py-1.5 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 text-center">
+                                    <i class="fas fa-pills mr-1"></i>จ่ายยา
+                                </a>
                                 <button onclick="handleSession(<?= $sessionId ?>, 'completed')" 
                                         class="px-3 py-1.5 bg-green-500 text-white text-sm rounded-lg hover:bg-green-600">
                                     <i class="fas fa-check mr-1"></i>จัดการแล้ว
