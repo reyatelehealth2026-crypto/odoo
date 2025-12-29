@@ -26,24 +26,20 @@ $stats = [
 ];
 
 try {
-    // Pending notifications
-    $stmt = $db->prepare("SELECT COUNT(*) FROM pharmacist_notifications WHERE status = 'pending' AND (line_account_id = ? OR line_account_id IS NULL)");
-    $stmt->execute([$currentBotId]);
+    // Pending notifications - no line_account_id filter
+    $stmt = $db->query("SELECT COUNT(*) FROM pharmacist_notifications WHERE status = 'pending'");
     $stats['pending'] = $stmt->fetchColumn();
     
     // Urgent notifications
-    $stmt = $db->prepare("SELECT COUNT(*) FROM pharmacist_notifications WHERE status = 'pending' AND priority = 'urgent' AND (line_account_id = ? OR line_account_id IS NULL)");
-    $stmt->execute([$currentBotId]);
+    $stmt = $db->query("SELECT COUNT(*) FROM pharmacist_notifications WHERE status = 'pending' AND priority = 'urgent'");
     $stats['urgent'] = $stmt->fetchColumn();
     
     // Today completed
-    $stmt = $db->prepare("SELECT COUNT(*) FROM triage_sessions WHERE status = 'completed' AND DATE(completed_at) = CURDATE() AND (line_account_id = ? OR line_account_id IS NULL)");
-    $stmt->execute([$currentBotId]);
+    $stmt = $db->query("SELECT COUNT(*) FROM triage_sessions WHERE status = 'completed' AND DATE(completed_at) = CURDATE()");
     $stats['today_completed'] = $stmt->fetchColumn();
     
     // Total sessions
-    $stmt = $db->prepare("SELECT COUNT(*) FROM triage_sessions WHERE (line_account_id = ? OR line_account_id IS NULL)");
-    $stmt->execute([$currentBotId]);
+    $stmt = $db->query("SELECT COUNT(*) FROM triage_sessions");
     $stats['total_sessions'] = $stmt->fetchColumn();
 } catch (Exception $e) {
     // Tables might not exist yet
@@ -52,35 +48,31 @@ try {
 // Get pending notifications
 $notifications = [];
 try {
-    $stmt = $db->prepare("
+    $stmt = $db->query("
         SELECT pn.*, u.display_name, u.picture_url, u.phone,
                ts.current_state, ts.triage_data
         FROM pharmacist_notifications pn
         LEFT JOIN users u ON pn.user_id = u.id
         LEFT JOIN triage_sessions ts ON pn.triage_session_id = ts.id
-        WHERE pn.status = 'pending' 
-        AND (pn.line_account_id = ? OR pn.line_account_id IS NULL)
+        WHERE pn.status = 'pending'
         ORDER BY 
             CASE WHEN pn.priority = 'urgent' THEN 0 ELSE 1 END,
             pn.created_at DESC
         LIMIT 20
     ");
-    $stmt->execute([$currentBotId]);
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 
 // Get recent sessions
 $recentSessions = [];
 try {
-    $stmt = $db->prepare("
+    $stmt = $db->query("
         SELECT ts.*, u.display_name, u.picture_url
         FROM triage_sessions ts
         LEFT JOIN users u ON ts.user_id = u.id
-        WHERE (ts.line_account_id = ? OR ts.line_account_id IS NULL)
         ORDER BY ts.updated_at DESC
         LIMIT 10
     ");
-    $stmt->execute([$currentBotId]);
     $recentSessions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) {}
 

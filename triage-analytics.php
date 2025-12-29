@@ -74,9 +74,8 @@ try {
         WHERE status = 'completed' 
         AND completed_at IS NOT NULL
         AND DATE(created_at) BETWEEN ? AND ?
-        AND (line_account_id = ? OR line_account_id IS NULL)
     ");
-    $stmt->execute([$startDate, $endDate, $currentBotId]);
+    $stmt->execute([$startDate, $endDate]);
     $avgResult = $stmt->fetch(PDO::FETCH_ASSOC);
     $stats['avg_completion_time'] = round($avgResult['avg_time'] ?? 0, 1);
     
@@ -85,9 +84,8 @@ try {
         SELECT triage_data
         FROM triage_sessions 
         WHERE DATE(created_at) BETWEEN ? AND ?
-        AND (line_account_id = ? OR line_account_id IS NULL)
     ");
-    $stmt->execute([$startDate, $endDate, $currentBotId]);
+    $stmt->execute([$startDate, $endDate]);
     $sessions = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     $symptomCounts = [];
@@ -109,11 +107,10 @@ try {
             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
         FROM triage_sessions 
         WHERE DATE(created_at) BETWEEN ? AND ?
-        AND (line_account_id = ? OR line_account_id IS NULL)
         GROUP BY DATE(created_at)
         ORDER BY date
     ");
-    $stmt->execute([$startDate, $endDate, $currentBotId]);
+    $stmt->execute([$startDate, $endDate]);
     $dailyStats = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
 } catch (Exception $e) {
