@@ -110,60 +110,96 @@ if ($account && !empty($account['channel_access_token']) && $user && !empty($use
 }
 
 echo "<h3>5. Send Test Message</h3>";
-if ($account && !empty($account['channel_access_token']) && $user && !empty($user['line_user_id'])) {
-    if (isset($_GET['send'])) {
-        $token = $account['channel_access_token'];
-        $lineUserId = $user['line_user_id'];
+echo "<h3>6. All LINE Accounts</h3>";
+try {
+    $stmt = $db->query("SELECT id, name, channel_access_token, is_active FROM line_accounts ORDER BY id");
+    $accounts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    echo "<table border='1' cellpadding='5'>";
+    echo "<tr><th>ID</th><th>Name</th><th>Token</th><th>Active</th></tr>";
+    foreach ($accounts as $acc) {
+        $tokenLen = strlen($acc['channel_access_token'] ?? '');
+        echo "<tr>";
+        echo "<td>{$acc['id']}</td>";
+        echo "<td>" . htmlspecialchars($acc['name']) . "</td>";
+        echo "<td>" . ($tokenLen > 0 ? "{$tokenLen} chars" : 'No token') . "</td>";
+        echo "<td>" . ($acc['is_active'] ? '✅' : '❌') . "</td>";
+        echo "</tr>";
+    }
+    echo "</table>";
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage();
+}
+
+echo "<h3>7. User's LINE Account</h3>";
+try {
+    $stmt = $db->query("SELECT u.id, u.display_name, u.line_user_id, u.line_account_id, la.name as account_name 
+                        FROM users u 
+                        LEFT JOIN line_accounts la ON u.line_account_id = la.id 
+                        WHERE u.id = 28");
+    $userInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($userInfo) {
+        echo "User ID: {$userInfo['id']}<br>";
+        echo "Display Name: " . htmlspecialchars($userInfo['display_name']) . "<br>";
+        echo "LINE User ID: {$userInfo['line_user_id']}<br>";
+        echo "LINE Account ID: " . ($userInfo['line_account_id'] ?? 'NULL') . "<br>";
+        echo "LINE Account Name: " . htmlspecialchars($userInfo['account_name'] ?? 'N/A') . "<br>";
         
-        $data = [
-            'to' => $lineUserId,
-            'messages' => [[
-                'type' => 'text',
-                'text' => "🧪 ทดสอบส่งข้อความ\n\nเวลา: " . date('Y-m-d H:i:s')
-            ]]
-        ];
-        
-        echo "Sending to: {$lineUserId}<br>";
-        echo "Using token: " . substr($token, 0, 20) . "...<br>";
-        
-        $ch = curl_init('https://api.line.me/v2/bot/message/push');
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'Authorization: Bearer ' . $token
-            ],
-            CURLOPT_POSTFIELDS => json_encode($data)
-        ]);
-        
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlError = curl_error($ch);
-        curl_close($ch);
-        
-        echo "<br><strong>Result:</strong><br>";
-        echo "HTTP Code: {$httpCode}<br>";
-        if ($curlError) {
-            echo "cURL Error: {$curlError}<br>";
+        if ($userInfo['line_account_id']) {
+            // Try with user's LINE account
+            $stmt = $db->prepare("SELECT channel_access_token FROM line_accounts WHERE id = ?");
+            $stmt->execute([$userInfo['line_account_id']]);
+            $userAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($userAccount && !empty($userAccount['channel_access_token'])) {
+                echo "<br><strong>Testing with user's LINE account token...</strong><br>";
+                
+                $token = $userAccount['channel_access_token'];
+                $lineUserId = $userInfo['line_user_id'];
+                
+                // Check follow status
+                $ch = curl_init("https://api.line.me/v2/bot/profile/{$lineUserId}");
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . $token]
+                ]);
+                $response = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                curl_close($ch);
+                
+                if ($httpCode === 200) {
+                    echo "✅ User follows this bot!<br>";
+                    
+                    if (isset($_GET['send2'])) {
+                        // Send test message
+                        $data = [
+                            'to' => $lineUserId,
+                            'messages' => [['type' => 'text', 'text' => "🧪 ทดสอบจาก account ที่ถูกต้อง\n\nเวลา: " . date('Y-m-d H:i:s')]]
+                        ];
+                        
+                        $ch = curl_init('https://api.line.me/v2/bot/message/push');
+                        curl_setopt_array($ch, [
+                            CURLOPT_POST => true,
+                            CURLOPT_RETURNTRANSFER => true,
+                            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
+                            CURLOPT_POSTFIELDS => json_encode($data)
+                        ]);
+                        $response = curl_exec($ch);
+                        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        curl_close($ch);
+                        
+                        echo "Send result: " . ($httpCode === 200 ? '✅ SUCCESS!' : "❌ Failed (HTTP {$httpCode})") . "<br>";
+                    } else {
+                        echo "<a href='?send2=1' style='background:#10b981;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;'>📤 ส่งข้อความทดสอบ (ใช้ account ที่ถูกต้อง)</a>";
+                    }
+                } else {
+                    echo "❌ User does not follow this bot either<br>";
+                }
+            }
         }
-        echo "Response: <pre>" . htmlspecialchars($response) . "</pre>";
-        
-        if ($httpCode === 200) {
-            echo "<br>✅ <strong style='color:green'>SUCCESS!</strong>";
-        } else {
-            echo "<br>❌ <strong style='color:red'>FAILED</strong>";
-        }
-    } else {
-        echo "<a href='?send=1' style='background:#10b981;color:white;padding:10px 20px;border-radius:5px;text-decoration:none;'>📤 ส่งข้อความทดสอบ</a>";
     }
-} else {
-    echo "❌ Cannot test - missing token or user LINE ID<br>";
-    if (!$account || empty($account['channel_access_token'])) {
-        echo "- No channel_access_token in line_accounts table<br>";
-    }
-    if (!$user || empty($user['line_user_id'])) {
-        echo "- No line_user_id for user<br>";
-    }
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage();
 }
 
