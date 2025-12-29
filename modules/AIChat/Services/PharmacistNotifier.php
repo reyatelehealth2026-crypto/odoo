@@ -91,27 +91,36 @@ class PharmacistNotifier
     public function sendToCustomer(int $userId, string $message, ?array $flexMessage = null): bool
     {
         try {
+            // Get user with their line_account_id
             $user = $this->db->fetchOne(
-                "SELECT line_user_id FROM users WHERE id = ?",
+                "SELECT line_user_id, line_account_id FROM users WHERE id = ?",
                 [$userId]
             );
             
             if (!$user || empty($user['line_user_id'])) {
+                error_log("sendToCustomer: User {$userId} has no line_user_id");
+                return false;
+            }
+            
+            // Get token from user's LINE account (not the default one)
+            $token = $this->getChannelAccessTokenForUser($user['line_account_id']);
+            if (!$token) {
+                error_log("sendToCustomer: No token for user's LINE account");
                 return false;
             }
             
             if ($flexMessage) {
-                return $this->sendLINEPush($user['line_user_id'], $flexMessage);
+                return $this->sendLINEPushWithToken($user['line_user_id'], $flexMessage, $token);
             }
             
-            return $this->sendLINEPush($user['line_user_id'], [
+            return $this->sendLINEPushWithToken($user['line_user_id'], [
                 'type' => 'text',
                 'text' => $message,
                 'sender' => [
                     'name' => '💊 เภสัชกร',
                     'iconUrl' => 'https://cdn-icons-png.flaticon.com/512/3774/3774299.png'
                 ]
-            ]);
+            ], $token);
         } catch (\Exception $e) {
             error_log("sendToCustomer error: " . $e->getMessage());
             return false;
@@ -125,6 +134,68 @@ class PharmacistNotifier
     {
         $flex = $this->buildApprovalFlex($triageData, $approvedDrugs);
         return $this->sendToCustomer($userId, '', $flex);
+    }
+    
+    /**
+     * Get token for specific LINE account
+     */
+    private function getChannelAccessTokenForUser(?int $lineAccountId): ?string
+    {
+        try {
+            if ($lineAccountId) {
+                $result = $this->db->fetchOne(
+                    "SELECT channel_access_token FROM line_accounts WHERE id = ?",
+                    [$lineAccountId]
+                );
+                if ($result && !empty($result['channel_access_token'])) {
+                    return $result['channel_access_token'];
+                }
+            }
+            
+            // Fallback to default
+            return $this->getChannelAccessToken();
+        } catch (\Exception $e) {
+            error_log("getChannelAccessTokenForUser error: " . $e->getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Send LINE push with specific token
+     */
+    private function sendLINEPushWithToken(string $lineUserId, array $message, string $token): bool
+    {
+        try {
+            $data = [
+                'to' => $lineUserId,
+                'messages' => [$message]
+            ];
+            
+            $ch = curl_init('https://api.line.me/v2/bot/message/push');
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $token
+                ],
+                CURLOPT_POSTFIELDS => json_encode($data)
+            ]);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            
+            if ($httpCode !== 200) {
+                error_log("LINE Push failed (HTTP {$httpCode}): " . $response);
+                return false;
+            }
+            
+            return true;
+        } catch (\Exception $e) {
+            error_log("sendLINEPushWithToken error: " . $e->getMessage());
+            return false;
+        }
     }
 
     /**
