@@ -642,7 +642,52 @@ class TriageEngine
     private function handleMedicalHistory(string $message): array
     {
         if (!$this->isSkipAnswer($message)) {
-            $this->currentState['data']['medical_history'] = $this->extractMedicalConditions($message);
+            $medicalHistory = $this->extractMedicalConditions($message);
+            $this->currentState['data']['medical_history'] = $medicalHistory;
+            
+            // Check for high-risk conditions combined with severity
+            $severity = $this->currentState['data']['severity'] ?? 0;
+            $highRiskConditions = ['โรคหัวใจ', 'หัวใจ', 'heart', 'cardiac', 'หลอดเลือดสมอง', 'stroke', 'เบาหวาน', 'diabetes'];
+            $hasHighRiskCondition = false;
+            $matchedCondition = '';
+            
+            $medicalHistoryLower = mb_strtolower(is_array($medicalHistory) ? implode(' ', $medicalHistory) : $medicalHistory);
+            
+            foreach ($highRiskConditions as $condition) {
+                if (mb_strpos($medicalHistoryLower, mb_strtolower($condition)) !== false) {
+                    $hasHighRiskCondition = true;
+                    $matchedCondition = $condition;
+                    break;
+                }
+            }
+            
+            // If high-risk condition + moderate-high severity, add red flag
+            if ($hasHighRiskCondition && $severity >= 5) {
+                $redFlags = $this->currentState['data']['red_flags'] ?? [];
+                $redFlags[] = [
+                    'message' => "ผู้ป่วยมีโรคประจำตัว ({$matchedCondition}) ร่วมกับอาการรุนแรงระดับ {$severity}/10",
+                    'severity' => 'critical',
+                    'action' => '🚨 ควรติดต่อผู้ป่วยโดยด่วน หรือแนะนำให้ไปพบแพทย์'
+                ];
+                $this->currentState['data']['red_flags'] = $redFlags;
+                
+                // Escalate to pharmacist immediately
+                $this->notifyPharmacist(true);
+                
+                // Return warning message
+                $this->currentState['state'] = self::STATE_CURRENT_MEDS;
+                $this->saveState();
+                
+                return $this->buildResponse(
+                    "⚠️ พบข้อมูลสำคัญ!\n\n" .
+                    "คุณมีโรคประจำตัว ({$matchedCondition}) ร่วมกับอาการที่รุนแรง\n" .
+                    "เภสัชกรจะติดต่อกลับโดยเร็วค่ะ\n\n" .
+                    "🚨 หากอาการรุนแรงมาก กรุณาโทร 1669 หรือไปโรงพยาบาลทันที\n\n" .
+                    self::STATE_QUESTIONS[self::STATE_CURRENT_MEDS],
+                    self::STATE_CURRENT_MEDS,
+                    $this->getCurrentMedsQuickReplies()
+                );
+            }
         }
         
         $this->currentState['state'] = self::STATE_CURRENT_MEDS;
@@ -1625,6 +1670,7 @@ class TriageEngine
         try {
             $data = $this->currentState['data'];
             $priority = $urgent ? 'urgent' : 'normal';
+            $redFlags = $data['red_flags'] ?? [];
             
             // Get user info for notification
             $userName = $this->getUserName();
@@ -1633,6 +1679,11 @@ class TriageEngine
             $title = $urgent 
                 ? '🚨 ฉุกเฉิน - ลูกค้าต้องการความช่วยเหลือด่วน'
                 : '👨‍⚕️ ลูกค้าขอปรึกษาเภสัชกร';
+            
+            // Update title if red flags exist
+            if (!empty($redFlags)) {
+                $title = '🚨 พบ Red Flag - ต้องตรวจสอบด่วน!';
+            }
             
             $message = "ลูกค้า: {$userName}\n";
             
@@ -1646,8 +1697,18 @@ class TriageEngine
             if (!empty($data['severity'])) {
                 $message .= "ความรุนแรง: {$data['severity']}/10\n";
             }
-            if (!empty($data['red_flags'])) {
-                $message .= "⚠️ Red Flags: " . count($data['red_flags']) . " รายการ\n";
+            if (!empty($data['medical_history'])) {
+                $medHistory = is_array($data['medical_history']) ? implode(', ', $data['medical_history']) : $data['medical_history'];
+                $message .= "โรคประจำตัว: {$medHistory}\n";
+            }
+            if (!empty($redFlags)) {
+                $message .= "\n🚨 Red Flags:\n";
+                foreach ($redFlags as $flag) {
+                    $flagMsg = is_array($flag) ? ($flag['message'] ?? '') : $flag;
+                    if ($flagMsg) {
+                        $message .= "• {$flagMsg}\n";
+                    }
+                }
             }
             
             // Include full triage data in notification_data for dashboard display

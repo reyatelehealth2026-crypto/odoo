@@ -2368,6 +2368,23 @@ function ensureTriageNotification($db, $sessionId, $userId, $lineAccountId, $use
         $severityLevel = 'normal';
         $priority = 'normal';
         
+        // Get medical history and red flags
+        $medicalHistory = $triageData['medical_history'] ?? '';
+        $redFlags = $triageData['red_flags'] ?? [];
+        
+        // Check for high-risk conditions in medical history
+        $highRiskConditions = ['โรคหัวใจ', 'หัวใจ', 'heart', 'cardiac', 'เบาหวาน', 'diabetes', 'ความดัน', 'hypertension', 'หลอดเลือดสมอง', 'stroke', 'ไต', 'kidney'];
+        $hasHighRiskCondition = false;
+        $medicalHistoryLower = mb_strtolower(is_array($medicalHistory) ? implode(' ', $medicalHistory) : $medicalHistory);
+        
+        foreach ($highRiskConditions as $condition) {
+            if (mb_strpos($medicalHistoryLower, mb_strtolower($condition)) !== false) {
+                $hasHighRiskCondition = true;
+                break;
+            }
+        }
+        
+        // Determine severity level and priority
         if ($severity !== null) {
             if ($severity >= 8) {
                 $severityLevel = 'critical';
@@ -2382,6 +2399,37 @@ function ensureTriageNotification($db, $sessionId, $userId, $lineAccountId, $use
             }
         }
         
+        // Escalate to urgent if high-risk condition + moderate severity
+        if ($hasHighRiskCondition && $severity !== null && $severity >= 5) {
+            $severityLevel = 'critical';
+            $priority = 'urgent';
+            
+            // Add red flag for high-risk condition
+            if (empty($redFlags)) {
+                $redFlags = [];
+            }
+            $redFlags[] = [
+                'message' => 'ผู้ป่วยมีโรคประจำตัวที่เสี่ยง (' . (is_array($medicalHistory) ? implode(', ', $medicalHistory) : $medicalHistory) . ') ร่วมกับอาการรุนแรงระดับ ' . $severity . '/10',
+                'severity' => 'critical',
+                'action' => '🚨 ควรติดต่อผู้ป่วยโดยด่วน'
+            ];
+        }
+        
+        // Also escalate if there are existing red flags
+        if (!empty($redFlags)) {
+            $hasCriticalFlag = false;
+            foreach ($redFlags as $flag) {
+                if (is_array($flag) && ($flag['severity'] ?? '') === 'critical') {
+                    $hasCriticalFlag = true;
+                    break;
+                }
+            }
+            if ($hasCriticalFlag) {
+                $severityLevel = 'critical';
+                $priority = 'urgent';
+            }
+        }
+        
         $userName = $userContext['display_name'] ?? 'ไม่ระบุชื่อ';
         
         $notificationData = json_encode([
@@ -2391,10 +2439,12 @@ function ensureTriageNotification($db, $sessionId, $userId, $lineAccountId, $use
             'severity_level' => $severityLevel,
             'associated_symptoms' => $triageData['associated_symptoms'] ?? '',
             'allergies' => $triageData['allergies'] ?? '',
-            'medical_history' => $triageData['medical_history'] ?? '',
+            'medical_history' => $medicalHistory,
             'current_medications' => $triageData['current_medications'] ?? '',
+            'red_flags' => $redFlags,
             'current_state' => $state,
-            'user_name' => $userName
+            'user_name' => $userName,
+            'has_high_risk_condition' => $hasHighRiskCondition
         ], JSON_UNESCAPED_UNICODE);
         
         if ($existingNotif) {
@@ -2411,7 +2461,11 @@ function ensureTriageNotification($db, $sessionId, $userId, $lineAccountId, $use
             // Create new notification
             $title = "🩺 การซักประวัติใหม่";
             if ($priority === 'urgent') {
-                $title = "⚠️ การซักประวัติ - ต้องตรวจสอบ";
+                if (!empty($redFlags)) {
+                    $title = "🚨 พบ Red Flag - ต้องตรวจสอบด่วน!";
+                } else {
+                    $title = "⚠️ การซักประวัติ - ต้องตรวจสอบ";
+                }
             }
             
             $message = "ลูกค้า: {$userName}\n";
@@ -2424,7 +2478,28 @@ function ensureTriageNotification($db, $sessionId, $userId, $lineAccountId, $use
             if ($severity !== null) {
                 $message .= "ความรุนแรง: {$severity}/10\n";
             }
-            $message .= "สถานะ: {$state}";
+            if (!empty($medicalHistory)) {
+                $medHistoryStr = is_array($medicalHistory) ? implode(', ', $medicalHistory) : $medicalHistory;
+                $message .= "โรคประจำตัว: {$medHistoryStr}\n";
+            }
+            if (!empty($redFlags)) {
+                $message .= "\n🚨 Red Flags:\n";
+                foreach ($redFlags as $flag) {
+                    $flagMsg = is_array($flag) ? ($flag['message'] ?? '') : $flag;
+                    if ($flagMsg) {
+                        $message .= "• {$flagMsg}\n";
+                    }
+                }
+            }
+            $message .= "\nสถานะ: {$state}";
+            
+            // Determine notification type based on red flags
+            $notificationType = 'triage_session';
+            if (!empty($redFlags)) {
+                $notificationType = 'emergency_alert';
+            } elseif ($priority === 'urgent') {
+                $notificationType = 'triage_alert';
+            }
             
             // Ensure table exists with all columns
             $db->exec("
@@ -2456,10 +2531,11 @@ function ensureTriageNotification($db, $sessionId, $userId, $lineAccountId, $use
             $stmt = $db->prepare("
                 INSERT INTO pharmacist_notifications 
                 (line_account_id, type, title, message, notification_data, user_id, triage_session_id, priority, status)
-                VALUES (?, 'triage_session', ?, ?, ?, ?, ?, ?, 'pending')
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
             ");
             $stmt->execute([
                 $lineAccountId,
+                $notificationType,
                 $title,
                 $message,
                 $notificationData,
