@@ -41,8 +41,10 @@ try {
     // Total sessions
     $stmt = $db->query("SELECT COUNT(*) FROM triage_sessions");
     $stats['total_sessions'] = $stmt->fetchColumn();
+    
+    error_log("Pharmacist Dashboard Stats: pending={$stats['pending']}, urgent={$stats['urgent']}, total={$stats['total_sessions']}");
 } catch (Exception $e) {
-    // Tables might not exist yet
+    error_log("Pharmacist Dashboard Stats Error: " . $e->getMessage());
 }
 
 // Get pending notifications
@@ -61,7 +63,10 @@ try {
         LIMIT 20
     ");
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+    error_log("Pharmacist Dashboard Notifications: found " . count($notifications));
+} catch (Exception $e) {
+    error_log("Pharmacist Dashboard Notifications Error: " . $e->getMessage());
+}
 
 // Get recent sessions
 $recentSessions = [];
