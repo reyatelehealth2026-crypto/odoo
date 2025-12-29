@@ -686,6 +686,7 @@ class PharmacistNotifier
     
     private function getCheckoutUrl(): string
     {
-        return "https://liff.line.me/{LIFF_ID}/checkout";
+        // Use actual LIFF URL - same as test_flex_message.php
+        return "https://clinicya.re-ya.com/liff/";
     }
 }
