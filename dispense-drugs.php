@@ -246,6 +246,8 @@ function loadAllDrugs() {
             searchInput.placeholder = `พิมพ์ชื่อยา... (${allDrugs.length} รายการ)`;
             searchInput.disabled = false;
             console.log('Loaded', allDrugs.length, 'drugs');
+            // Show first 5 drug names for debugging
+            console.log('Sample drugs:', allDrugs.slice(0, 5).map(d => d.name));
         } else {
             searchInput.placeholder = 'เกิดข้อผิดพลาด: ' + (data.error || 'Unknown');
             console.error('Failed to load drugs:', data.error);
