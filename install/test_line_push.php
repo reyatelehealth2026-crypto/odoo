@@ -52,7 +52,64 @@ try {
 }
 
 // 3. Direct LINE API Test
-echo "<h3>3. Direct LINE API Test</h3>";
+echo "<h3>3. Verify Token</h3>";
+if ($account && !empty($account['channel_access_token'])) {
+    $token = $account['channel_access_token'];
+    
+    // Verify token
+    $ch = curl_init('https://api.line.me/v2/bot/info');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $token
+        ]
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    echo "Token verification: ";
+    if ($httpCode === 200) {
+        $botInfo = json_decode($response, true);
+        echo "✅ Valid<br>";
+        echo "Bot Name: " . htmlspecialchars($botInfo['displayName'] ?? 'N/A') . "<br>";
+        echo "Bot ID: " . ($botInfo['userId'] ?? 'N/A') . "<br>";
+    } else {
+        echo "❌ Invalid (HTTP {$httpCode})<br>";
+        echo "Response: " . htmlspecialchars($response) . "<br>";
+    }
+}
+
+echo "<h3>4. Check User Follow Status</h3>";
+if ($account && !empty($account['channel_access_token']) && $user && !empty($user['line_user_id'])) {
+    $token = $account['channel_access_token'];
+    $lineUserId = $user['line_user_id'];
+    
+    // Get user profile to check if they follow the bot
+    $ch = curl_init("https://api.line.me/v2/bot/profile/{$lineUserId}");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $token
+        ]
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    echo "User follow status: ";
+    if ($httpCode === 200) {
+        $profile = json_decode($response, true);
+        echo "✅ User follows this bot<br>";
+        echo "Display Name: " . htmlspecialchars($profile['displayName'] ?? 'N/A') . "<br>";
+    } else {
+        echo "❌ User does NOT follow this bot or blocked (HTTP {$httpCode})<br>";
+        echo "Response: " . htmlspecialchars($response) . "<br>";
+        echo "<br><strong style='color:red'>This is why messages fail! User must add the bot as friend first.</strong><br>";
+    }
+}
+
+echo "<h3>5. Send Test Message</h3>";
 if ($account && !empty($account['channel_access_token']) && $user && !empty($user['line_user_id'])) {
     if (isset($_GET['send'])) {
         $token = $account['channel_access_token'];
