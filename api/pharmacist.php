@@ -322,22 +322,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             break;
             
         case 'get_drugs':
-            // Get available drugs for recommendation
-            $lineAccountId = $input['line_account_id'] ?? null;
-            
+            // Get ALL items from business_items - no limit, no line_account_id filter
             try {
-                $stmt = $db->prepare("
-                    SELECT id, name, price, generic_name, description, usage_instructions
+                $stmt = $db->query("
+                    SELECT id, name, price, generic_name, description, usage_instructions, sku
                     FROM business_items 
                     WHERE is_active = 1 
-                    AND (line_account_id = ? OR line_account_id IS NULL)
-                    ORDER BY category_id, name
-                    LIMIT 100
+                    ORDER BY name
                 ");
-                $stmt->execute([$lineAccountId]);
                 $drugs = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 
-                echo json_encode(['success' => true, 'drugs' => $drugs]);
+                echo json_encode(['success' => true, 'drugs' => $drugs, 'count' => count($drugs)]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => $e->getMessage()]);
             }
