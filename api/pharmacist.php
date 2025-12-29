@@ -282,9 +282,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     error_log("Medical history save error (non-fatal): " . $historyError->getMessage());
                 }
                 
+                // Add items to user's cart if requested
+                $addToCart = $input['add_to_cart'] ?? false;
+                if ($addToCart) {
+                    try {
+                        foreach ($drugs as $drug) {
+                            $itemId = (int)($drug['id'] ?? 0);
+                            $quantity = (int)($drug['quantity'] ?? 1);
+                            if ($itemId <= 0) continue;
+                            
+                            // Check if item already in cart
+                            $stmt = $db->prepare("SELECT id, quantity FROM cart WHERE user_id = ? AND item_id = ?");
+                            $stmt->execute([$userId, $itemId]);
+                            $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+                            
+                            if ($existing) {
+                                // Update quantity
+                                $stmt = $db->prepare("UPDATE cart SET quantity = quantity + ?, updated_at = NOW() WHERE id = ?");
+                                $stmt->execute([$quantity, $existing['id']]);
+                            } else {
+                                // Insert new cart item
+                                $stmt = $db->prepare("INSERT INTO cart (user_id, item_id, quantity, created_at) VALUES (?, ?, ?, NOW())");
+                                $stmt->execute([$userId, $itemId, $quantity]);
+                            }
+                        }
+                        error_log("Added " . count($drugs) . " items to cart for user $userId");
+                    } catch (Exception $cartError) {
+                        error_log("Cart add error (non-fatal): " . $cartError->getMessage());
+                    }
+                }
+                
                 echo json_encode([
                     'success' => true, 
-                    'message' => 'Drugs approved' . ($lineSent ? ' and sent to customer' : ' (LINE notification pending)')
+                    'message' => 'Drugs approved' . ($lineSent ? ' and sent to customer' : ' (LINE notification pending)') . ($addToCart ? ' - items added to cart' : '')
                 ]);
             } catch (Exception $e) {
                 error_log("approve_drugs error: " . $e->getMessage());
