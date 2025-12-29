@@ -41,6 +41,9 @@ class LiffApp {
             // Initialize LIFF SDK
             await this.initLiff();
             
+            // Wait for DOM to update after showApp
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            
             // Initialize router (needs app-content to be visible)
             this.initRouter();
             

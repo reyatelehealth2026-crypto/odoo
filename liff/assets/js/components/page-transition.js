@@ -238,13 +238,19 @@ class SafeAreaHandler {
         };
         
         // Also try to get from env() if CSS variables aren't set
-        if (this.insets.bottom === 0) {
-            // Create a temporary element to measure
-            const temp = document.createElement('div');
-            temp.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;';
-            document.body.appendChild(temp);
-            this.insets.bottom = temp.offsetHeight;
-            document.body.removeChild(temp);
+        if (this.insets.bottom === 0 && document.body) {
+            try {
+                // Create a temporary element to measure
+                const temp = document.createElement('div');
+                temp.style.cssText = 'position:fixed;bottom:0;height:env(safe-area-inset-bottom,0px);visibility:hidden;';
+                document.body.appendChild(temp);
+                this.insets.bottom = temp.offsetHeight;
+                if (temp.parentNode === document.body) {
+                    document.body.removeChild(temp);
+                }
+            } catch (e) {
+                console.warn('SafeAreaHandler: Could not measure safe area', e);
+            }
         }
     }
 
