@@ -491,8 +491,6 @@ $menuGroups = [
         ]
     ],
 ];
-
-];
 ?>
 <!DOCTYPE html>
 <html lang="th">
