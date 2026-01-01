@@ -66,6 +66,9 @@ try {
         case 'validate_promo':
             handleValidatePromo($jsonInput);
             break;
+        case 'last_address':
+            handleGetLastAddress();
+            break;
         default:
             jsonResponse(false, 'Invalid action');
     }
@@ -1369,6 +1372,83 @@ function validateHardcodedPromo($code, $subtotal) {
     return min($discount, $subtotal);
 }
 
+
+/**
+ * Get last delivery address from user's previous orders
+ */
+function handleGetLastAddress() {
+    global $db;
+    
+    $lineUserId = $_GET['line_user_id'] ?? null;
+    $userId = $_GET['user_id'] ?? null;
+    
+    // Get user ID from line_user_id
+    if ($lineUserId && !$userId) {
+        $stmt = $db->prepare("SELECT id FROM users WHERE line_user_id = ?");
+        $stmt->execute([$lineUserId]);
+        $userId = $stmt->fetchColumn();
+    }
+    
+    if (!$userId) {
+        jsonResponse(false, 'User not found', ['address' => null]);
+    }
+    
+    try {
+        // Get last order with delivery info
+        $stmt = $db->prepare("
+            SELECT delivery_info 
+            FROM transactions 
+            WHERE user_id = ? AND delivery_info IS NOT NULL AND delivery_info != '' AND delivery_info != '{}'
+            ORDER BY created_at DESC 
+            LIMIT 1
+        ");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($result && $result['delivery_info']) {
+            $deliveryInfo = json_decode($result['delivery_info'], true);
+            
+            if ($deliveryInfo && !empty($deliveryInfo['name'])) {
+                jsonResponse(true, 'Last address found', [
+                    'address' => [
+                        'name' => $deliveryInfo['name'] ?? '',
+                        'phone' => $deliveryInfo['phone'] ?? '',
+                        'address' => $deliveryInfo['address'] ?? '',
+                        'subdistrict' => $deliveryInfo['subdistrict'] ?? '',
+                        'district' => $deliveryInfo['district'] ?? '',
+                        'province' => $deliveryInfo['province'] ?? '',
+                        'postcode' => $deliveryInfo['postcode'] ?? ''
+                    ]
+                ]);
+            }
+        }
+        
+        // No previous address found, try to get from user profile
+        $stmt = $db->prepare("SELECT display_name, phone, address FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($user) {
+            jsonResponse(true, 'User profile found', [
+                'address' => [
+                    'name' => $user['display_name'] ?? '',
+                    'phone' => $user['phone'] ?? '',
+                    'address' => $user['address'] ?? '',
+                    'subdistrict' => '',
+                    'district' => '',
+                    'province' => '',
+                    'postcode' => ''
+                ]
+            ]);
+        }
+        
+        jsonResponse(true, 'No address found', ['address' => null]);
+        
+    } catch (Exception $e) {
+        error_log("Get last address error: " . $e->getMessage());
+        jsonResponse(false, 'Error getting address', ['address' => null]);
+    }
+}
 
 /**
  * Notify Telegram when new order is created

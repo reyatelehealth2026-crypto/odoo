@@ -2962,7 +2962,7 @@ class LiffApp {
     }
 
     /**
-     * Auto-fill form from LINE profile
+     * Auto-fill form from LINE profile and last order address
      * Requirement 3.2
      */
     autoFillFromProfile() {
@@ -2981,6 +2981,51 @@ class LiffApp {
             if (phoneInput && !phoneInput.value) {
                 phoneInput.value = member.phone;
             }
+        }
+        
+        // Load last delivery address from previous orders
+        this.loadLastAddress();
+    }
+    
+    /**
+     * Load last delivery address from previous orders
+     */
+    async loadLastAddress() {
+        const profile = window.store?.get('profile');
+        if (!profile?.userId) return;
+        
+        try {
+            const baseUrl = window.APP_CONFIG?.BASE_URL || '';
+            const response = await fetch(`${baseUrl}/api/checkout.php?action=last_address&line_user_id=${profile.userId}`);
+            const data = await response.json();
+            
+            if (data.success && data.address) {
+                const addr = data.address;
+                console.log('📍 Last address loaded:', addr);
+                
+                // Fill form fields if empty
+                const fields = {
+                    'checkout-name': addr.name,
+                    'checkout-phone': addr.phone,
+                    'checkout-address': addr.address,
+                    'checkout-subdistrict': addr.subdistrict,
+                    'checkout-district': addr.district,
+                    'checkout-province': addr.province,
+                    'checkout-postcode': addr.postcode
+                };
+                
+                for (const [id, value] of Object.entries(fields)) {
+                    const input = document.getElementById(id);
+                    if (input && !input.value && value) {
+                        input.value = value;
+                    }
+                }
+                
+                // Re-validate form
+                this.validateCheckoutForm();
+            }
+        } catch (error) {
+            console.error('Error loading last address:', error);
         }
     }
 
