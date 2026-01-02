@@ -1,6 +1,6 @@
 <?php
 /**
- * Admin Login Page
+ * Admin Login Page - Modern Split Screen Design
  */
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
@@ -43,64 +43,189 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>เข้าสู่ระบบ - LINE CRM</title>
+    <title>เข้าสู่ระบบ - Re-ya Pharmacy</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', 'Noto Sans Thai', sans-serif; }
+        
+        .login-bg {
+            background: linear-gradient(135deg, #4a5568 0%, #2d3748 50%, #1a202c 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .login-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                linear-gradient(135deg, transparent 40%, rgba(74, 85, 104, 0.3) 40%, rgba(74, 85, 104, 0.3) 60%, transparent 60%),
+                linear-gradient(225deg, transparent 40%, rgba(45, 55, 72, 0.3) 40%, rgba(45, 55, 72, 0.3) 60%, transparent 60%);
+            pointer-events: none;
+        }
+        
+        .divider-line {
+            width: 2px;
+            height: 60%;
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .input-field {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 12px 16px;
+            padding-right: 40px;
+            width: 100%;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .input-field:focus {
+            outline: none;
+            border-color: #d4a574;
+            box-shadow: 0 0 0 3px rgba(212, 165, 116, 0.1);
+        }
+        
+        .input-field::placeholder {
+            color: #a0aec0;
+        }
+        
+        .input-icon {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #a0aec0;
+        }
+        
+        .login-btn {
+            background: #d4a574;
+            color: #1a202c;
+            font-weight: 600;
+            padding: 12px 32px;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+        
+        .login-btn:hover {
+            background: #c9956a;
+            transform: translateY(-1px);
+        }
+        
+        .lock-icon {
+            width: 50px;
+            height: 50px;
+            background: #d4a574;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .logo-pin {
+            width: 60px;
+            height: 80px;
+            background: #d4a574;
+            border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        .logo-pin::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            width: 40px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+        }
+    </style>
 </head>
-<body class="bg-gradient-to-br from-green-400 to-green-600 min-h-screen flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
-        <!-- Header -->
-        <div class="bg-gradient-to-r from-green-500 to-green-600 p-8 text-center">
-            <div class="w-20 h-20 bg-white rounded-full mx-auto flex items-center justify-center mb-4">
-                <i class="fab fa-line text-5xl text-green-500"></i>
+<body class="bg-[#f5e6d3] min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-5xl">
+        <!-- Main Card -->
+        <div class="bg-white rounded-3xl shadow-2xl overflow-hidden">
+            <div class="login-bg flex flex-col md:flex-row min-h-[500px]">
+                
+                <!-- Left Side - Logo -->
+                <div class="flex-1 flex flex-col items-center justify-center p-8 md:p-12 relative">
+                    <h2 class="text-white text-lg font-medium tracking-wider mb-8">RE-YA PHARMACY</h2>
+                    
+                    <!-- Logo Pin Icon -->
+                    <div class="logo-pin mb-4">
+                        <i class="fas fa-map-marker-alt text-2xl text-gray-700"></i>
+                    </div>
+                    
+                    <p class="text-gray-400 text-sm mt-8">ระบบจัดการร้านขายยา</p>
+                </div>
+                
+                <!-- Divider -->
+                <div class="hidden md:flex items-center">
+                    <div class="divider-line"></div>
+                </div>
+                
+                <!-- Right Side - Login Form -->
+                <div class="flex-1 flex flex-col items-center justify-center p-8 md:p-12">
+                    <!-- Lock Icon -->
+                    <div class="lock-icon mb-4">
+                        <i class="fas fa-lock text-xl text-gray-700"></i>
+                    </div>
+                    
+                    <h3 class="text-white text-lg font-medium tracking-wider mb-8">USER LOGIN</h3>
+                    
+                    <!-- Error Message -->
+                    <?php if ($error): ?>
+                    <div class="w-full max-w-xs mb-4 p-3 bg-red-500/20 border border-red-500/50 text-red-200 rounded-lg text-sm text-center">
+                        <i class="fas fa-exclamation-circle mr-2"></i><?= htmlspecialchars($error) ?>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <!-- Login Form -->
+                    <form method="POST" class="w-full max-w-xs space-y-4">
+                        <div class="relative">
+                            <input type="text" name="username" required autofocus
+                                   class="input-field"
+                                   placeholder="email address"
+                                   value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
+                            <i class="fas fa-envelope input-icon"></i>
+                        </div>
+                        
+                        <div class="relative">
+                            <input type="password" name="password" required
+                                   class="input-field"
+                                   placeholder="password">
+                            <i class="fas fa-lock input-icon"></i>
+                        </div>
+                        
+                        <!-- Remember Me -->
+                        <div class="flex items-center">
+                            <input type="checkbox" id="remember" name="remember" 
+                                   class="w-4 h-4 rounded border-gray-300 text-[#d4a574] focus:ring-[#d4a574]">
+                            <label for="remember" class="ml-2 text-sm text-gray-400">Remember me</label>
+                        </div>
+                        
+                        <!-- Login Button -->
+                        <button type="submit" class="login-btn w-full">
+                            LOGIN
+                        </button>
+                    </form>
+                </div>
             </div>
-            <h1 class="text-2xl font-bold text-white">LINE CRM</h1>
-            <p class="text-green-100 text-sm mt-1">ระบบจัดการลูกค้า</p>
         </div>
         
-        <!-- Form -->
-        <div class="p-8">
-            <?php if ($error): ?>
-            <div class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg text-sm">
-                <i class="fas fa-exclamation-circle mr-2"></i><?= htmlspecialchars($error) ?>
-            </div>
-            <?php endif; ?>
-            
-            <form method="POST" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อผู้ใช้</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                            <i class="fas fa-user"></i>
-                        </span>
-                        <input type="text" name="username" required autofocus
-                               class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                               placeholder="ชื่อผู้ใช้"
-                               value="<?= htmlspecialchars($_POST['username'] ?? '') ?>">
-                    </div>
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                            <i class="fas fa-lock"></i>
-                        </span>
-                        <input type="password" name="password" required
-                               class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                               placeholder="รหัสผ่าน">
-                    </div>
-                </div>
-                
-                <button type="submit" class="w-full py-3 bg-green-500 text-white rounded-lg font-medium hover:bg-green-600 transition flex items-center justify-center">
-                    <i class="fas fa-sign-in-alt mr-2"></i>เข้าสู่ระบบ
-                </button>
-            </form>
-            
-            <p class="text-center text-gray-500 text-xs mt-6">
-                Default: admin / password
-            </p>
-        </div>
+        <!-- Footer -->
+        <p class="text-center text-gray-500 text-sm mt-6">
+            Re-ya Pharmacy Management System
+        </p>
     </div>
 </body>
 </html>
