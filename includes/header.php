@@ -1615,8 +1615,7 @@ $menuGroups = [
             .ai-quick-questions button {
                 padding: 12px 14px !important;
                 font-size: 14px !important;
-            }
-        }
+      
         
         /* Extra small screens */
         @media (max-width: 375px) {
@@ -1937,23 +1936,20 @@ $menuGroups = [
             callAiApi(question);
         };
         
-        // Call AI API
+        // Call AI API (using sidebar-assistant for context-aware responses)
         async function callAiApi(question) {
             showTypingIndicator();
             
             const context = getCurrentPageContext();
-            const systemPrompt = `คุณเป็น AI Assistant สำหรับระบบ LINE CRM Pro ช่วยตอบคำถามเกี่ยวกับการใช้งานระบบ
-ผู้ใช้กำลังอยู่ที่หน้า: ${context.pageTitle} (${context.path})
-ตอบสั้นๆ กระชับ เป็นภาษาไทย ใช้ emoji เพื่อความเข้าใจง่าย`;
             
             try {
-                const response = await fetch('/api/ai-chat.php', {
+                const response = await fetch('/api/sidebar-assistant.php', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         message: question,
-                        system_prompt: systemPrompt,
-                        context: 'admin_help'
+                        page: context.path,
+                        pageTitle: context.pageTitle
                     })
                 });
                 
@@ -1962,7 +1958,24 @@ $menuGroups = [
                 if (response.ok) {
                     const data = await response.json();
                     if (data.success && data.message) {
-                        addAiMessage(data.message);
+                        // Format message with links
+                        let msg = data.message;
+                        // Convert markdown links to HTML
+                        msg = msg.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-purple-600 underline hover:text-purple-800">$1</a>');
+                        msg = msg.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                        msg = msg.replace(/\n/g, '<br>');
+                        
+                        // Add AI source indicator
+                        let sourceHtml = '';
+                        if (data.ai_source === 'gemini') {
+                            sourceHtml = '<div class="text-xs text-green-600 mt-2 flex items-center gap-1"><i class="fas fa-robot"></i> Gemini AI</div>';
+                        } else if (data.ai_source === 'knowledge') {
+                            sourceHtml = '<div class="text-xs text-blue-500 mt-2 flex items-center gap-1"><i class="fas fa-book"></i> Knowledge Base</div>';
+                        } else if (data.ai_source === 'fallback') {
+                            sourceHtml = '<div class="text-xs text-orange-500 mt-2 flex items-center gap-1"><i class="fas fa-info-circle"></i> คำตอบทั่วไป</div>';
+                        }
+                        
+                        addAiMessage(msg + sourceHtml);
                     } else {
                         addAiMessage('❌ ' + (data.error || 'ขออภัย ไม่สามารถตอบได้ในขณะนี้'));
                     }
@@ -1971,7 +1984,7 @@ $menuGroups = [
                 }
             } catch (error) {
                 removeTypingIndicator();
-                addAiMessage('❌ ไม่สามารถเชื่อมต่อ AI ได้ กรุณาตรวจสอบการตั้งค่า API Key');
+                addAiMessage('❌ ไม่สามารถเชื่อมต่อ AI ได้');
             }
         }
         
