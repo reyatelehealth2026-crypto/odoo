@@ -60,7 +60,7 @@
     - Audit Logs (roles: owner)
     - _Requirements: 2.1, 2.2, 2.3_
   - [x] 2.2 สร้างกลุ่ม Clinical Station
-
+  
 
     - Unified Care Chat - Inbox, Video Call, Auto-reply (roles: pharmacist, staff)
     - Roster & Shifts - Pharmacist Dashboard, Pharmacists (roles: all)

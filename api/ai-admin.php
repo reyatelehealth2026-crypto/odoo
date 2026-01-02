@@ -918,13 +918,18 @@ function getSystemStatus($db, $botId) {
     $text .= "  • Memory: " . ini_get('memory_limit') . "\n";
     $text .= "  • Time: " . date('Y-m-d H:i:s') . "\n";
     
-    // Disk space (if available)
+    // Disk space (if available and not restricted by open_basedir)
     if (function_exists('disk_free_space')) {
-        $free = disk_free_space('/');
-        $total = disk_total_space('/');
-        if ($free && $total) {
-            $usedPercent = round((1 - $free / $total) * 100, 1);
-            $text .= "  • Disk: {$usedPercent}% used\n";
+        try {
+            $docRoot = $_SERVER['DOCUMENT_ROOT'] ?? __DIR__;
+            $free = @disk_free_space($docRoot);
+            $total = @disk_total_space($docRoot);
+            if ($free && $total) {
+                $usedPercent = round((1 - $free / $total) * 100, 1);
+                $text .= "  • Disk: {$usedPercent}% used\n";
+            }
+        } catch (Exception $e) {
+            // Skip disk info if restricted
         }
     }
     

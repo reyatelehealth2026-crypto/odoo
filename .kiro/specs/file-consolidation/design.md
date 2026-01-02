@@ -1,4 +1,4 @@
-# Design Document: File Consolidation
+.# Design Document: File Consolidation
 
 ## Overview
 

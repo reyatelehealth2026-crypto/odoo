@@ -5,7 +5,6 @@
 ลดความซ้ำซ้อนของไฟล์และฟีเจอร์ในโปรเจค Pharmacy LINE CRM โดยการรวมไฟล์ที่มีฟังก์ชันคล้ายกัน ลบไฟล์ที่ไม่ใช้งาน และปรับปรุงโครงสร้างให้ใช้งานง่ายขึ้น 
 
 **เป้าหมาย:**
-- ลดจำนวนไฟล์ PHP จาก ~100 ไฟล์เหลือ ~60 ไฟล์
 - ลดความซับซ้อนของเมนู
 - ทำให้โค้ดดูแลรักษาง่ายขึ้น
 - ปรับปรุง UX ให้ผู้ใช้ไม่สับสน
@@ -78,28 +77,37 @@
 
 ---
 
-### Requirement 5: รวมหน้า LIFF Points (Priority 4)
+### Requirement 5: ลบไฟล์ LIFF เก่าที่ root level
 
-**User Story:** As a LINE user, I want to access all points-related features in one LIFF page, so that I can manage my points easily.
+**User Story:** As a developer, I want to remove old LIFF files at root level, so that the codebase uses only the new SPA architecture in liff/ folder.
 
 #### Acceptance Criteria
 
-1. WHEN the user accesses LIFF points page THEN the system SHALL display a tab-based interface with sections: History, Rules, Redeem
-2. WHEN the system contains `liff-points-history.php`, `liff-points-rules.php`, and `liff-redeem-points.php` THEN the system SHALL consolidate all into a single `liff-points.php` with tabs
-3. WHEN the user accesses old LIFF URLs THEN the system SHALL redirect to the new unified page with appropriate tab
-4. WHEN the LIFF points page loads THEN the system SHALL preserve all existing functionality from each original file
+1. WHEN the system contains `liff-*.php` files at root level THEN the system SHALL archive and remove all these files
+2. WHEN the system uses LIFF functionality THEN the system SHALL use only `liff/index.php` SPA architecture
+3. WHEN old LIFF URLs are accessed THEN the system SHALL redirect to `liff/index.php` with appropriate page parameter
+4. WHEN LIFF files are removed THEN the system SHALL update any references in menu or other files
+
+**Files to remove (24 files):**
+- liff-app.php, liff-appointment.php, liff-checkout.php, liff-consent.php
+- liff-main.php, liff-member-card.php, liff-my-appointments.php, liff-my-orders.php
+- liff-order-detail.php, liff-pharmacy-consult.php, liff-points-history.php, liff-points-rules.php
+- liff-product-detail.php, liff-promotions.php, liff-redeem-points.php, liff-register.php
+- liff-settings.php, liff-share.php, liff-shop-v3.php, liff-shop.php
+- liff-symptom-assessment.php, liff-video-call-pro.php, liff-video-call.php, liff-wishlist.php
 
 ---
 
-### Requirement 6: รวมหน้า LIFF Video Call (Priority 4)
+### Requirement 6: รวมหน้า Video Call (Admin)
 
-**User Story:** As a LINE user, I want to access video call features in one LIFF page, so that I can use video consultation easily.
+**User Story:** As an admin user, I want to manage video calls in one unified page, so that I can handle consultations efficiently.
 
 #### Acceptance Criteria
 
-1. WHEN the system contains `liff-video-call.php` and `liff-video-call-pro.php` THEN the system SHALL keep `liff-video-call-pro.php` and rename it to `liff-video-call.php`
-2. WHEN the LIFF video call page loads THEN the system SHALL preserve all pro features
-3. WHEN the user accesses old LIFF video call URLs THEN the system SHALL redirect to the new unified page
+1. WHEN the system contains multiple video-call files at root level THEN the system SHALL keep only `video-call-pro.php` and rename it to `video-call.php`
+2. WHEN the video call page loads THEN the system SHALL preserve all pro features
+3. WHEN the user accesses old video call URLs THEN the system SHALL redirect to the new unified page
+4. WHEN video call files are consolidated THEN the system SHALL remove `video-call-v2.php` and `video-call-simple.php`
 
 ---
 

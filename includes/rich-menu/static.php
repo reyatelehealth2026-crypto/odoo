@@ -277,7 +277,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['tab'] ?? 'static') === 'sta
     } else {
         $_SESSION['rich_menu_success'] = 'บันทึกสำเร็จ';
     }
-    header('Location: rich-menu.php?tab=static');
+    // Use JavaScript redirect since headers may already be sent
+    echo '<script>window.location.href = "rich-menu.php?tab=static";</script>';
     exit;
 }
 
