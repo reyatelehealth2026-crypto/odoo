@@ -302,19 +302,19 @@ $menuGroups = [
                 'icon' => '📉',
                 'note' => 'รวมรายงาน',
                 'submenus' => [
-                    ['title' => 'สถิติรวม', 'href' => '/analytics'],
-                    ['title' => 'รายงานยอดขาย', 'href' => '/shop/reports'],
-                    ['title' => 'Triage Analytics', 'href' => '/triage-analytics'],
-                    ['title' => 'รายงานคลังสินค้า', 'href' => '/inventory?tab=reports'],
-                    ['title' => 'สถิติ Broadcast', 'href' => '/broadcast?tab=stats'],
+                    ['title' => 'สถิติรวม', 'href' => '/analytics?tab=overview'],
+                    ['title' => 'รายงานยอดขาย', 'href' => '/analytics?tab=sales'],
+                    ['title' => 'Triage Analytics', 'href' => '/analytics?tab=triage'],
+                    ['title' => 'รายงานคลังสินค้า', 'href' => '/analytics?tab=inventory'],
+                    ['title' => 'สถิติ Broadcast', 'href' => '/analytics?tab=broadcast'],
                 ]
             ],
             [
                 'title' => 'Tracking & Logs',
                 'icon' => '🔗',
                 'submenus' => [
-                    ['title' => 'ติดตามลิงก์', 'href' => '/link-tracking'],
-                    ['title' => 'Activity Logs', 'href' => '/activity-logs'],
+                    ['title' => 'ติดตามลิงก์', 'href' => '/analytics?tab=tracking'],
+                    ['title' => 'Activity Logs', 'href' => '/analytics?tab=logs'],
                     ['title' => 'รายงานอัตโนมัติ', 'href' => '/scheduled?tab=reports'],
                 ]
             ],
@@ -349,14 +349,7 @@ $menuGroups = [
                 'icon' => '💊',
                 'submenus' => [
                     ['title' => 'ตรวจสอบยาตีกัน', 'href' => '/pharmacy?tab=interactions'],
-                    ['title' => 'ข้อมูลยา', 'href' => '/drug-info'],
-                ]
-            ],
-            [
-                'title' => 'Triage System',
-                'icon' => '🏥',
-                'submenus' => [
-                    ['title' => 'ประวัติการคัดกรอง', 'href' => '/triage-analytics'],
+                    ['title' => 'จ่ายยา', 'href' => '/pharmacy?tab=dispense'],
                 ]
             ],
         ]
@@ -384,7 +377,7 @@ $menuGroups = [
                     ['title' => 'รายชื่อลูกค้า', 'href' => '/users'],
                     ['title' => 'แท็กลูกค้า', 'href' => '/user-tags'],
                     ['title' => 'กลุ่มเป้าหมาย', 'href' => '/customer-segments'],
-                    ['title' => 'Consent / PDPA', 'href' => '/consent-management'],
+                    ['title' => 'Consent / PDPA', 'href' => '/settings?tab=consent'],
                 ]
             ],
             [
@@ -392,10 +385,10 @@ $menuGroups = [
                 'icon' => '📢',
                 'note' => 'Broadcast',
                 'submenus' => [
-                    ['title' => 'ส่งข้อความ', 'href' => '/broadcast'],
-                    ['title' => 'Drip Campaign', 'href' => '/drip-campaigns'],
-                    ['title' => 'ข้อความต้อนรับ', 'href' => '/welcome-settings'],
-                    ['title' => 'ตอบอัตโนมัติ', 'href' => '/auto-reply'],
+                    ['title' => 'ส่งข้อความ', 'href' => '/broadcast?tab=send'],
+                    ['title' => 'Drip Campaign', 'href' => '/broadcast?tab=drip'],
+                    ['title' => 'ข้อความต้อนรับ', 'href' => '/broadcast?tab=welcome'],
+                    ['title' => 'ตอบอัตโนมัติ', 'href' => '/broadcast?tab=auto-reply'],
                 ]
             ],
             [
@@ -430,7 +423,7 @@ $menuGroups = [
                 'submenus' => [
                     ['title' => 'รายการออเดอร์', 'href' => '/shop/orders', 'badge' => $pendingOrders],
                     ['title' => 'รอตรวจสลิป', 'href' => '/shop/orders?pending=1', 'badge' => $pendingSlips],
-                    ['title' => 'โปรโมชั่น', 'href' => '/shop/promotions'],
+                    ['title' => 'โปรโมชั่น', 'href' => '/shop/settings?tab=promotions'],
                 ]
             ],
             [
@@ -439,6 +432,7 @@ $menuGroups = [
                 'submenus' => [
                     ['title' => 'สินค้า', 'href' => '/shop/products'],
                     ['title' => 'หมวดหมู่', 'href' => '/shop/categories'],
+                    ['title' => 'สต็อกสินค้า', 'href' => '/inventory?tab=stock'],
                     ['title' => 'ปรับสต็อก', 'href' => '/inventory?tab=adjustment'],
                     ['title' => 'สินค้าใกล้หมด', 'href' => '/inventory?tab=low-stock'],
                     ['title' => 'ประวัติเคลื่อนไหว', 'href' => '/inventory?tab=movements'],
@@ -458,8 +452,8 @@ $menuGroups = [
                 'title' => 'Configs',
                 'icon' => '⚙️',
                 'submenus' => [
-                    ['title' => 'หน่วยสินค้า', 'href' => '/inventory/product-units'],
-                    ['title' => 'Sync สินค้า', 'href' => '/sync-dashboard'],
+                    ['title' => 'หน่วยสินค้า', 'href' => '/inventory?tab=units'],
+                    ['title' => 'Sync สินค้า', 'href' => '/inventory?tab=sync'],
                 ]
             ],
         ]
@@ -483,7 +477,7 @@ $menuGroups = [
                 'title' => 'User Management',
                 'icon' => '👥',
                 'submenus' => [
-                    ['title' => 'ผู้ดูแลระบบ', 'href' => '/admin-users'],
+                    ['title' => 'ผู้ดูแลระบบ', 'href' => '/settings?tab=admins'],
                     ['title' => 'จัดการเภสัชกร', 'href' => '/pharmacy?tab=pharmacists'],
                 ]
             ],
@@ -492,7 +486,7 @@ $menuGroups = [
                 'icon' => '🔌',
                 'submenus' => [
                     ['title' => 'บัญชี LINE', 'href' => '/settings?tab=line'],
-                    ['title' => 'ตั้งค่า LIFF', 'href' => '/liff-settings'],
+                    ['title' => 'ตั้งค่า LIFF', 'href' => '/settings?tab=liff'],
                     ['title' => 'Telegram', 'href' => '/settings?tab=telegram'],
                 ]
             ],
@@ -500,8 +494,8 @@ $menuGroups = [
                 'title' => 'System Settings',
                 'icon' => '⚙️',
                 'submenus' => [
-                    ['title' => 'ตั้งค่าร้านค้า', 'href' => '/shop/settings'],
-                    ['title' => 'ตั้งค่า AI เภสัช', 'href' => '/ai-pharmacy-settings'],
+                    ['title' => 'ตั้งค่าร้านค้า', 'href' => '/shop/settings?tab=general'],
+                    ['title' => 'ตั้งค่า AI', 'href' => '/ai-chat?tab=settings'],
                     ['title' => 'การแจ้งเตือน', 'href' => '/settings?tab=notifications'],
                 ]
             ],
@@ -533,19 +527,21 @@ $menuGroups = [
                 'icon' => '🤖',
                 'submenus' => [
                     ['title' => 'AI Studio', 'href' => '/ai-chat?tab=studio'],
-                    ['title' => 'AI ตอบแชท', 'href' => '/ai-chat?tab=settings'],
-                    ['title' => 'AI สร้างรูป', 'href' => '/ai-image'],
-                    ['title' => 'ตั้งค่า API Key', 'href' => '/ai-settings'],
+                    ['title' => 'AI ตอบแชท', 'href' => '/ai-chat?tab=chat'],
+                    ['title' => 'AI Chatbot', 'href' => '/ai-chat?tab=chatbot'],
+                    ['title' => 'AI สร้างรูป', 'href' => '/ai-chat?tab=image'],
+                    ['title' => 'ตั้งค่า API Key', 'href' => '/ai-chat?tab=api'],
                 ]
             ],
             [
                 'title' => 'LINE Tools',
                 'icon' => '📲',
                 'submenus' => [
-                    ['title' => 'Rich Menu', 'href' => '/rich-menu'],
+                    ['title' => 'Rich Menu', 'href' => '/rich-menu?tab=static'],
                     ['title' => 'Dynamic Rich Menu', 'href' => '/rich-menu?tab=dynamic'],
-                    ['title' => 'Flex Builder', 'href' => '/flex-builder'],
-                    ['title' => 'ตั้งเวลาส่ง', 'href' => '/scheduled'],
+                    ['title' => 'สลับ Rich Menu', 'href' => '/rich-menu?tab=switch'],
+                    ['title' => 'Flex Builder', 'href' => '/rich-menu?tab=flex'],
+                    ['title' => 'ตั้งเวลาส่ง', 'href' => '/scheduled?tab=messages'],
                     ['title' => 'กลุ่ม LINE', 'href' => '/line-groups'],
                 ]
             ],
