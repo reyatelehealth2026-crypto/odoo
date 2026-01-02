@@ -583,45 +583,91 @@ function formatThaiDateTime($datetime) {
     background: rgba(255,255,255,0.2);
 }
 
-/* Mobile Responsive */
+/* Mobile Responsive - Inbox Full Screen */
 @media (max-width: 768px) {
-    #sidebar {
-        position: fixed;
-        left: 0;
-        top: 0;
-        bottom: 0;
+    /* Hide main sidebar on inbox page */
+    .sidebar {
+        display: none !important;
+    }
+    .main-content {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    .top-header {
+        display: none !important;
+    }
+    .content-area {
+        padding: 0 !important;
+        height: 100vh !important;
+    }
+    
+    /* Inbox container - full screen */
+    #inboxContainer {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        height: 100vh !important;
+        border-radius: 0 !important;
+        border: none !important;
+        z-index: 50;
+    }
+    
+    /* Chat list sidebar - full width, can slide out */
+    #inboxSidebar {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        bottom: 0 !important;
         width: 100% !important;
         max-width: 100% !important;
         z-index: 100;
         transition: transform 0.3s ease;
+        background: white;
     }
-    #sidebar.hidden-mobile {
+    #inboxSidebar.hidden-mobile {
         transform: translateX(-100%);
     }
-    .chat-area-mobile {
+    
+    /* Chat area - full width */
+    #chatArea {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        right: 0 !important;
         width: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
     }
+    
+    /* Mobile back button */
     #mobileBackBtn {
         display: flex !important;
     }
-    #mobileChatListBtn {
-        display: flex !important;
+    
+    /* Customer panel - full screen overlay */
+    #customerPanel {
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        z-index: 200 !important;
     }
 }
 @media (min-width: 769px) {
     #mobileBackBtn {
         display: none !important;
     }
-    #mobileChatListBtn {
-        display: none !important;
-    }
 }
 </style>
 
-<div class="h-[calc(100vh-80px)] flex bg-white rounded-xl shadow-lg border overflow-hidden">
+<div id="inboxContainer" class="h-[calc(100vh-80px)] flex bg-white rounded-xl shadow-lg border overflow-hidden relative">
     
     <!-- LEFT: User List -->
-    <div id="sidebar" class="w-72 bg-white border-r flex flex-col">
+    <div id="inboxSidebar" class="w-72 bg-white border-r flex flex-col">
         <div class="p-3 border-b bg-gradient-to-r from-emerald-500 to-green-600 flex items-center justify-between">
             <h2 class="text-white font-bold flex items-center">
                 <i class="fas fa-inbox mr-2"></i>Inbox
@@ -676,7 +722,7 @@ function formatThaiDateTime($datetime) {
     </div>
 
     <!-- CENTER: Chat Area -->
-    <div class="flex-1 flex flex-col bg-slate-100 min-w-0">
+    <div id="chatArea" class="flex-1 flex flex-col bg-slate-100 min-w-0">
         <?php if ($selectedUser): ?>
         
         <!-- Chat Header -->
@@ -1791,14 +1837,14 @@ function togglePanel() {
 
 // Mobile: Show chat list (hide chat area)
 function showChatList() {
-    const sidebar = document.getElementById('sidebar');
+    const sidebar = document.getElementById('inboxSidebar');
     sidebar.classList.remove('hidden-mobile');
 }
 
 // Mobile: Hide chat list when user is selected
 function hideChatListOnMobile() {
     if (window.innerWidth <= 768) {
-        const sidebar = document.getElementById('sidebar');
+        const sidebar = document.getElementById('inboxSidebar');
         sidebar.classList.add('hidden-mobile');
     }
 }
