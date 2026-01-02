@@ -72,11 +72,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
     } elseif ($action === 'delete') {
         $id = (int)$_POST['id'];
-        // Check if has appointments
-        $stmt = $db->prepare("SELECT COUNT(*) FROM appointments WHERE pharmacist_id = ? AND status NOT IN ('completed','cancelled')");
+        // ตรวจสอบเฉพาะนัดหมายที่ยังไม่ถึงวันนัดและยังไม่เสร็จสิ้น
+        $stmt = $db->prepare("SELECT COUNT(*) FROM appointments WHERE pharmacist_id = ? AND status IN ('pending','confirmed') AND appointment_date >= CURDATE()");
         $stmt->execute([$id]);
         if ($stmt->fetchColumn() > 0) {
-            $message = 'ไม่สามารถลบได้ เนื่องจากมีนัดหมายที่ยังไม่เสร็จสิ้น';
+            $message = 'ไม่สามารถลบได้ เนื่องจากมีนัดหมายที่รอดำเนินการ';
             $messageType = 'error';
         } else {
             $stmt = $db->prepare("DELETE FROM pharmacists WHERE id = ?");
