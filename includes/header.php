@@ -276,6 +276,16 @@ $menuGroups = [
         'group_id' => 'insights',
         'group_title' => '1. Insights & Overview',
         'group_icon' => '📈',
+        'ai_help' => [
+            'title' => 'AI ช่วยเหลือ: Insights & Overview',
+            'description' => 'กลุ่มนี้รวมเครื่องมือดูภาพรวมและวิเคราะห์ข้อมูล',
+            'tips' => [
+                '📊 Dashboard - ดูภาพรวมยอดขาย ลูกค้า และสถานะร้าน',
+                '📉 Analytics - วิเคราะห์ข้อมูลเชิงลึก เทรนด์ และพฤติกรรมลูกค้า',
+                '🔗 Tracking - ติดตามประสิทธิภาพลิงก์และกิจกรรมในระบบ',
+            ],
+            'suggested' => 'เริ่มต้นที่ Dashboard เพื่อดูภาพรวม แล้วใช้ Analytics วิเคราะห์เจาะลึก'
+        ],
         'menus' => [
             [
                 'title' => 'Dashboards',
@@ -314,6 +324,16 @@ $menuGroups = [
         'group_id' => 'clinical',
         'group_title' => '2. Clinical Station',
         'group_icon' => '🩺',
+        'ai_help' => [
+            'title' => 'AI ช่วยเหลือ: Clinical Station',
+            'description' => 'กลุ่มนี้สำหรับงานเภสัชกรและการดูแลผู้ป่วย',
+            'tips' => [
+                '👩‍⚕️ Pharmacist Work - จัดการนัดหมาย Video Call และงานประจำวัน',
+                '💊 Drug & Safety - ตรวจสอบยาตีกันและข้อมูลยา',
+                '🏥 Triage - ดูประวัติการคัดกรองอาการ',
+            ],
+            'suggested' => 'เริ่มที่ Dashboard เภสัชกร เพื่อดูนัดหมายและงานที่ต้องทำวันนี้'
+        ],
         'menus' => [
             [
                 'title' => 'Pharmacist Work',
@@ -345,6 +365,16 @@ $menuGroups = [
         'group_id' => 'patient',
         'group_title' => '3. Patient & Journey',
         'group_icon' => '🗂️',
+        'ai_help' => [
+            'title' => 'AI ช่วยเหลือ: Patient & Journey',
+            'description' => 'กลุ่มนี้จัดการลูกค้า การสื่อสาร และโปรแกรมสมาชิก',
+            'tips' => [
+                '💬 Chat & CRM - ตอบแชทลูกค้า จัดการข้อมูลและแท็ก',
+                '📢 Engagement - ส่ง Broadcast, Drip Campaign และข้อความอัตโนมัติ',
+                '💳 Loyalty - จัดการสมาชิก แต้มสะสม และของรางวัล',
+            ],
+            'suggested' => 'เริ่มที่กล่องข้อความเพื่อตอบลูกค้า หรือใช้ Broadcast ส่งโปรโมชั่น'
+        ],
         'menus' => [
             [
                 'title' => 'Chat & CRM',
@@ -383,6 +413,16 @@ $menuGroups = [
         'group_id' => 'supply',
         'group_title' => '4. Supply & Revenue',
         'group_icon' => '📦',
+        'ai_help' => [
+            'title' => 'AI ช่วยเหลือ: Supply & Revenue',
+            'description' => 'กลุ่มนี้จัดการออเดอร์ สินค้า คลัง และการจัดซื้อ',
+            'tips' => [
+                '💰 Sales & Orders - ดูออเดอร์ ตรวจสลิป และจัดการโปรโมชั่น',
+                '📦 Inventory - จัดการสินค้า สต็อก และหมวดหมู่',
+                '🚚 Procurement - สั่งซื้อสินค้า รับของ และจัดการ Supplier',
+            ],
+            'suggested' => 'เช็คออเดอร์รอดำเนินการก่อน แล้วดูสินค้าใกล้หมดเพื่อสั่งซื้อเพิ่ม'
+        ],
         'menus' => [
             [
                 'title' => 'Sales & Orders',
@@ -428,6 +468,16 @@ $menuGroups = [
         'group_id' => 'facility',
         'group_title' => '5. Facility Setup',
         'group_icon' => '🏥',
+        'ai_help' => [
+            'title' => 'AI ช่วยเหลือ: Facility Setup',
+            'description' => 'กลุ่มนี้ตั้งค่าระบบ ผู้ใช้ และการเชื่อมต่อ',
+            'tips' => [
+                '👥 User Management - จัดการผู้ดูแลระบบและเภสัชกร',
+                '🔌 Connections - เชื่อมต่อ LINE, LIFF และ Telegram',
+                '⚙️ System Settings - ตั้งค่าร้าน AI และการแจ้งเตือน',
+            ],
+            'suggested' => 'เริ่มตั้งค่าบัญชี LINE ก่อน แล้วค่อยตั้งค่า LIFF และระบบอื่นๆ'
+        ],
         'menus' => [
             [
                 'title' => 'User Management',
@@ -468,6 +518,15 @@ $menuGroups = [
         'group_id' => 'marketing',
         'group_title' => '6. Tool Marketing',
         'group_icon' => '🛠️',
+        'ai_help' => [
+            'title' => 'AI ช่วยเหลือ: Tool Marketing',
+            'description' => 'กลุ่มนี้รวมเครื่องมือ AI และ LINE สำหรับการตลาด',
+            'tips' => [
+                '🤖 AI Tools - ใช้ AI Studio สร้าง Prompt, AI ตอบแชท และสร้างรูป',
+                '📲 LINE Tools - สร้าง Rich Menu, Flex Message และตั้งเวลาส่ง',
+            ],
+            'suggested' => 'ลองใช้ AI Studio สร้าง Prompt สำหรับตอบลูกค้า หรือสร้าง Rich Menu ใหม่'
+        ],
         'menus' => [
             [
                 'title' => 'AI Tools',
@@ -649,13 +708,20 @@ $menuGroups = [
         .menu-badge.green { background: var(--primary); }
         .menu-badge.orange { background: #f97316; }
         
+        /* Group Header Wrapper */
+        .menu-parent-wrapper {
+            display: flex;
+            align-items: center;
+            margin: 2px 8px;
+        }
+        
         /* Group Header - Collapsible */
         .menu-parent {
             display: flex;
             align-items: center;
             padding: 10px 14px;
-            margin: 2px 8px;
-            border-radius: 8px;
+            flex: 1;
+            border-radius: 8px 0 0 8px;
             color: rgba(255,255,255,0.9);
             font-size: 13px;
             font-weight: 500;
@@ -667,6 +733,140 @@ $menuGroups = [
         .menu-parent:hover { 
             background: rgba(255,255,255,0.08); 
             color: white; 
+        }
+        
+        /* AI Help Button */
+        .ai-help-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 36px;
+            background: rgba(139, 92, 246, 0.3);
+            border: none;
+            border-radius: 0 8px 8px 0;
+            color: #a78bfa;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        
+        .ai-help-btn:hover {
+            background: #7c3aed;
+            color: white;
+        }
+        
+        .ai-help-btn i {
+            font-size: 12px;
+        }
+        
+        /* AI Help Modal */
+        .ai-help-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .ai-help-modal.show {
+            display: flex;
+        }
+        
+        .ai-help-content {
+            background: white;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 420px;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        .ai-help-header {
+            background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 16px 16px 0 0;
+        }
+        
+        .ai-help-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0 0 4px;
+        }
+        
+        .ai-help-header p {
+            font-size: 13px;
+            opacity: 0.9;
+            margin: 0;
+        }
+        
+        .ai-help-body {
+            padding: 20px;
+        }
+        
+        .ai-help-tips {
+            margin-bottom: 16px;
+        }
+        
+        .ai-help-tip {
+            display: flex;
+            align-items: flex-start;
+            padding: 10px 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.5;
+        }
+        
+        .ai-help-suggested {
+            background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+            border: 1px solid #d1fae5;
+            border-radius: 8px;
+            padding: 12px;
+        }
+        
+        .ai-help-suggested-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #059669;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        
+        .ai-help-suggested-text {
+            font-size: 13px;
+            color: #065f46;
+            line-height: 1.5;
+        }
+        
+        .ai-help-footer {
+            padding: 16px 20px;
+            border-top: 1px solid #e2e8f0;
+            text-align: right;
+        }
+        
+        .ai-help-close {
+            background: #7c3aed;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        
+        .ai-help-close:hover {
+            background: #6d28d9;
         }
         
         .menu-parent-icon {
@@ -1311,10 +1511,17 @@ $menuGroups = [
                 <?php foreach ($menuGroups as $group): ?>
                 <div class="menu-section">
                     <!-- Group Header -->
-                    <div class="menu-parent" onclick="toggleSubmenu('group_<?= $group['group_id'] ?>')">
-                        <span class="menu-parent-icon"><?= $group['group_icon'] ?></span>
-                        <span class="menu-parent-label"><?= $group['group_title'] ?></span>
-                        <i class="fas fa-chevron-down menu-arrow"></i>
+                    <div class="menu-parent-wrapper">
+                        <div class="menu-parent" onclick="toggleSubmenu('group_<?= $group['group_id'] ?>')">
+                            <span class="menu-parent-icon"><?= $group['group_icon'] ?></span>
+                            <span class="menu-parent-label"><?= $group['group_title'] ?></span>
+                            <i class="fas fa-chevron-down menu-arrow"></i>
+                        </div>
+                        <?php if (!empty($group['ai_help'])): ?>
+                        <button class="ai-help-btn" onclick="event.stopPropagation(); showAiHelp('<?= $group['group_id'] ?>')" title="AI ช่วยเหลือ">
+                            <i class="fas fa-robot"></i>
+                        </button>
+                        <?php endif; ?>
                     </div>
                     
                     <!-- Group Menus -->
