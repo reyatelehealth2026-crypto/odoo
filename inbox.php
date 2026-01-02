@@ -582,6 +582,40 @@ function formatThaiDateTime($datetime) {
 .sound-toggle:hover {
     background: rgba(255,255,255,0.2);
 }
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    #sidebar {
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 100% !important;
+        max-width: 100% !important;
+        z-index: 100;
+        transition: transform 0.3s ease;
+    }
+    #sidebar.hidden-mobile {
+        transform: translateX(-100%);
+    }
+    .chat-area-mobile {
+        width: 100% !important;
+    }
+    #mobileBackBtn {
+        display: flex !important;
+    }
+    #mobileChatListBtn {
+        display: flex !important;
+    }
+}
+@media (min-width: 769px) {
+    #mobileBackBtn {
+        display: none !important;
+    }
+    #mobileChatListBtn {
+        display: none !important;
+    }
+}
 </style>
 
 <div class="h-[calc(100vh-80px)] flex bg-white rounded-xl shadow-lg border overflow-hidden">
@@ -648,6 +682,10 @@ function formatThaiDateTime($datetime) {
         <!-- Chat Header -->
         <div class="h-14 bg-white border-b flex items-center justify-between px-4 shadow-sm">
             <div class="flex items-center gap-3">
+                <!-- Mobile: Back to chat list button -->
+                <button id="mobileBackBtn" onclick="showChatList()" class="hidden w-8 h-8 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 mr-1">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
                 <img src="<?= $selectedUser['picture_url'] ?: 'https://via.placeholder.com/40' ?>" class="w-10 h-10 rounded-full border-2 border-emerald-500">
                 <div>
                     <h3 class="font-bold text-gray-800"><?= htmlspecialchars($selectedUser['display_name']) ?></h3>
@@ -1750,6 +1788,37 @@ function togglePanel() {
     panel.classList.toggle('hidden');
     panel.classList.toggle('flex');
 }
+
+// Mobile: Show chat list (hide chat area)
+function showChatList() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.remove('hidden-mobile');
+}
+
+// Mobile: Hide chat list when user is selected
+function hideChatListOnMobile() {
+    if (window.innerWidth <= 768) {
+        const sidebar = document.getElementById('sidebar');
+        sidebar.classList.add('hidden-mobile');
+    }
+}
+
+// Auto hide chat list on mobile when user is selected
+document.addEventListener('DOMContentLoaded', function() {
+    <?php if ($selectedUser): ?>
+    hideChatListOnMobile();
+    <?php endif; ?>
+    
+    // Add click handler to user items for mobile
+    document.querySelectorAll('.user-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            if (window.innerWidth <= 768) {
+                // Let the link work, but hide sidebar after navigation
+                setTimeout(hideChatListOnMobile, 100);
+            }
+        });
+    });
+});
 
 function openImage(src) {
     const modal = document.createElement('div');
