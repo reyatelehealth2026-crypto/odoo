@@ -465,6 +465,32 @@ function formatThaiDateTime($datetime) {
 .new-message-flash { animation: flash 0.5s ease-out; }
 @keyframes flash { 0% { background: #FEF3C7; } 100% { background: transparent; } }
 
+/* Collapsible Panel Sections */
+.panel-section .section-content {
+    max-height: 500px;
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    opacity: 1;
+    padding-bottom: 8px;
+}
+.panel-section.collapsed .section-content {
+    max-height: 0;
+    opacity: 0;
+    padding-bottom: 0;
+}
+.panel-section.collapsed .section-icon {
+    transform: rotate(-90deg);
+}
+.section-icon {
+    transition: transform 0.3s ease;
+}
+
+/* Toast Animation */
+@keyframes fade-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+.animate-fade-in { animation: fade-in 0.3s ease; }
+.animate-fade-out { animation: fade-out 0.3s ease; }
+
 /* Sender Badge Styles */
 .sender-badge { 
     display: inline-flex; align-items: center; gap: 3px;
@@ -952,22 +978,31 @@ function formatThaiDateTime($datetime) {
                 </div>
             </div>
             
-            <!-- Quick Info -->
-            <div class="space-y-2 text-xs">
-                <div class="flex justify-between"><span class="text-gray-500">สมาชิกตั้งแต่</span><span class="font-medium"><?= date('d/m/Y', strtotime($selectedUser['created_at'])) ?></span></div>
-                <div class="flex justify-between"><span class="text-gray-500">ออเดอร์ทั้งหมด</span><span class="font-medium"><?= count($userOrders) ?> รายการ</span></div>
-                <?php $totalSpent = array_sum(array_column($userOrders, 'grand_total')); ?>
-                <div class="flex justify-between"><span class="text-gray-500">ยอดซื้อรวม</span><span class="font-medium text-emerald-600">฿<?= number_format($totalSpent) ?></span></div>
-                <div class="flex justify-between"><span class="text-gray-500">แต้มสะสม</span><span class="font-medium text-emerald-600"><?= number_format($selectedUser['loyalty_points'] ?? 0) ?></span></div>
+            <!-- Quick Info - Collapsible -->
+            <div class="panel-section" data-section="quick-info">
+                <div class="flex items-center justify-between cursor-pointer py-2" onclick="toggleSection('quick-info')">
+                    <h5 class="text-xs font-bold text-gray-700"><i class="fas fa-info-circle text-blue-500 mr-1"></i>ข้อมูลทั่วไป</h5>
+                    <i class="fas fa-chevron-down text-gray-400 text-xs section-icon transition-transform"></i>
+                </div>
+                <div class="section-content space-y-2 text-xs">
+                    <div class="flex justify-between"><span class="text-gray-500">สมาชิกตั้งแต่</span><span class="font-medium"><?= date('d/m/Y', strtotime($selectedUser['created_at'])) ?></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">ออเดอร์ทั้งหมด</span><span class="font-medium"><?= count($userOrders) ?> รายการ</span></div>
+                    <?php $totalSpent = array_sum(array_column($userOrders, 'grand_total')); ?>
+                    <div class="flex justify-between"><span class="text-gray-500">ยอดซื้อรวม</span><span class="font-medium text-emerald-600">฿<?= number_format($totalSpent) ?></span></div>
+                    <div class="flex justify-between"><span class="text-gray-500">แต้มสะสม</span><span class="font-medium text-emerald-600"><?= number_format($selectedUser['loyalty_points'] ?? 0) ?></span></div>
+                </div>
             </div>
             
-            <!-- Medical Info Section -->
-            <div class="pt-3 border-t">
-                <div class="flex items-center justify-between mb-2">
+            <!-- Medical Info Section - Collapsible -->
+            <div class="panel-section border-t" data-section="medical-info">
+                <div class="flex items-center justify-between cursor-pointer py-2" onclick="toggleSection('medical-info')">
                     <h5 class="text-xs font-bold text-gray-700"><i class="fas fa-heartbeat text-red-500 mr-1"></i>ข้อมูลสุขภาพ</h5>
-                    <button onclick="openMedicalModal()" class="text-blue-500 hover:text-blue-600 text-xs"><i class="fas fa-edit"></i></button>
+                    <div class="flex items-center gap-2">
+                        <button onclick="event.stopPropagation(); openMedicalModal()" class="text-blue-500 hover:text-blue-600 text-xs"><i class="fas fa-edit"></i></button>
+                        <i class="fas fa-chevron-down text-gray-400 text-xs section-icon transition-transform"></i>
+                    </div>
                 </div>
-                <div class="space-y-2 text-xs">
+                <div class="section-content space-y-2 text-xs">
                     <div class="bg-red-50 border border-red-200 rounded-lg p-2">
                         <p class="text-red-600 font-medium text-[10px] mb-1"><i class="fas fa-disease mr-1"></i>โรคประจำตัว</p>
                         <p class="text-gray-700" id="medicalConditions"><?= htmlspecialchars($selectedUser['medical_conditions'] ?? '') ?: '<span class="text-gray-400">ไม่ระบุ</span>' ?></p>
@@ -983,30 +1018,38 @@ function formatThaiDateTime($datetime) {
                 </div>
             </div>
             
-            <!-- Notes Section -->
-            <div class="pt-3 border-t">
-                <h5 class="text-xs font-bold text-gray-700 mb-2"><i class="fas fa-sticky-note text-yellow-500 mr-1"></i>โน๊ต</h5>
-                <form onsubmit="saveNote(event)" class="mb-2">
-                    <textarea id="noteInput" rows="2" class="w-full border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none resize-none" placeholder="เพิ่มโน๊ตเกี่ยวกับลูกค้า..."></textarea>
-                    <button type="submit" class="w-full mt-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs py-1.5 rounded-lg">บันทึกโน๊ต</button>
-                </form>
-                <div id="notesList" class="space-y-2 max-h-40 overflow-y-auto">
-                    <?php foreach ($userNotes as $note): ?>
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs relative group">
-                        <p class="text-gray-700"><?= nl2br(htmlspecialchars($note['note'])) ?></p>
-                        <p class="text-[9px] text-gray-400 mt-1"><?= date('d/m/Y H:i', strtotime($note['created_at'])) ?></p>
-                        <button onclick="deleteNote(<?= $note['id'] ?>, this)" class="absolute top-1 right-1 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100"><i class="fas fa-times text-[10px]"></i></button>
+            <!-- Notes Section - Collapsible -->
+            <div class="panel-section border-t" data-section="notes">
+                <div class="flex items-center justify-between cursor-pointer py-2" onclick="toggleSection('notes')">
+                    <h5 class="text-xs font-bold text-gray-700"><i class="fas fa-sticky-note text-yellow-500 mr-1"></i>โน๊ต</h5>
+                    <i class="fas fa-chevron-down text-gray-400 text-xs section-icon transition-transform"></i>
+                </div>
+                <div class="section-content">
+                    <form onsubmit="saveNote(event)" class="mb-2">
+                        <textarea id="noteInput" rows="2" class="w-full border rounded-lg px-2 py-1.5 text-xs focus:ring-1 focus:ring-emerald-500 outline-none resize-none" placeholder="เพิ่มโน๊ตเกี่ยวกับลูกค้า..."></textarea>
+                        <button type="submit" class="w-full mt-1 bg-emerald-500 hover:bg-emerald-600 text-white text-xs py-1.5 rounded-lg">บันทึกโน๊ต</button>
+                    </form>
+                    <div id="notesList" class="space-y-2 max-h-40 overflow-y-auto">
+                        <?php foreach ($userNotes as $note): ?>
+                        <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-2 text-xs relative group">
+                            <p class="text-gray-700"><?= nl2br(htmlspecialchars($note['note'])) ?></p>
+                            <p class="text-[9px] text-gray-400 mt-1"><?= date('d/m/Y H:i', strtotime($note['created_at'])) ?></p>
+                            <button onclick="deleteNote(<?= $note['id'] ?>, this)" class="absolute top-1 right-1 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100"><i class="fas fa-times text-[10px]"></i></button>
+                        </div>
+                        <?php endforeach; ?>
+                        <?php if (empty($userNotes)): ?><p class="text-gray-400 text-xs text-center py-2">ยังไม่มีโน๊ต</p><?php endif; ?>
                     </div>
-                    <?php endforeach; ?>
-                    <?php if (empty($userNotes)): ?><p class="text-gray-400 text-xs text-center py-2">ยังไม่มีโน๊ต</p><?php endif; ?>
                 </div>
             </div>
             
-            <!-- Recent Orders -->
+            <!-- Recent Orders - Collapsible -->
             <?php if (!empty($userOrders)): ?>
-            <div class="pt-3 border-t">
-                <h5 class="text-xs font-bold text-gray-700 mb-2"><i class="fas fa-shopping-bag text-blue-500 mr-1"></i>ออเดอร์ล่าสุด</h5>
-                <div class="space-y-1.5">
+            <div class="panel-section border-t" data-section="orders">
+                <div class="flex items-center justify-between cursor-pointer py-2" onclick="toggleSection('orders')">
+                    <h5 class="text-xs font-bold text-gray-700"><i class="fas fa-shopping-bag text-blue-500 mr-1"></i>ออเดอร์ล่าสุด</h5>
+                    <i class="fas fa-chevron-down text-gray-400 text-xs section-icon transition-transform"></i>
+                </div>
+                <div class="section-content space-y-1.5">
                     <?php foreach (array_slice($userOrders, 0, 3) as $order): ?>
                     <div class="bg-gray-50 rounded-lg p-2 text-xs">
                         <div class="flex justify-between"><span class="font-medium">#<?= $order['order_number'] ?? $order['id'] ?></span><span class="text-emerald-600">฿<?= number_format($order['grand_total']) ?></span></div>
@@ -1857,6 +1900,33 @@ function togglePanel() {
     panel.classList.toggle('hidden');
     panel.classList.toggle('flex');
 }
+
+// Toggle collapsible section in customer panel
+function toggleSection(sectionName) {
+    const section = document.querySelector(`.panel-section[data-section="${sectionName}"]`);
+    if (section) {
+        section.classList.toggle('collapsed');
+        
+        // Save state to localStorage
+        const collapsedSections = JSON.parse(localStorage.getItem('inboxCollapsedSections') || '{}');
+        collapsedSections[sectionName] = section.classList.contains('collapsed');
+        localStorage.setItem('inboxCollapsedSections', JSON.stringify(collapsedSections));
+    }
+}
+
+// Restore collapsed sections state on page load
+function restoreCollapsedSections() {
+    const collapsedSections = JSON.parse(localStorage.getItem('inboxCollapsedSections') || '{}');
+    Object.keys(collapsedSections).forEach(sectionName => {
+        if (collapsedSections[sectionName]) {
+            const section = document.querySelector(`.panel-section[data-section="${sectionName}"]`);
+            if (section) section.classList.add('collapsed');
+        }
+    });
+}
+
+// Call on page load
+document.addEventListener('DOMContentLoaded', restoreCollapsedSections);
 
 // Toggle notifications for this chat
 function toggleNotifications() {
