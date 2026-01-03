@@ -123,58 +123,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Welcome message actions
     elseif ($action === 'save_welcome') {
         try {
-            // Check if table exists and has required columns
-            $tableExists = $db->query("SHOW TABLES LIKE 'welcome_settings'")->rowCount() > 0;
-            
-            if (!$tableExists) {
-                $db->exec("
-                    CREATE TABLE welcome_settings (
-                        id INT PRIMARY KEY DEFAULT 1,
-                        enabled TINYINT(1) DEFAULT 1,
-                        message_type ENUM('text', 'flex') DEFAULT 'text',
-                        text_message TEXT,
-                        flex_json LONGTEXT,
-                        delay_seconds INT DEFAULT 0,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                    )
-                ");
-            } else {
-                // Add missing columns
-                $cols = $db->query("SHOW COLUMNS FROM welcome_settings")->fetchAll(PDO::FETCH_COLUMN);
-                if (!in_array('enabled', $cols)) {
-                    $db->exec("ALTER TABLE welcome_settings ADD COLUMN enabled TINYINT(1) DEFAULT 1");
-                }
-                if (!in_array('message_type', $cols)) {
-                    $db->exec("ALTER TABLE welcome_settings ADD COLUMN message_type ENUM('text', 'flex') DEFAULT 'text'");
-                }
-                if (!in_array('text_message', $cols)) {
-                    $db->exec("ALTER TABLE welcome_settings ADD COLUMN text_message TEXT");
-                }
-                if (!in_array('flex_json', $cols)) {
-                    $db->exec("ALTER TABLE welcome_settings ADD COLUMN flex_json LONGTEXT");
-                }
-                if (!in_array('delay_seconds', $cols)) {
-                    $db->exec("ALTER TABLE welcome_settings ADD COLUMN delay_seconds INT DEFAULT 0");
-                }
-            }
-            
-            $enabled = isset($_POST['enabled']) ? 1 : 0;
+            $currentBotId = $_SESSION['current_bot_id'] ?? null;
+            $isEnabled = isset($_POST['is_enabled']) ? 1 : 0;
             $messageType = $_POST['message_type'] ?? 'text';
-            $textMessage = $_POST['text_message'] ?? '';
-            $flexJson = $_POST['flex_json'] ?? '';
-            $delaySeconds = (int)($_POST['delay_seconds'] ?? 0);
+            $textContent = $_POST['text_content'] ?? '';
+            $flexContent = $_POST['flex_content'] ?? '';
             
-            $stmt = $db->prepare("
-                INSERT INTO welcome_settings (id, enabled, message_type, text_message, flex_json, delay_seconds)
-                VALUES (1, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE 
-                    enabled = VALUES(enabled),
-                    message_type = VALUES(message_type),
-                    text_message = VALUES(text_message),
-                    flex_json = VALUES(flex_json),
-                    delay_seconds = VALUES(delay_seconds)
-            ");
-            $stmt->execute([$enabled, $messageType, $textMessage, $flexJson, $delaySeconds]);
+            // Check if settings exist for this bot
+            $stmt = $db->prepare("SELECT id FROM welcome_settings WHERE line_account_id = ? OR (line_account_id IS NULL AND ? IS NULL)");
+            $stmt->execute([$currentBotId, $currentBotId]);
+            $exists = $stmt->fetch();
+            
+            if ($exists) {
+                $stmt = $db->prepare("UPDATE welcome_settings SET is_enabled = ?, message_type = ?, text_content = ?, flex_content = ? WHERE id = ?");
+                $stmt->execute([$isEnabled, $messageType, $textContent, $flexContent, $exists['id']]);
+            } else {
+                $stmt = $db->prepare("INSERT INTO welcome_settings (line_account_id, is_enabled, message_type, text_content, flex_content) VALUES (?, ?, ?, ?, ?)");
+                $stmt->execute([$currentBotId, $isEnabled, $messageType, $textContent, $flexContent]);
+            }
             $success = 'บันทึกการตั้งค่าข้อความต้อนรับสำเร็จ!';
         } catch (Exception $e) {
             $error = 'เกิดข้อผิดพลาด: ' . $e->getMessage();

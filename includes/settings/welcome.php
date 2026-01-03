@@ -4,21 +4,31 @@
  * ตั้งค่าข้อความต้อนรับ (รองรับ Flex Message)
  */
 
+$currentBotId = $_SESSION['current_bot_id'] ?? null;
+
 // Get current welcome settings
 $welcomeSettings = [];
 try {
-    $stmt = $db->query("SELECT * FROM welcome_settings WHERE id = 1");
+    $stmt = $db->prepare("SELECT * FROM welcome_settings WHERE line_account_id = ? OR (line_account_id IS NULL AND ? IS NULL) LIMIT 1");
+    $stmt->execute([$currentBotId, $currentBotId]);
     $welcomeSettings = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 } catch (PDOException $e) {
-    // Table might not exist - will be created on first save
-    $welcomeSettings = ['enabled' => 1, 'message_type' => 'text', 'text_message' => '', 'flex_json' => '', 'delay_seconds' => 0];
+    $welcomeSettings = [];
 }
 
-$enabled = $welcomeSettings['enabled'] ?? 1;
+if (!$welcomeSettings) {
+    $welcomeSettings = [
+        'is_enabled' => 0,
+        'message_type' => 'text',
+        'text_content' => "สวัสดีค่ะ ยินดีต้อนรับ! 🎉\n\nขอบคุณที่เพิ่มเราเป็นเพื่อน\nหากต้องการความช่วยเหลือ สามารถพิมพ์ข้อความมาได้เลยค่ะ",
+        'flex_content' => ''
+    ];
+}
+
+$isEnabled = $welcomeSettings['is_enabled'] ?? 0;
 $messageType = $welcomeSettings['message_type'] ?? 'text';
-$textMessage = $welcomeSettings['text_message'] ?? '';
-$flexJson = $welcomeSettings['flex_json'] ?? '';
-$delaySeconds = $welcomeSettings['delay_seconds'] ?? 0;
+$textContent = $welcomeSettings['text_content'] ?? '';
+$flexContent = $welcomeSettings['flex_content'] ?? '';
 ?>
 
 <div class="bg-white rounded-xl shadow-sm p-6">
@@ -30,7 +40,7 @@ $delaySeconds = $welcomeSettings['delay_seconds'] ?? 0;
         <div class="flex items-center gap-2">
             <span class="text-sm text-gray-600">เปิดใช้งาน</span>
             <label class="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" name="enabled" form="welcomeForm" <?= $enabled ? 'checked' : '' ?> class="sr-only peer">
+                <input type="checkbox" name="is_enabled" form="welcomeForm" <?= $isEnabled ? 'checked' : '' ?> class="sr-only peer">
                 <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-green-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
             </label>
         </div>
@@ -60,10 +70,10 @@ $delaySeconds = $welcomeSettings['delay_seconds'] ?? 0;
         <!-- Text Message -->
         <div id="textMessageSection" class="mb-6 <?= $messageType === 'flex' ? 'hidden' : '' ?>">
             <label class="block text-sm font-medium text-gray-700 mb-2">ข้อความต้อนรับ</label>
-            <textarea name="text_message" rows="4" 
+            <textarea name="text_content" rows="4" 
                       class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                      placeholder="สวัสดีค่ะ ยินดีต้อนรับสู่ร้านของเรา..."><?= htmlspecialchars($textMessage) ?></textarea>
-            <p class="text-xs text-gray-500 mt-1">ใช้ {name} แทนชื่อผู้ใช้</p>
+                      placeholder="สวัสดีค่ะ ยินดีต้อนรับสู่ร้านของเรา..."><?= htmlspecialchars($textContent) ?></textarea>
+            <p class="text-xs text-gray-500 mt-1">รองรับ Emoji และขึ้นบรรทัดใหม่ได้</p>
         </div>
 
         <!-- Flex Message -->
@@ -71,10 +81,10 @@ $delaySeconds = $welcomeSettings['delay_seconds'] ?? 0;
             <label class="block text-sm font-medium text-gray-700 mb-2">Flex Message JSON</label>
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 <div>
-                    <textarea name="flex_json" id="flexJsonInput" rows="15" 
+                    <textarea name="flex_content" id="flexJsonInput" rows="15" 
                               class="w-full px-4 py-3 border border-gray-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                               placeholder='{"type": "bubble", "body": {...}}'
-                              oninput="updateFlexPreview()"><?= htmlspecialchars($flexJson) ?></textarea>
+                              oninput="updateFlexPreview()"><?= htmlspecialchars($flexContent) ?></textarea>
                     <div class="flex gap-2 mt-2">
                         <button type="button" onclick="loadFlexTemplate('welcome')" class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg text-sm hover:bg-blue-200">
                             <i class="fas fa-magic mr-1"></i>Template ต้อนรับ
@@ -94,14 +104,6 @@ $delaySeconds = $welcomeSettings['delay_seconds'] ?? 0;
                     </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Delay -->
-        <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 mb-2">หน่วงเวลาก่อนส่ง (วินาที)</label>
-            <input type="number" name="delay_seconds" value="<?= $delaySeconds ?>" min="0" max="60"
-                   class="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
-            <p class="text-xs text-gray-500 mt-1">0 = ส่งทันที</p>
         </div>
 
         <div class="flex justify-end">
