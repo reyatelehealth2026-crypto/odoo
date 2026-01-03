@@ -69,6 +69,9 @@ try {
         case 'last_address':
             handleGetLastAddress();
             break;
+        case 'promptpay_qr':
+            handlePromptPayQR();
+            break;
         default:
             jsonResponse(false, 'Invalid action');
     }
@@ -1568,4 +1571,154 @@ function notifyTelegramPayment($orderId, $orderNumber, $slipUrl, $user) {
         error_log('notifyTelegramPayment error: ' . $e->getMessage());
         return false;
     }
+}
+
+/**
+ * Generate PromptPay QR Code Image
+ * Returns PNG image directly
+ */
+function handlePromptPayQR() {
+    global $db;
+    
+    $amount = floatval($_GET['amount'] ?? 0);
+    $lineAccountId = $_GET['account'] ?? $_GET['line_account_id'] ?? 1;
+    
+    // Get PromptPay number from shop settings
+    $promptpayNumber = '';
+    try {
+        $stmt = $db->prepare("SELECT promptpay_number FROM shop_settings WHERE line_account_id = ? LIMIT 1");
+        $stmt->execute([$lineAccountId]);
+        $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+        $promptpayNumber = $settings['promptpay_number'] ?? '';
+        
+        // Fallback to first shop settings if not found
+        if (empty($promptpayNumber)) {
+            $stmt = $db->query("SELECT promptpay_number FROM shop_settings WHERE promptpay_number IS NOT NULL AND promptpay_number != '' LIMIT 1");
+            $settings = $stmt->fetch(PDO::FETCH_ASSOC);
+            $promptpayNumber = $settings['promptpay_number'] ?? '';
+        }
+    } catch (Exception $e) {
+        error_log('PromptPay QR error: ' . $e->getMessage());
+    }
+    
+    if (empty($promptpayNumber)) {
+        // Return empty image or error
+        header('Content-Type: image/png');
+        $img = imagecreate(200, 200);
+        $bg = imagecolorallocate($img, 255, 255, 255);
+        $textColor = imagecolorallocate($img, 150, 150, 150);
+        imagestring($img, 3, 30, 90, 'PromptPay not configured', $textColor);
+        imagepng($img);
+        imagedestroy($img);
+        exit;
+    }
+    
+    // Generate PromptPay payload
+    $payload = generatePromptPayPayload($promptpayNumber, $amount);
+    
+    if (!$payload) {
+        header('Content-Type: image/png');
+        $img = imagecreate(200, 200);
+        $bg = imagecolorallocate($img, 255, 255, 255);
+        $textColor = imagecolorallocate($img, 150, 150, 150);
+        imagestring($img, 3, 50, 90, 'Invalid PromptPay', $textColor);
+        imagepng($img);
+        imagedestroy($img);
+        exit;
+    }
+    
+    // Generate QR Code using external API (simple approach)
+    $qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' . urlencode($payload);
+    
+    // Fetch and output the QR image
+    header('Content-Type: image/png');
+    header('Cache-Control: public, max-age=3600');
+    
+    $qrImage = @file_get_contents($qrUrl);
+    if ($qrImage) {
+        echo $qrImage;
+    } else {
+        // Fallback: generate simple QR using GD (basic)
+        $img = imagecreate(200, 200);
+        $bg = imagecolorallocate($img, 255, 255, 255);
+        $textColor = imagecolorallocate($img, 0, 0, 0);
+        imagestring($img, 3, 40, 90, 'QR Generation Error', $textColor);
+        imagepng($img);
+        imagedestroy($img);
+    }
+    exit;
+}
+
+/**
+ * Generate PromptPay EMVCo QR Payload
+ */
+function generatePromptPayPayload($promptpayNumber, $amount = 0) {
+    // Clean the number
+    $target = preg_replace('/[^0-9]/', '', $promptpayNumber);
+    
+    // Determine target type
+    if (strlen($target) === 10) {
+        // Phone number - add country code
+        $target = '0066' . substr($target, 1);
+        $targetType = '01'; // Phone
+    } elseif (strlen($target) === 13) {
+        $targetType = '02'; // National ID
+    } else {
+        return null;
+    }
+    
+    // Build EMVCo QR payload
+    $payload = '';
+    
+    // Payload Format Indicator
+    $payload .= '000201';
+    
+    // Point of Initiation Method (12 = dynamic QR with amount)
+    $payload .= '010212';
+    
+    // Merchant Account Information (PromptPay)
+    $merchantInfo = '';
+    $merchantInfo .= '0016A000000677010111'; // AID
+    $merchantInfo .= $targetType . sprintf('%02d', strlen($target)) . $target;
+    $payload .= '29' . sprintf('%02d', strlen($merchantInfo)) . $merchantInfo;
+    
+    // Transaction Currency (THB = 764)
+    $payload .= '5303764';
+    
+    // Transaction Amount (if provided)
+    if ($amount > 0) {
+        $amountStr = number_format($amount, 2, '.', '');
+        $payload .= '54' . sprintf('%02d', strlen($amountStr)) . $amountStr;
+    }
+    
+    // Country Code
+    $payload .= '5802TH';
+    
+    // CRC placeholder
+    $payload .= '6304';
+    
+    // Calculate CRC16
+    $crc = calculateCRC16CCITT($payload);
+    $payload .= strtoupper(sprintf('%04X', $crc));
+    
+    return $payload;
+}
+
+/**
+ * Calculate CRC16-CCITT for EMVCo QR
+ */
+function calculateCRC16CCITT($str) {
+    $crc = 0xFFFF;
+    for ($i = 0; $i < strlen($str); $i++) {
+        $crc ^= ord($str[$i]) << 8;
+        for ($j = 0; $j < 8; $j++) {
+            if ($crc & 0x8000) {
+                $crc = ($crc << 1) ^ 0x1021;
+            } else {
+                $crc <<= 1;
+            }
+        }
+        $crc &= 0xFFFF;
+    }
+    return $crc;
 }
