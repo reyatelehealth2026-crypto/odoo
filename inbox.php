@@ -609,37 +609,37 @@ function formatThaiDateTime($datetime) {
     background: rgba(255,255,255,0.2);
 }
 
-/* Mobile Responsive - Inbox Full Screen */
+/* Inbox Full Screen - Hide main sidebar */
+.sidebar {
+    display: none !important;
+}
+.main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+}
+.top-header {
+    display: none !important;
+}
+.content-area {
+    padding: 0 !important;
+    height: 100vh !important;
+}
+
+/* Inbox container - full screen */
+#inboxContainer {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    border: none !important;
+    z-index: 50;
+}
+
+/* Mobile Responsive */
 @media (max-width: 768px) {
-    /* Hide main sidebar on inbox page */
-    .sidebar {
-        display: none !important;
-    }
-    .main-content {
-        margin-left: 0 !important;
-        width: 100% !important;
-    }
-    .top-header {
-        display: none !important;
-    }
-    .content-area {
-        padding: 0 !important;
-        height: 100vh !important;
-    }
-    
-    /* Inbox container - full screen */
-    #inboxContainer {
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        height: 100vh !important;
-        border-radius: 0 !important;
-        border: none !important;
-        z-index: 50;
-    }
-    
     /* Chat list sidebar - full width, can slide out */
     #inboxSidebar {
         position: absolute !important;
@@ -673,11 +673,6 @@ function formatThaiDateTime($datetime) {
         display: flex !important;
     }
     
-    /* Mobile main menu button */
-    #mainMenuBtn {
-        display: flex !important;
-    }
-    
     /* Customer panel - full screen overlay */
     #customerPanel {
         position: fixed !important;
@@ -690,9 +685,6 @@ function formatThaiDateTime($datetime) {
 }
 @media (min-width: 769px) {
     #mobileBackBtn {
-        display: none !important;
-    }
-    #mainMenuBtn {
         display: none !important;
     }
     
@@ -709,15 +701,15 @@ function formatThaiDateTime($datetime) {
 }
 </style>
 
-<div id="inboxContainer" class="h-[calc(100vh-80px)] flex bg-white rounded-xl shadow-lg border overflow-hidden relative">
+<div id="inboxContainer" class="h-screen flex bg-white overflow-hidden relative">
     
     <!-- LEFT: User List -->
     <div id="inboxSidebar" class="w-72 bg-white border-r flex flex-col">
         <div class="p-3 border-b bg-gradient-to-r from-emerald-500 to-green-600 flex items-center justify-between">
             <div class="flex items-center gap-2">
-                <!-- Mobile: Back to main menu -->
-                <a href="dashboard.php" id="mainMenuBtn" class="hidden w-8 h-8 items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white">
-                    <i class="fas fa-bars"></i>
+                <!-- Back to dashboard -->
+                <a href="dashboard.php" id="backToMenuBtn" class="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/30 text-white" title="กลับหน้าหลัก">
+                    <i class="fas fa-arrow-left"></i>
                 </a>
                 <h2 class="text-white font-bold flex items-center">
                     <i class="fas fa-inbox mr-2"></i>Inbox
