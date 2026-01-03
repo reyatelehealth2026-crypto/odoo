@@ -328,6 +328,7 @@ $menuGroups = [
         'menus' => [
             ['title' => 'ตั้งค่าระบบ', 'icon' => '🔧', 'href' => '/settings'],
             ['title' => 'ข้อมูลร้าน', 'icon' => '🏪', 'href' => '/shop/settings'],
+            ['title' => 'Rich Menu', 'icon' => '🎨', 'href' => '/rich-menu'],
         ]
     ],
 ];

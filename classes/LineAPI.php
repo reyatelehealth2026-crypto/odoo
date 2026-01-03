@@ -690,6 +690,8 @@ class LineAPI {
      * Get Rich Menu Image URL (download and return base64)
      */
     public function getRichMenuImage($richMenuId) {
+        if (empty($richMenuId)) return null;
+        
         $url = 'https://api-data.line.me/v2/bot/richmenu/' . $richMenuId . '/content';
         $headers = ['Authorization: Bearer ' . $this->channelAccessToken];
 
@@ -697,14 +699,26 @@ class LineAPI {
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $contentType = curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        $error = curl_error($ch);
         curl_close($ch);
 
-        if ($httpCode === 200 && $response) {
+        if ($httpCode === 200 && $response && strlen($response) > 100) {
+            // Detect content type if not provided
+            if (empty($contentType) || strpos($contentType, 'image') === false) {
+                $contentType = 'image/png';
+            }
             return 'data:' . $contentType . ';base64,' . base64_encode($response);
+        }
+        
+        // Log error for debugging
+        if ($httpCode !== 200) {
+            error_log("getRichMenuImage failed: HTTP {$httpCode}, error: {$error}, richMenuId: {$richMenuId}");
         }
         return null;
     }
