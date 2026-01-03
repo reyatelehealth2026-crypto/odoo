@@ -566,12 +566,23 @@ require_once __DIR__ . '/../includes/header.php';
         $deliveryInfo = json_decode($order['delivery_info'] ?? '{}', true);
         $shippingName = $order['shipping_name'] ?? $deliveryInfo['name'] ?? '';
         $shippingPhone = $order['shipping_phone'] ?? $deliveryInfo['phone'] ?? '';
-        $shippingAddress = $order['shipping_address'] ?? $deliveryInfo['address'] ?? '';
+        // Use full_address if available, otherwise combine parts or use address field
+        $liffAddress = $deliveryInfo['full_address'] ?? '';
+        if (empty($liffAddress)) {
+            $liffAddress = trim(implode(' ', array_filter([
+                $deliveryInfo['address'] ?? '',
+                $deliveryInfo['subdistrict'] ?? '',
+                $deliveryInfo['district'] ?? '',
+                $deliveryInfo['province'] ?? '',
+                $deliveryInfo['postcode'] ?? ''
+            ])));
+        }
+        $shippingAddress = $order['shipping_address'] ?? $liffAddress;
         ?>
         <div class="bg-white rounded-xl shadow p-6">
             <h4 class="font-semibold mb-4"><i class="fas fa-truck text-blue-500 mr-2"></i>ข้อมูลจัดส่ง</h4>
             
-            <?php if (!empty($deliveryInfo['name']) || !empty($deliveryInfo['phone']) || !empty($deliveryInfo['address'])): ?>
+            <?php if (!empty($deliveryInfo['name']) || !empty($deliveryInfo['phone']) || !empty($liffAddress)): ?>
             <!-- LIFF Delivery Info (Read-only) -->
             <div class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div class="flex items-center mb-2">
@@ -591,10 +602,10 @@ require_once __DIR__ . '/../includes/header.php';
                         <span class="font-medium ml-1"><?= htmlspecialchars($deliveryInfo['phone']) ?></span>
                     </div>
                     <?php endif; ?>
-                    <?php if (!empty($deliveryInfo['address'])): ?>
+                    <?php if (!empty($liffAddress)): ?>
                     <div class="md:col-span-2">
                         <span class="text-gray-500">ที่อยู่:</span>
-                        <span class="font-medium ml-1"><?= htmlspecialchars($deliveryInfo['address']) ?></span>
+                        <span class="font-medium ml-1"><?= htmlspecialchars($liffAddress) ?></span>
                     </div>
                     <?php endif; ?>
                 </div>

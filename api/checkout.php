@@ -586,12 +586,17 @@ function handleCreateOrder($data) {
     
     $total = ($requestTotal !== null) ? floatval($requestTotal) : ($subtotal + $shippingFee);
     
-    // Build delivery info
+    // Build delivery info - keep all fields separate for future use
     $deliveryInfo = [
         'type' => 'shipping',
         'name' => $address['name'] ?? '',
         'phone' => $address['phone'] ?? '',
-        'address' => trim(implode(' ', array_filter([
+        'address' => $address['address'] ?? '',
+        'subdistrict' => $address['subdistrict'] ?? '',
+        'district' => $address['district'] ?? '',
+        'province' => $address['province'] ?? '',
+        'postcode' => $address['postcode'] ?? '',
+        'full_address' => trim(implode(' ', array_filter([
             $address['address'] ?? '',
             $address['subdistrict'] ?? '',
             $address['district'] ?? '',
@@ -1412,11 +1417,14 @@ function handleGetLastAddress() {
             $deliveryInfo = json_decode($result['delivery_info'], true);
             
             if ($deliveryInfo && !empty($deliveryInfo['name'])) {
+                // Check if we have separate fields or just combined address
+                $hasSeperateFields = !empty($deliveryInfo['subdistrict']) || !empty($deliveryInfo['district']) || !empty($deliveryInfo['province']);
+                
                 jsonResponse(true, 'Last address found', [
                     'address' => [
                         'name' => $deliveryInfo['name'] ?? '',
                         'phone' => $deliveryInfo['phone'] ?? '',
-                        'address' => $deliveryInfo['address'] ?? '',
+                        'address' => $hasSeperateFields ? ($deliveryInfo['address'] ?? '') : '',
                         'subdistrict' => $deliveryInfo['subdistrict'] ?? '',
                         'district' => $deliveryInfo['district'] ?? '',
                         'province' => $deliveryInfo['province'] ?? '',

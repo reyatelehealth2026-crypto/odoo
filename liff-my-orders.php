@@ -276,13 +276,13 @@ $baseUrl = rtrim(BASE_URL, '/');
 
     function getStatusInfo(status) {
         const statuses = {
-            'pending': { text: 'รอชำระเงิน', class: 'status-pending' },
+            'pending': { text: 'รอยืนยัน', class: 'status-pending' },
             'paid': { text: 'ชำระแล้ว', class: 'status-paid' },
             'confirmed': { text: 'ยืนยันแล้ว', class: 'status-confirmed' },
             'processing': { text: 'กำลังเตรียม', class: 'status-processing' },
-            'shipping': { text: 'กำลังจัดส่ง', class: 'status-shipping' },
+            'shipping': { text: 'กำลังส่ง', class: 'status-shipping' },
             'shipped': { text: 'จัดส่งแล้ว', class: 'status-shipped' },
-            'delivered': { text: 'ได้รับแล้ว', class: 'status-delivered' },
+            'delivered': { text: 'ส่งแล้ว', class: 'status-delivered' },
             'completed': { text: 'สำเร็จ', class: 'status-completed' },
             'cancelled': { text: 'ยกเลิก', class: 'status-cancelled' },
         };
