@@ -5500,12 +5500,19 @@ img[loading="lazy"] {
     color: #1E40AF;
 }
 
-.order-status-badge.packing {
+.order-status-badge.paid {
+    background: #D1FAE5;
+    color: #065F46;
+}
+
+.order-status-badge.packing,
+.order-status-badge.processing {
     background: #E0E7FF;
     color: #3730A3;
 }
 
-.order-status-badge.shipping {
+.order-status-badge.shipping,
+.order-status-badge.shipped {
     background: #F3E8FF;
     color: #6B21A8;
 }

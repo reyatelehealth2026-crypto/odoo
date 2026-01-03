@@ -4128,15 +4128,18 @@ class LiffApp {
     /**
      * Get status configuration object
      * Centralized status config for badge display and updates
-     * Requirement 4.2, 4.6 - Status colors: Yellow=Pending, Blue=Packing, Purple=Shipping, Green=Completed
+     * Requirement 4.2, 4.6 - Status colors: Yellow=Pending, Blue=Confirmed/Paid, Purple=Shipping, Green=Completed
      */
     getStatusConfig() {
         return {
-            'pending': { label: 'รอดำเนินการ', icon: 'fa-clock', class: 'pending' },
+            'pending': { label: 'รอยืนยัน', icon: 'fa-clock', class: 'pending' },
             'confirmed': { label: 'ยืนยันแล้ว', icon: 'fa-check', class: 'confirmed' },
-            'packing': { label: 'กำลังแพ็ค', icon: 'fa-box', class: 'packing' },
-            'shipping': { label: 'กำลังจัดส่ง', icon: 'fa-truck', class: 'shipping' },
-            'delivered': { label: 'จัดส่งแล้ว', icon: 'fa-check-circle', class: 'delivered' },
+            'paid': { label: 'ชำระแล้ว', icon: 'fa-credit-card', class: 'paid' },
+            'packing': { label: 'กำลังเตรียม', icon: 'fa-box', class: 'packing' },
+            'processing': { label: 'กำลังเตรียม', icon: 'fa-box', class: 'packing' },
+            'shipping': { label: 'กำลังส่ง', icon: 'fa-truck', class: 'shipping' },
+            'shipped': { label: 'จัดส่งแล้ว', icon: 'fa-truck', class: 'shipping' },
+            'delivered': { label: 'ส่งแล้ว', icon: 'fa-check-circle', class: 'delivered' },
             'completed': { label: 'สำเร็จ', icon: 'fa-check-circle', class: 'completed' },
             'cancelled': { label: 'ยกเลิก', icon: 'fa-times-circle', class: 'cancelled' }
         };
@@ -4157,7 +4160,7 @@ class LiffApp {
         
         if (badge) {
             // Remove all status classes
-            const statusClasses = ['pending', 'confirmed', 'packing', 'shipping', 'delivered', 'completed', 'cancelled'];
+            const statusClasses = ['pending', 'confirmed', 'paid', 'packing', 'processing', 'shipping', 'shipped', 'delivered', 'completed', 'cancelled'];
             statusClasses.forEach(cls => badge.classList.remove(cls));
             
             // Add new status class
@@ -4191,12 +4194,12 @@ class LiffApp {
         const timeline = card.querySelector('.delivery-timeline');
         if (!timeline) return;
 
-        const statusOrder = ['pending', 'confirmed', 'packing', 'shipping', 'delivered', 'completed'];
+        const statusOrder = ['pending', 'confirmed', 'paid', 'packing', 'shipping', 'delivered', 'completed'];
         const currentIndex = statusOrder.indexOf(status);
         
         const timelineItems = timeline.querySelectorAll('.timeline-item');
         timelineItems.forEach((item, index) => {
-            const isCompleted = currentIndex >= index || (status === 'completed' && index <= 4);
+            const isCompleted = currentIndex >= index || (status === 'completed' && index <= 5);
             const isCurrent = currentIndex === index;
             
             item.classList.toggle('completed', isCompleted);
@@ -4308,12 +4311,13 @@ class LiffApp {
         const stages = [
             { key: 'pending', label: 'สั่งซื้อสำเร็จ', icon: 'fa-shopping-cart' },
             { key: 'confirmed', label: 'ยืนยันออเดอร์', icon: 'fa-check' },
+            { key: 'paid', label: 'ชำระเงินแล้ว', icon: 'fa-credit-card' },
             { key: 'packing', label: 'กำลังเตรียมสินค้า', icon: 'fa-box' },
-            { key: 'shipping', label: 'กำลังจัดส่ง', icon: 'fa-truck' },
-            { key: 'delivered', label: 'จัดส่งสำเร็จ', icon: 'fa-check-circle' }
+            { key: 'shipping', label: 'กำลังส่ง', icon: 'fa-truck' },
+            { key: 'delivered', label: 'ส่งแล้ว', icon: 'fa-check-circle' }
         ];
         
-        const statusOrder = ['pending', 'confirmed', 'packing', 'shipping', 'delivered', 'completed'];
+        const statusOrder = ['pending', 'confirmed', 'paid', 'packing', 'shipping', 'delivered', 'completed'];
         const currentIndex = statusOrder.indexOf(status);
         
         return `
@@ -4918,12 +4922,13 @@ class LiffApp {
         const stages = [
             { key: 'pending', label: 'สั่งซื้อสำเร็จ', icon: 'fa-shopping-cart', description: 'ออเดอร์ของคุณได้รับการยืนยันแล้ว' },
             { key: 'confirmed', label: 'ยืนยันออเดอร์', icon: 'fa-check', description: 'ร้านค้ายืนยันออเดอร์แล้ว' },
+            { key: 'paid', label: 'ชำระเงินแล้ว', icon: 'fa-credit-card', description: 'ชำระเงินเรียบร้อยแล้ว' },
             { key: 'packing', label: 'กำลังเตรียมสินค้า', icon: 'fa-box', description: 'กำลังจัดเตรียมสินค้าของคุณ' },
-            { key: 'shipping', label: 'กำลังจัดส่ง', icon: 'fa-truck', description: 'สินค้าออกจากคลังแล้ว' },
-            { key: 'delivered', label: 'จัดส่งสำเร็จ', icon: 'fa-check-circle', description: 'สินค้าถึงมือคุณแล้ว' }
+            { key: 'shipping', label: 'กำลังส่ง', icon: 'fa-truck', description: 'สินค้าออกจากคลังแล้ว' },
+            { key: 'delivered', label: 'ส่งแล้ว', icon: 'fa-check-circle', description: 'สินค้าถึงมือคุณแล้ว' }
         ];
         
-        const statusOrder = ['pending', 'confirmed', 'packing', 'shipping', 'delivered', 'completed'];
+        const statusOrder = ['pending', 'confirmed', 'paid', 'packing', 'shipping', 'delivered', 'completed'];
         const currentIndex = statusOrder.indexOf(status);
         
         return `
