@@ -23,6 +23,8 @@ $activityLogger = ActivityLogger::getInstance($db);
 // Tab configuration
 $tabs = [
     'line' => ['label' => 'LINE Accounts', 'icon' => 'fab fa-line'],
+    'welcome' => ['label' => 'ข้อความต้อนรับ', 'icon' => 'fas fa-hand-sparkles'],
+    'liff' => ['label' => 'LIFF Settings', 'icon' => 'fas fa-mobile-alt'],
     'telegram' => ['label' => 'Telegram', 'icon' => 'fab fa-telegram'],
     'email' => ['label' => 'Email/SMTP', 'icon' => 'fas fa-envelope'],
     'notifications' => ['label' => 'การแจ้งเตือน', 'icon' => 'fas fa-bell'],
@@ -374,6 +376,12 @@ echo getTabsStyles();
     <div class="tab-panel">
         <?php
         switch ($activeTab) {
+            case 'welcome':
+                include 'includes/settings/welcome.php';
+                break;
+            case 'liff':
+                include 'includes/settings/liff.php';
+                break;
             case 'telegram':
                 include 'includes/settings/telegram.php';
                 break;
