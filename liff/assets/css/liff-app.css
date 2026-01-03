@@ -3381,12 +3381,12 @@ img[loading="lazy"] {
 /* Floating Cart Summary Bar (Requirement 2.5) */
 .cart-summary-bar {
     position: fixed;
-    bottom: calc(70px + var(--safe-area-bottom));
-    left: var(--space-4);
-    right: var(--space-4);
+    bottom: calc(60px + var(--safe-area-bottom));
+    left: var(--space-3);
+    right: var(--space-3);
     background: var(--text-primary);
-    border-radius: var(--radius-xl);
-    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-lg);
+    padding: var(--space-2) var(--space-3);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -3405,32 +3405,32 @@ img[loading="lazy"] {
 .cart-summary-info {
     display: flex;
     align-items: center;
-    gap: var(--space-3);
+    gap: var(--space-2);
     color: white;
 }
 
 .cart-summary-icon {
     position: relative;
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     background: rgba(255, 255, 255, 0.1);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 14px;
 }
 
 .cart-summary-badge {
     position: absolute;
     top: -4px;
     right: -4px;
-    min-width: 18px;
-    height: 18px;
-    padding: 0 4px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 3px;
     background: var(--danger);
     border-radius: var(--radius-full);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     display: flex;
     align-items: center;
@@ -3443,28 +3443,28 @@ img[loading="lazy"] {
 }
 
 .cart-summary-count {
-    font-size: 12px;
+    font-size: 11px;
     opacity: 0.8;
 }
 
 .cart-summary-total {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 700;
 }
 
 .cart-summary-btn {
-    padding: var(--space-2) var(--space-4);
-    font-size: 14px;
+    padding: var(--space-2) var(--space-3);
+    font-size: 12px;
     font-weight: 600;
     background: var(--primary);
     color: white;
     border: none;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     cursor: pointer;
-    min-height: 40px;
+    min-height: 32px;
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--space-1);
     transition: background var(--transition-fast);
 }
 
