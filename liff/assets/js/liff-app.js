@@ -1034,6 +1034,8 @@ class LiffApp {
         this.shopState = {
             products: [],
             categories: [],
+            flashSaleProducts: [],
+            choiceProducts: [],
             currentPage: 1,
             totalPages: 1,
             hasMore: false,
@@ -1048,6 +1050,8 @@ class LiffApp {
         // Load initial data after render
         setTimeout(() => {
             this.loadCategories();
+            this.loadFlashSaleProducts();
+            this.loadChoiceProducts();
             this.loadProducts();
             this.setupShopEventListeners();
             this.updateCartSummaryBar();
@@ -1077,6 +1081,39 @@ class LiffApp {
                     <!-- Category Filter Pills -->
                     <div id="shop-categories" class="shop-categories">
                         ${window.Skeleton ? window.Skeleton.categoryFilter(5) : this.renderCategorySkeleton()}
+                    </div>
+                </div>
+
+                <!-- Flash Sale Section -->
+                <div id="flash-sale-section" class="shop-promo-section hidden">
+                    <div class="promo-section-header">
+                        <div class="promo-section-title">
+                            <i class="fas fa-bolt flash-icon"></i>
+                            <span>Flash Sale</span>
+                            <span id="flash-sale-timer" class="flash-timer"></span>
+                        </div>
+                        <button class="promo-see-all" onclick="window.liffApp.filterByType('flash_sale')">
+                            ดูทั้งหมด <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div id="flash-sale-products" class="promo-products-scroll">
+                        ${window.Skeleton ? window.Skeleton.productCards(3) : ''}
+                    </div>
+                </div>
+
+                <!-- Choice Products Section -->
+                <div id="choice-section" class="shop-promo-section hidden">
+                    <div class="promo-section-header">
+                        <div class="promo-section-title">
+                            <i class="fas fa-award choice-icon"></i>
+                            <span>สินค้า Choice</span>
+                        </div>
+                        <button class="promo-see-all" onclick="window.liffApp.filterByType('choice')">
+                            ดูทั้งหมด <i class="fas fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div id="choice-products" class="promo-products-scroll">
+                        ${window.Skeleton ? window.Skeleton.productCards(3) : ''}
                     </div>
                 </div>
 
@@ -1240,8 +1277,181 @@ class LiffApp {
     selectCategory(categoryId) {
         this.shopState.selectedCategory = categoryId;
         this.shopState.currentPage = 1;
+        this.shopState.filterType = null; // Clear filter type when selecting category
         this.renderCategories();
         this.loadProducts(true);
+    }
+
+    /**
+     * Load Flash Sale products
+     */
+    async loadFlashSaleProducts() {
+        try {
+            const url = `${this.config.BASE_URL}/api/shop-products.php?type=flash_sale&limit=10`;
+            const response = await this.fetchWithRetry(url);
+            const data = await response.json();
+
+            if (data.success && data.products && data.products.length > 0) {
+                this.shopState.flashSaleProducts = data.products;
+                this.renderFlashSaleSection();
+            } else {
+                // Hide flash sale section if no products
+                const section = document.getElementById('flash-sale-section');
+                if (section) section.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('❌ Error loading flash sale products:', error);
+        }
+    }
+
+    /**
+     * Render Flash Sale section
+     */
+    renderFlashSaleSection() {
+        const section = document.getElementById('flash-sale-section');
+        const container = document.getElementById('flash-sale-products');
+        if (!section || !container) return;
+
+        const products = this.shopState.flashSaleProducts || [];
+        if (products.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        container.innerHTML = products.map(p => this.renderPromoProductCard(p, 'flash')).join('');
+
+        // Start countdown timer if there's a flash_sale_end
+        const firstProduct = products.find(p => p.flash_sale_end);
+        if (firstProduct && firstProduct.flash_sale_end) {
+            this.startFlashSaleTimer(firstProduct.flash_sale_end);
+        }
+    }
+
+    /**
+     * Start Flash Sale countdown timer
+     */
+    startFlashSaleTimer(endTime) {
+        const timerEl = document.getElementById('flash-sale-timer');
+        if (!timerEl) return;
+
+        const updateTimer = () => {
+            const now = new Date().getTime();
+            const end = new Date(endTime).getTime();
+            const diff = end - now;
+
+            if (diff <= 0) {
+                timerEl.innerHTML = '<span class="timer-ended">หมดเวลา</span>';
+                return;
+            }
+
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+            timerEl.innerHTML = `
+                <span class="timer-unit">${String(hours).padStart(2, '0')}</span>:
+                <span class="timer-unit">${String(minutes).padStart(2, '0')}</span>:
+                <span class="timer-unit">${String(seconds).padStart(2, '0')}</span>
+            `;
+        };
+
+        updateTimer();
+        this.flashSaleTimerInterval = setInterval(updateTimer, 1000);
+    }
+
+    /**
+     * Load Choice products
+     */
+    async loadChoiceProducts() {
+        try {
+            const url = `${this.config.BASE_URL}/api/shop-products.php?type=choice&limit=10`;
+            const response = await this.fetchWithRetry(url);
+            const data = await response.json();
+
+            if (data.success && data.products && data.products.length > 0) {
+                this.shopState.choiceProducts = data.products;
+                this.renderChoiceSection();
+            } else {
+                // Hide choice section if no products
+                const section = document.getElementById('choice-section');
+                if (section) section.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('❌ Error loading choice products:', error);
+        }
+    }
+
+    /**
+     * Render Choice products section
+     */
+    renderChoiceSection() {
+        const section = document.getElementById('choice-section');
+        const container = document.getElementById('choice-products');
+        if (!section || !container) return;
+
+        const products = this.shopState.choiceProducts || [];
+        if (products.length === 0) {
+            section.classList.add('hidden');
+            return;
+        }
+
+        section.classList.remove('hidden');
+        container.innerHTML = products.map(p => this.renderPromoProductCard(p, 'choice')).join('');
+    }
+
+    /**
+     * Render promo product card (smaller horizontal card for promo sections)
+     */
+    renderPromoProductCard(product, type = 'default') {
+        const hasSalePrice = product.sale_price && product.sale_price < product.price;
+        const discountPercent = hasSalePrice ? Math.round((1 - product.sale_price / product.price) * 100) : 0;
+        const isOutOfStock = product.stock <= 0;
+
+        return `
+            <div class="promo-product-card ${type}" onclick="window.liffApp.showProductDetailModal(${product.id})">
+                <div class="promo-product-image">
+                    <img src="${product.image_url || this.config.BASE_URL + '/assets/images/image-placeholder.svg'}" 
+                         alt="${product.name}"
+                         loading="lazy"
+                         onerror="this.src='${this.config.BASE_URL}/assets/images/image-placeholder.svg'">
+                    ${hasSalePrice ? `<span class="promo-discount-badge">-${discountPercent}%</span>` : ''}
+                </div>
+                <div class="promo-product-info">
+                    <h4 class="promo-product-name">${product.name}</h4>
+                    <div class="promo-product-price">
+                        ${hasSalePrice ? `
+                            <span class="promo-price-sale">฿${this.formatNumber(product.sale_price)}</span>
+                            <span class="promo-price-original">฿${this.formatNumber(product.price)}</span>
+                        ` : `
+                            <span class="promo-price-current">฿${this.formatNumber(product.price)}</span>
+                        `}
+                    </div>
+                    ${!isOutOfStock ? `
+                        <button class="promo-add-btn" onclick="event.stopPropagation(); window.liffApp.addProductToCart(${product.id})">
+                            <i class="fas fa-cart-plus"></i>
+                        </button>
+                    ` : '<span class="promo-out-of-stock">หมด</span>'}
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Filter products by type (flash_sale, choice, featured)
+     */
+    filterByType(type) {
+        this.shopState.selectedCategory = null;
+        this.shopState.currentPage = 1;
+        this.shopState.filterType = type;
+        this.renderCategories();
+        this.loadProducts(true);
+        
+        // Scroll to product grid
+        const grid = document.getElementById('shop-product-grid');
+        if (grid) {
+            grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
     }
 
     /**
@@ -1273,6 +1483,11 @@ class LiffApp {
 
             if (this.shopState.selectedCategory) {
                 params.append('category', this.shopState.selectedCategory);
+            }
+
+            // Add filter type if set (flash_sale, choice, featured)
+            if (this.shopState.filterType) {
+                params.append('type', this.shopState.filterType);
             }
 
             const url = `${this.config.BASE_URL}/api/shop-products.php?${params.toString()}`;
@@ -1405,6 +1620,9 @@ class LiffApp {
         const hasSalePrice = product.sale_price && product.sale_price < product.price;
         const isPrescription = product.is_prescription || false;
         const isBestseller = product.is_bestseller || false;
+        const isFeatured = product.is_featured || false;
+        const isFlashSale = product.is_flash_sale || false;
+        const isChoice = product.is_choice || false;
         const isInWishlist = this.isProductInWishlist(product.id);
         
         // Calculate discount percentage
@@ -1414,13 +1632,16 @@ class LiffApp {
         }
 
         return `
-            <div class="product-card ${isOutOfStock ? 'out-of-stock' : ''}" data-product-id="${product.id}">
+            <div class="product-card ${isOutOfStock ? 'out-of-stock' : ''} ${isFlashSale ? 'flash-sale' : ''}" data-product-id="${product.id}">
                 <div class="product-card-image-wrapper" onclick="window.liffApp.showProductDetailModal(${product.id})">
                     <!-- Badges -->
                     <div class="product-badges">
                         ${isPrescription ? '<span class="product-badge product-badge-rx">Rx</span>' : ''}
-                        ${hasSalePrice ? `<span class="product-badge product-badge-sale">-${discountPercent}%</span>` : ''}
+                        ${isFlashSale ? '<span class="product-badge product-badge-flash"><i class="fas fa-bolt"></i> Flash Sale</span>' : ''}
+                        ${hasSalePrice && !isFlashSale ? `<span class="product-badge product-badge-sale">-${discountPercent}%</span>` : ''}
+                        ${isChoice ? '<span class="product-badge product-badge-choice"><i class="fas fa-award"></i> Choice</span>' : ''}
                         ${isBestseller ? '<span class="product-badge product-badge-bestseller">ขายดี</span>' : ''}
+                        ${isFeatured && !isFlashSale && !isChoice ? '<span class="product-badge product-badge-featured"><i class="fas fa-thumbs-up"></i></span>' : ''}
                     </div>
                     
                     <!-- Wishlist Button -->
@@ -1442,8 +1663,9 @@ class LiffApp {
                     
                     <div class="product-card-price">
                         ${hasSalePrice ? `
-                            <span class="product-price-current product-price-sale">฿${this.formatNumber(product.sale_price)}</span>
+                            <span class="product-price-current product-price-sale ${isFlashSale ? 'flash-price' : ''}">฿${this.formatNumber(product.sale_price)}</span>
                             <span class="product-price-original">฿${this.formatNumber(product.price)}</span>
+                            ${isFlashSale ? `<span class="product-discount-badge">-${discountPercent}%</span>` : ''}
                         ` : `
                             <span class="product-price-current">฿${this.formatNumber(product.price)}</span>
                         `}

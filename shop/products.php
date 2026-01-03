@@ -116,6 +116,15 @@
                 $data = array_merge($data, [$_POST['item_type'] ?? 'physical', $_POST['delivery_method'] ?? 'shipping']);
             }
             
+            // Promotion settings (is_featured, is_flash_sale, is_choice, flash_sale_end)
+            $cols = array_merge($cols, ['is_featured', 'is_flash_sale', 'is_choice', 'flash_sale_end']);
+            $data = array_merge($data, [
+                isset($_POST['is_featured']) ? 1 : 0,
+                isset($_POST['is_flash_sale']) ? 1 : 0,
+                isset($_POST['is_choice']) ? 1 : 0,
+                !empty($_POST['flash_sale_end']) ? $_POST['flash_sale_end'] : null
+            ]);
+            
             if ($action === 'create') {
                 $placeholders = implode(',', array_fill(0, count($cols), '?'));
                 $stmt = $db->prepare("INSERT INTO {$productsTable} (" . implode(',', $cols) . ") VALUES ({$placeholders})");
@@ -903,6 +912,29 @@
                         <input type="checkbox" name="is_active" id="is_active" checked class="w-4 h-4 text-green-500">
                         <label for="is_active" class="text-sm">เปิดขาย</label>
                     </div>
+                    
+                    <!-- Product Promotion Settings -->
+                    <div class="mt-4 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-lg border border-orange-200">
+                        <h4 class="text-sm font-semibold text-orange-700 mb-3"><i class="fas fa-star mr-2"></i>ตั้งค่าโปรโมชั่น</h4>
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="is_featured" id="is_featured" class="w-4 h-4 text-orange-500">
+                                <label for="is_featured" class="text-sm"><i class="fas fa-thumbs-up text-orange-500 mr-1"></i>สินค้าแนะนำ</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="is_flash_sale" id="is_flash_sale" class="w-4 h-4 text-red-500" onchange="toggleFlashSaleEnd()">
+                                <label for="is_flash_sale" class="text-sm"><i class="fas fa-bolt text-red-500 mr-1"></i>Flash Sale</label>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" name="is_choice" id="is_choice" class="w-4 h-4 text-blue-500">
+                                <label for="is_choice" class="text-sm"><i class="fas fa-award text-blue-500 mr-1"></i>Choice</label>
+                            </div>
+                        </div>
+                        <div id="flash_sale_end_wrapper" class="mt-3 hidden">
+                            <label class="block text-sm font-medium text-gray-700 mb-1"><i class="fas fa-clock mr-1"></i>สิ้นสุด Flash Sale</label>
+                            <input type="datetime-local" name="flash_sale_end" id="flash_sale_end" class="w-full px-3 py-2 border rounded-lg">
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="px-6 py-4 border-t flex justify-end space-x-2">
@@ -978,6 +1010,34 @@
         if (document.getElementById('unit')) document.getElementById('unit').value = product.unit || 'ชิ้น';
         if (document.getElementById('item_type')) document.getElementById('item_type').value = product.item_type || 'physical';
         if (document.getElementById('delivery_method')) document.getElementById('delivery_method').value = product.delivery_method || 'shipping';
+        
+        // Promotion settings
+        if (document.getElementById('is_featured')) document.getElementById('is_featured').checked = product.is_featured == 1;
+        if (document.getElementById('is_flash_sale')) {
+            document.getElementById('is_flash_sale').checked = product.is_flash_sale == 1;
+            toggleFlashSaleEnd();
+        }
+        if (document.getElementById('is_choice')) document.getElementById('is_choice').checked = product.is_choice == 1;
+        if (document.getElementById('flash_sale_end') && product.flash_sale_end) {
+            // Convert to datetime-local format
+            const dt = new Date(product.flash_sale_end);
+            const formatted = dt.toISOString().slice(0, 16);
+            document.getElementById('flash_sale_end').value = formatted;
+        }
+    }
+    
+    // Toggle flash sale end datetime input
+    function toggleFlashSaleEnd() {
+        const checkbox = document.getElementById('is_flash_sale');
+        const wrapper = document.getElementById('flash_sale_end_wrapper');
+        if (checkbox && wrapper) {
+            if (checkbox.checked) {
+                wrapper.classList.remove('hidden');
+            } else {
+                wrapper.classList.add('hidden');
+                document.getElementById('flash_sale_end').value = '';
+            }
+        }
     }
 
     // Lazy Load Images

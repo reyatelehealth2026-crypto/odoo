@@ -87,11 +87,28 @@ if ($action === 'categories') {
 }
 
 // Check columns exist
-$hasIsFeatured = $hasIsBestseller = false;
+$hasIsFeatured = $hasIsBestseller = $hasIsFlashSale = $hasIsChoice = $hasFlashSaleEnd = false;
 try {
     $cols = $db->query("SHOW COLUMNS FROM business_items")->fetchAll(PDO::FETCH_COLUMN);
     $hasIsFeatured = in_array('is_featured', $cols);
     $hasIsBestseller = in_array('is_bestseller', $cols);
+    $hasIsFlashSale = in_array('is_flash_sale', $cols);
+    $hasIsChoice = in_array('is_choice', $cols);
+    $hasFlashSaleEnd = in_array('flash_sale_end', $cols);
+    
+    // Add missing columns if not exist
+    if (!$hasIsFlashSale) {
+        $db->exec("ALTER TABLE business_items ADD COLUMN is_flash_sale TINYINT(1) DEFAULT 0 AFTER is_featured");
+        $hasIsFlashSale = true;
+    }
+    if (!$hasIsChoice) {
+        $db->exec("ALTER TABLE business_items ADD COLUMN is_choice TINYINT(1) DEFAULT 0 AFTER is_flash_sale");
+        $hasIsChoice = true;
+    }
+    if (!$hasFlashSaleEnd) {
+        $db->exec("ALTER TABLE business_items ADD COLUMN flash_sale_end DATETIME NULL AFTER is_choice");
+        $hasFlashSaleEnd = true;
+    }
 } catch (Exception $e) {}
 
 // Check if requesting single product
@@ -100,11 +117,17 @@ if ($productId) {
     try {
         $featuredCol = $hasIsFeatured ? "COALESCE(is_featured, 0)" : "0";
         $bestsellerCol = $hasIsBestseller ? "COALESCE(is_bestseller, 0)" : "0";
+        $flashSaleCol = $hasIsFlashSale ? "COALESCE(is_flash_sale, 0)" : "0";
+        $choiceCol = $hasIsChoice ? "COALESCE(is_choice, 0)" : "0";
+        $flashSaleEndCol = $hasFlashSaleEnd ? "flash_sale_end" : "NULL";
         
         $sql = "SELECT id, name, sku, barcode, price, sale_price, stock, image_url, 
                        unit, manufacturer, generic_name, description, usage_instructions, category_id,
                        $featuredCol as is_featured,
-                       $bestsellerCol as is_bestseller
+                       $bestsellerCol as is_bestseller,
+                       $flashSaleCol as is_flash_sale,
+                       $choiceCol as is_choice,
+                       $flashSaleEndCol as flash_sale_end
                 FROM business_items WHERE id = ? AND is_active = 1";
         $stmt = $db->prepare($sql);
         $stmt->execute([$productId]);
@@ -129,7 +152,10 @@ if ($productId) {
                     'usage_instructions' => $product['usage_instructions'],
                     'category_id' => $product['category_id'] ? (int)$product['category_id'] : null,
                     'is_featured' => (int)($product['is_featured'] ?? 0),
-                    'is_bestseller' => (int)($product['is_bestseller'] ?? 0)
+                    'is_bestseller' => (int)($product['is_bestseller'] ?? 0),
+                    'is_flash_sale' => (int)($product['is_flash_sale'] ?? 0),
+                    'is_choice' => (int)($product['is_choice'] ?? 0),
+                    'flash_sale_end' => $product['flash_sale_end']
                 ]
             ]);
         } else {
@@ -150,12 +176,18 @@ $lineAccountId = $_GET['account'] ?? null;
 $search = trim($_GET['search'] ?? '');
 $sort = $_GET['sort'] ?? 'newest'; // newest, price_asc, price_desc, name
 $featuredOnly = isset($_GET['featured']) && $_GET['featured'] == '1';
+$flashSaleOnly = isset($_GET['flash_sale']) && $_GET['flash_sale'] == '1';
+$choiceOnly = isset($_GET['choice']) && $_GET['choice'] == '1';
+$type = $_GET['type'] ?? null; // featured, flash_sale, choice
 
 $offset = ($page - 1) * $limit;
 
 // Build column selects
 $featuredCol = $hasIsFeatured ? "COALESCE(is_featured, 0)" : "0";
 $bestsellerCol = $hasIsBestseller ? "COALESCE(is_bestseller, 0)" : "0";
+$flashSaleCol = $hasIsFlashSale ? "COALESCE(is_flash_sale, 0)" : "0";
+$choiceCol = $hasIsChoice ? "COALESCE(is_choice, 0)" : "0";
+$flashSaleEndCol = $hasFlashSaleEnd ? "flash_sale_end" : "NULL";
 
 try {
     // Build query
@@ -173,8 +205,21 @@ try {
         $params[] = $categoryId;
     }
     
-    if ($featuredOnly && $hasIsFeatured) {
-        $where[] = "is_featured = 1";
+    // Filter by type
+    if ($type === 'featured' || $featuredOnly) {
+        if ($hasIsFeatured) $where[] = "is_featured = 1";
+    }
+    if ($type === 'flash_sale' || $flashSaleOnly) {
+        if ($hasIsFlashSale) {
+            $where[] = "is_flash_sale = 1";
+            // Only show active flash sales (not expired)
+            if ($hasFlashSaleEnd) {
+                $where[] = "(flash_sale_end IS NULL OR flash_sale_end > NOW())";
+            }
+        }
+    }
+    if ($type === 'choice' || $choiceOnly) {
+        if ($hasIsChoice) $where[] = "is_choice = 1";
     }
     
     if ($search) {
@@ -216,7 +261,10 @@ try {
     $sql = "SELECT id, name, sku, barcode, price, sale_price, stock, image_url, 
                    unit, manufacturer, generic_name, description, usage_instructions, category_id,
                    $featuredCol as is_featured,
-                   $bestsellerCol as is_bestseller
+                   $bestsellerCol as is_bestseller,
+                   $flashSaleCol as is_flash_sale,
+                   $choiceCol as is_choice,
+                   $flashSaleEndCol as flash_sale_end
             FROM business_items 
             WHERE {$whereClause}
             ORDER BY {$orderBy}
@@ -244,7 +292,10 @@ try {
             'usage_instructions' => $p['usage_instructions'],
             'category_id' => $p['category_id'] ? (int)$p['category_id'] : null,
             'is_featured' => (int)($p['is_featured'] ?? 0),
-            'is_bestseller' => (int)($p['is_bestseller'] ?? 0)
+            'is_bestseller' => (int)($p['is_bestseller'] ?? 0),
+            'is_flash_sale' => (int)($p['is_flash_sale'] ?? 0),
+            'is_choice' => (int)($p['is_choice'] ?? 0),
+            'flash_sale_end' => $p['flash_sale_end'] ?? null
         ];
     }, $products);
     
