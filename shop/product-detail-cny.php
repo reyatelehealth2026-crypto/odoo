@@ -138,7 +138,7 @@ $inStock = $stock > 0;
                 <div class="tab-content" id="description">
                     <?php if (!empty($product['description'])): ?>
                     <div class="prose max-w-none">
-                        <?= nl2br(htmlspecialchars($product['description'])) ?>
+                        <?= nl2br(htmlspecialchars(strip_tags($product['description']))) ?>
                     </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีรายละเอียด</p>
@@ -149,7 +149,7 @@ $inStock = $stock > 0;
                 <div class="tab-content hidden" id="usage">
                     <?php if (!empty($product['how_to_use'])): ?>
                     <div class="prose max-w-none">
-                        <?= nl2br(htmlspecialchars($product['how_to_use'])) ?>
+                        <?= nl2br(htmlspecialchars(strip_tags($product['how_to_use']))) ?>
                     </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลวิธีใช้</p>
@@ -160,7 +160,7 @@ $inStock = $stock > 0;
                 <div class="tab-content hidden" id="properties">
                     <?php if (!empty($product['properties_other'])): ?>
                     <div class="prose max-w-none">
-                        <?= nl2br(htmlspecialchars($product['properties_other'])) ?>
+                        <?= nl2br(htmlspecialchars(strip_tags($product['properties_other']))) ?>
                     </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลสรรพคุณ</p>
