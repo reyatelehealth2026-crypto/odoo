@@ -5,9 +5,13 @@ let testData = {};
 document.addEventListener('DOMContentLoaded', function() {
     testData = initializeTestData();
     renderCategories();      // Render first
-    loadSavedData();         // Then load saved data
-    setupEventListeners();
-    updateStats();
+    
+    // Wait for DOM to be fully ready before loading saved data
+    setTimeout(function() {
+        loadSavedData();         // Then load saved data
+        setupEventListeners();
+        updateStats();
+    }, 100);
 });
 
 // Render all categories
@@ -192,12 +196,15 @@ function loadSavedData() {
 // Apply loaded data to UI
 function applyLoadedData() {
     console.log('Applying loaded data to UI...');
+    console.log('Test data keys:', Object.keys(testData));
+    
     Object.keys(testData).forEach(testId => {
         const data = testData[testId];
         const testCase = document.querySelector(`[data-test-id="${testId}"]`);
         
+        console.log(`Looking for test ${testId}:`, testCase ? 'Found' : 'Not found', 'Status:', data.status);
+        
         if (!testCase) {
-            console.log('Test case not found:', testId);
             return;
         }
         
@@ -220,6 +227,8 @@ function applyLoadedData() {
     
     // Update stats
     updateStats();
+    
+    console.log('Finished applying loaded data');
 }
 
 // Save to localStorage
