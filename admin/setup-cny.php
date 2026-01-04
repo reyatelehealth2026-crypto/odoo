@@ -84,7 +84,13 @@ $output = '';
                     <a href="?key=<?= $setupKey ?>&step=sync" 
                        class="block w-full text-center px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold">
                         <i class="fas fa-sync-alt mr-2"></i>
-                        Step 2: Sync Products from API
+                        Step 2a: Sync from API (requires high memory)
+                    </a>
+
+                    <a href="?key=<?= $setupKey ?>&step=import_csv" 
+                       class="block w-full text-center px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold">
+                        <i class="fas fa-file-csv mr-2"></i>
+                        Step 2b: Import from CSV (recommended)
                     </a>
 
                     <a href="../shop/products-cny.php" 
@@ -124,6 +130,33 @@ $output = '';
                     <i class="fas fa-arrow-left mr-2"></i>
                     Back to Setup
                 </a>
+
+            <?php elseif ($step === 'import_csv'): ?>
+                <?php
+                set_time_limit(300);
+                ob_start();
+                
+                include __DIR__ . '/../cron/import_cny_csv.php';
+                
+                $output = ob_get_clean();
+                ?>
+
+                <div class="bg-gray-900 text-green-400 p-6 rounded-lg mb-6 font-mono text-sm whitespace-pre-wrap overflow-auto max-h-96">
+<?= htmlspecialchars($output) ?>
+                </div>
+
+                <div class="space-y-3">
+                    <a href="?key=<?= $setupKey ?>&step=check" 
+                       class="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        Back to Setup
+                    </a>
+                    <a href="../shop/products-cny.php" 
+                       class="inline-block ml-3 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold">
+                        <i class="fas fa-arrow-right mr-2"></i>
+                        View Products
+                    </a>
+                </div>
 
             <?php elseif ($step === 'sync'): ?>
                 <?php
