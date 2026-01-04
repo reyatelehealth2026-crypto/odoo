@@ -93,6 +93,12 @@
     }
     </script>
     
+    <?php 
+    // ซ่อน AI Chat Widget ในหน้า LIFF หรือหน้าที่กำหนด
+    $hideAiChat = isset($hideAiChatWidget) && $hideAiChatWidget === true;
+    $isLiffPage = strpos($_SERVER['REQUEST_URI'] ?? '', '/liff') !== false;
+    if (!$hideAiChat && !$isLiffPage): 
+    ?>
     <!-- AI Admin Assistant Chat Widget -->
     <div id="ai-chat-widget" class="fixed bottom-6 right-6 z-50">
         <!-- Chat Toggle Button -->
