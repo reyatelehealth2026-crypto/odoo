@@ -4,8 +4,8 @@ let testData = {};
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     testData = initializeTestData();
-    loadSavedData();
-    renderCategories();
+    renderCategories();      // Render first
+    loadSavedData();         // Then load saved data
     setupEventListeners();
     updateStats();
 });
@@ -171,23 +171,42 @@ function updateCategoryProgress(category) {
 // Load saved data from localStorage
 function loadSavedData() {
     const saved = localStorage.getItem('testingChecklistData');
+    console.log('Loading saved data:', saved ? 'Found' : 'Not found');
     if (saved) {
-        const savedData = JSON.parse(saved);
-        Object.assign(testData, savedData);
-        applyLoadedData();
+        try {
+            const savedData = JSON.parse(saved);
+            // Merge saved data with initialized data
+            Object.keys(savedData).forEach(testId => {
+                if (testData[testId]) {
+                    testData[testId] = savedData[testId];
+                }
+            });
+            console.log('Loaded test data:', testData);
+            applyLoadedData();
+        } catch (e) {
+            console.error('Error parsing saved data:', e);
+        }
     }
 }
 
 // Apply loaded data to UI
 function applyLoadedData() {
+    console.log('Applying loaded data to UI...');
     Object.keys(testData).forEach(testId => {
         const data = testData[testId];
         const testCase = document.querySelector(`[data-test-id="${testId}"]`);
         
-        if (!testCase) return;
+        if (!testCase) {
+            console.log('Test case not found:', testId);
+            return;
+        }
         
-        if (data.status !== 'pending') {
+        // Remove existing status classes
+        testCase.classList.remove('status-passed', 'status-failed', 'status-skipped');
+        
+        if (data.status && data.status !== 'pending') {
             testCase.classList.add(`status-${data.status}`);
+            console.log(`Applied status ${data.status} to ${testId}`);
         }
         
         if (data.notes) {
@@ -198,6 +217,9 @@ function applyLoadedData() {
     
     // Update all category progress bars
     document.querySelectorAll('.category-section').forEach(updateCategoryProgress);
+    
+    // Update stats
+    updateStats();
 }
 
 // Save to localStorage
