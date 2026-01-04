@@ -53,11 +53,47 @@ $category = $_GET['category'] ?? '';
 $page = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 24;
 
-// Fetch products from CNY API
-$allProducts = callCNYAPI('get_product_all');
+// Cache configuration
+$cacheFile = __DIR__ . '/../uploads/cache/cny_products.json';
+$cacheTime = 3600; // 1 hour
 
-if (!$allProducts) {
-    $allProducts = [];
+// Handle cache refresh
+if (isset($_GET['refresh_cache'])) {
+    if (file_exists($cacheFile)) {
+        unlink($cacheFile);
+    }
+    header('Location: products-cny.php');
+    exit;
+}
+
+// Fetch products from CNY API with caching
+$allProducts = [];
+$useCache = false;
+
+if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < $cacheTime) {
+    // Use cached data
+    $cachedData = file_get_contents($cacheFile);
+    if ($cachedData) {
+        $allProducts = json_decode($cachedData, true);
+        $useCache = true;
+    }
+}
+
+if (!$useCache) {
+    // Fetch from API
+    ini_set('memory_limit', '256M'); // Increase memory limit temporarily
+    $allProducts = callCNYAPI('get_product_all');
+    
+    if ($allProducts && is_array($allProducts)) {
+        // Save to cache
+        $cacheDir = dirname($cacheFile);
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+        file_put_contents($cacheFile, json_encode($allProducts));
+    } else {
+        $allProducts = [];
+    }
 }
 
 // Filter products
@@ -93,7 +129,12 @@ require_once __DIR__ . '/../includes/header.php';
             <i class="fas fa-pills text-blue-500 mr-2"></i>
             สินค้า CNY Pharmacy
         </h1>
-        <p class="text-gray-600">ข้อมูลจาก CNY Pharmacy API - ทั้งหมด <?= number_format($totalProducts) ?> รายการ</p>
+        <p class="text-gray-600">
+            ข้อมูลจาก CNY Pharmacy API - ทั้งหมด <?= number_format($totalProducts) ?> รายการ
+            <?php if ($useCache): ?>
+            <span class="text-xs text-gray-500 ml-2">(จากแคช)</span>
+            <?php endif; ?>
+        </p>
     </div>
 
     <!-- Filters -->
@@ -112,6 +153,10 @@ require_once __DIR__ . '/../includes/header.php';
                 <i class="fas fa-times mr-2"></i>ล้าง
             </a>
             <?php endif; ?>
+            <a href="?refresh_cache=1" class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700" 
+               title="รีเฟรชข้อมูลจาก API">
+                <i class="fas fa-sync-alt mr-2"></i>รีเฟรช
+            </a>
         </form>
     </div>
 
