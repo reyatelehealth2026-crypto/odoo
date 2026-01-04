@@ -444,6 +444,10 @@ try {
                 <div class="quick-action-icon bg-indigo-500"><i class="fas fa-chart-pie"></i></div>
                 <span class="quick-action-label">Analytics</span>
             </a>
+            <a href="sync-cny.php" class="quick-action">
+                <div class="quick-action-icon bg-teal-500"><i class="fas fa-sync-alt"></i></div>
+                <span class="quick-action-label">Sync CNY</span>
+            </a>
         </div>
     </div>
 </div>
