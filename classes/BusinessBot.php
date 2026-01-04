@@ -2241,10 +2241,15 @@ class BusinessBot
             $deliveryInfo = $stateData['delivery_info'] ?? null;
             $paymentMethod = $stateData['payment_method'] ?? 'transfer';
             
+            // กำหนดสถานะตาม payment method
+            // COD: ข้ามขั้นตอนรอชำระเงิน ไปยืนยันออเดอร์เลย
+            $orderStatus = ($paymentMethod === 'cod') ? 'confirmed' : 'pending';
+            $paymentStatus = ($paymentMethod === 'cod') ? 'cod_pending' : 'pending';
+            
             if ($transTable === 'transactions') {
                 $stmt = $this->db->prepare("INSERT INTO transactions 
-                    (line_account_id, transaction_type, order_number, user_id, total_amount, shipping_fee, grand_total, delivery_info, payment_method, status) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+                    (line_account_id, transaction_type, order_number, user_id, total_amount, shipping_fee, grand_total, delivery_info, payment_method, status, payment_status) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([
                     $this->lineAccountId,
                     $transactionType,
@@ -2254,13 +2259,15 @@ class BusinessBot
                     $shippingFee,
                     $total,
                     $deliveryInfo ? json_encode($deliveryInfo) : null,
-                    $paymentMethod
+                    $paymentMethod,
+                    $orderStatus,
+                    $paymentStatus
                 ]);
             } else {
                 // Legacy orders table
                 $stmt = $this->db->prepare("INSERT INTO orders 
-                    (line_account_id, order_number, user_id, total_amount, shipping_fee, grand_total, shipping_name, shipping_phone, shipping_address, status) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+                    (line_account_id, order_number, user_id, total_amount, shipping_fee, grand_total, shipping_name, shipping_phone, shipping_address, status, payment_status) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([
                     $this->lineAccountId,
                     $orderNumber,
@@ -2270,7 +2277,9 @@ class BusinessBot
                     $total,
                     $deliveryInfo['name'] ?? null,
                     $deliveryInfo['phone'] ?? null,
-                    $deliveryInfo['address'] ?? null
+                    $deliveryInfo['address'] ?? null,
+                    $orderStatus,
+                    $paymentStatus
                 ]);
             }
             

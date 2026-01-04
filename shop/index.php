@@ -155,6 +155,15 @@ $statusLabels = [
     'cancelled' => 'ยกเลิก',
     'refunded' => 'คืนเงิน'
 ];
+
+// Payment status labels for COD
+$paymentStatusLabels = [
+    'pending' => 'รอชำระเงิน',
+    'cod_pending' => 'COD - รอเก็บเงินปลายทาง',
+    'paid' => 'ชำระแล้ว',
+    'failed' => 'ชำระไม่สำเร็จ',
+    'refunded' => 'คืนเงินแล้ว'
+];
 ?>
 
 <?php if ($pendingSlips > 0): ?>

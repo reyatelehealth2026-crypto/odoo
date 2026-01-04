@@ -612,10 +612,15 @@ function handleCreateOrder($data) {
     try {
         $orderNumber = 'TXN' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
         
+        // กำหนดสถานะตาม payment method
+        // COD: ข้ามขั้นตอนรอชำระเงิน ไปยืนยันออเดอร์เลย
+        $orderStatus = ($paymentMethod === 'cod') ? 'confirmed' : 'pending';
+        $paymentStatus = ($paymentMethod === 'cod') ? 'cod_pending' : 'pending';
+        
         $stmt = $db->prepare("
             INSERT INTO transactions 
             (line_account_id, transaction_type, order_number, user_id, total_amount, shipping_fee, grand_total, delivery_info, payment_method, status, payment_status)
-            VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, 'pending', 'pending')
+            VALUES (?, 'purchase', ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $lineAccountId,
@@ -625,7 +630,9 @@ function handleCreateOrder($data) {
             $shippingFee,
             $total,
             json_encode($deliveryInfo, JSON_UNESCAPED_UNICODE),
-            $paymentMethod
+            $paymentMethod,
+            $orderStatus,
+            $paymentStatus
         ]);
         
         $orderId = $db->lastInsertId();

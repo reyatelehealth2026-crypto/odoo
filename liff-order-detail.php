@@ -113,7 +113,13 @@ $deliveryType = $deliveryInfo['type'] ?? 'shipping';
                         'processing' => 'กำลังเตรียม', 'shipping' => 'กำลังจัดส่ง', 'shipped' => 'จัดส่งแล้ว',
                         'delivered' => 'ได้รับแล้ว', 'completed' => 'สำเร็จ', 'cancelled' => 'ยกเลิก'
                     ];
-                    $statusText = $statusLabels[$order['status']] ?? $order['status'];
+                    // สำหรับ COD ที่ status = confirmed แสดงว่ารอจัดส่ง
+                    $isCOD = ($order['payment_method'] ?? '') === 'cod';
+                    if ($isCOD && ($order['status'] ?? '') === 'confirmed') {
+                        $statusText = 'รอจัดส่ง (COD)';
+                    } else {
+                        $statusText = $statusLabels[$order['status']] ?? $order['status'];
+                    }
                     ?>
                     <span class="px-4 py-1.5 rounded-full text-sm font-bold <?= $statusClass ?>"><?= $statusText ?></span>
                 </div>

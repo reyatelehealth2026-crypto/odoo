@@ -506,9 +506,17 @@ require_once __DIR__ . '/../includes/header.php';
                     'delivered' => 'ส่งแล้ว',
                     'cancelled' => 'ยกเลิก'
                 ];
+                // สำหรับ COD ที่ status = confirmed แสดงว่ารอจัดส่ง
+                $isCOD = ($order['payment_method'] ?? '') === 'cod';
+                $currentStatus = $order['status'] ?? 'pending';
+                if ($isCOD && $currentStatus === 'confirmed') {
+                    $statusLabel = 'รอจัดส่ง (COD)';
+                } else {
+                    $statusLabel = $statusLabels[$currentStatus] ?? 'รอดำเนินการ';
+                }
                 ?>
                 <span class="px-4 py-2 rounded-full text-sm font-medium <?= $statusColors[$order['status'] ?? 'pending'] ?? 'bg-gray-100 text-gray-600' ?>">
-                    <?= $statusLabels[$order['status'] ?? 'pending'] ?? 'รอดำเนินการ' ?>
+                    <?= $statusLabel ?>
                 </span>
             </div>
             
