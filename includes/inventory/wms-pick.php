@@ -292,7 +292,10 @@ if ($viewOrderId) {
 function confirmItemPicked(orderId, itemId) {
     if (!confirm('ยืนยันว่าหยิบสินค้านี้แล้ว?')) return;
     
-    fetch('/api/wms.php', {
+    // Get base URL from meta tag or use relative path
+    const baseUrl = document.querySelector('meta[name="base-url"]')?.content || '../';
+    
+    fetch(baseUrl + 'api/wms.php', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -306,9 +309,12 @@ function confirmItemPicked(orderId, itemId) {
         if (data.success) {
             location.reload();
         } else {
-            alert(data.error || 'เกิดข้อผิดพลาด');
+            alert(data.error || data.message || 'เกิดข้อผิดพลาด');
         }
     })
-    .catch(err => alert('Error: ' + err.message));
+    .catch(err => {
+        console.error('Error:', err);
+        alert('Error: ' + err.message);
+    });
 }
 </script>
