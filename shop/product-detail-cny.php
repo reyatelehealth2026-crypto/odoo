@@ -3,7 +3,6 @@
  * Product Detail - CNY Pharmacy
  * Display single product details from database cache
  */
-header('Content-Type: text/html; charset=UTF-8');
 session_start();
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
