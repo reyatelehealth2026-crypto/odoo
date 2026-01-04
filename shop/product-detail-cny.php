@@ -137,13 +137,20 @@ $inStock = $stock > 0;
                 <!-- Description Tab -->
                 <div class="tab-content" id="description">
                     <?php if (!empty($product['description'])): ?>
-                    <div class="prose max-w-none">
                         <?php
-                        // Allow safe HTML tags for formatting
-                        $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
-                        echo strip_tags($product['description'], $allowedTags);
+                        // Check if description contains full HTML document
+                        if (stripos($product['description'], '<!doctype') !== false || 
+                            stripos($product['description'], '<html') !== false) {
+                            // Display in iframe for full HTML content
+                            echo '<iframe srcdoc="' . htmlspecialchars($product['description']) . '" 
+                                  style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
+                                  sandbox="allow-same-origin"></iframe>';
+                        } else {
+                            // Display as formatted HTML
+                            $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
+                            echo '<div class="prose max-w-none">' . strip_tags($product['description'], $allowedTags) . '</div>';
+                        }
                         ?>
-                    </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีรายละเอียด</p>
                     <?php endif; ?>
@@ -152,12 +159,17 @@ $inStock = $stock > 0;
                 <!-- Usage Tab -->
                 <div class="tab-content hidden" id="usage">
                     <?php if (!empty($product['how_to_use'])): ?>
-                    <div class="prose max-w-none">
                         <?php
-                        $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
-                        echo strip_tags($product['how_to_use'], $allowedTags);
+                        if (stripos($product['how_to_use'], '<!doctype') !== false || 
+                            stripos($product['how_to_use'], '<html') !== false) {
+                            echo '<iframe srcdoc="' . htmlspecialchars($product['how_to_use']) . '" 
+                                  style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
+                                  sandbox="allow-same-origin"></iframe>';
+                        } else {
+                            $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
+                            echo '<div class="prose max-w-none">' . strip_tags($product['how_to_use'], $allowedTags) . '</div>';
+                        }
                         ?>
-                    </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลวิธีใช้</p>
                     <?php endif; ?>
@@ -166,12 +178,17 @@ $inStock = $stock > 0;
                 <!-- Properties Tab -->
                 <div class="tab-content hidden" id="properties">
                     <?php if (!empty($product['properties_other'])): ?>
-                    <div class="prose max-w-none">
                         <?php
-                        $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
-                        echo strip_tags($product['properties_other'], $allowedTags);
+                        if (stripos($product['properties_other'], '<!doctype') !== false || 
+                            stripos($product['properties_other'], '<html') !== false) {
+                            echo '<iframe srcdoc="' . htmlspecialchars($product['properties_other']) . '" 
+                                  style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
+                                  sandbox="allow-same-origin"></iframe>';
+                        } else {
+                            $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
+                            echo '<div class="prose max-w-none">' . strip_tags($product['properties_other'], $allowedTags) . '</div>';
+                        }
                         ?>
-                    </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลสรรพคุณ</p>
                     <?php endif; ?>
