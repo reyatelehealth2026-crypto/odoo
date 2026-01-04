@@ -64,7 +64,10 @@ $whereClause = implode(' AND ', $where);
 
 // Get total count
 $countStmt = $db->prepare("SELECT COUNT(*) FROM cny_products WHERE {$whereClause}");
-$countStmt->execute($params);
+foreach ($params as $key => $value) {
+    $countStmt->bindValue($key, $value);
+}
+$countStmt->execute();
 $totalProducts = $countStmt->fetchColumn();
 $totalPages = ceil($totalProducts / $perPage);
 
