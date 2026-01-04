@@ -142,9 +142,10 @@ $inStock = $stock > 0;
                         if (stripos($product['description'], '<!doctype') !== false || 
                             stripos($product['description'], '<html') !== false) {
                             // Display in iframe for full HTML content
-                            echo '<iframe srcdoc="' . htmlspecialchars($product['description']) . '" 
+                            $iframeId = 'desc-iframe-' . uniqid();
+                            echo '<iframe id="' . $iframeId . '" srcdoc="' . htmlspecialchars($product['description']) . '" 
                                   style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
-                                  sandbox="allow-same-origin"></iframe>';
+                                  sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>';
                         } else {
                             // Display as formatted HTML
                             $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
@@ -162,9 +163,10 @@ $inStock = $stock > 0;
                         <?php
                         if (stripos($product['how_to_use'], '<!doctype') !== false || 
                             stripos($product['how_to_use'], '<html') !== false) {
-                            echo '<iframe srcdoc="' . htmlspecialchars($product['how_to_use']) . '" 
+                            $iframeId = 'usage-iframe-' . uniqid();
+                            echo '<iframe id="' . $iframeId . '" srcdoc="' . htmlspecialchars($product['how_to_use']) . '" 
                                   style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
-                                  sandbox="allow-same-origin"></iframe>';
+                                  sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>';
                         } else {
                             $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
                             echo '<div class="prose max-w-none">' . strip_tags($product['how_to_use'], $allowedTags) . '</div>';
@@ -181,9 +183,10 @@ $inStock = $stock > 0;
                         <?php
                         if (stripos($product['properties_other'], '<!doctype') !== false || 
                             stripos($product['properties_other'], '<html') !== false) {
-                            echo '<iframe srcdoc="' . htmlspecialchars($product['properties_other']) . '" 
+                            $iframeId = 'prop-iframe-' . uniqid();
+                            echo '<iframe id="' . $iframeId . '" srcdoc="' . htmlspecialchars($product['properties_other']) . '" 
                                   style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
-                                  sandbox="allow-same-origin"></iframe>';
+                                  sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>';
                         } else {
                             $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
                             echo '<div class="prose max-w-none">' . strip_tags($product['properties_other'], $allowedTags) . '</div>';
@@ -199,6 +202,19 @@ $inStock = $stock > 0;
 </div>
 
 <script>
+// Auto-resize iframe to fit content
+function resizeIframe(iframe) {
+    try {
+        if (iframe.contentWindow && iframe.contentWindow.document) {
+            const height = iframe.contentWindow.document.documentElement.scrollHeight;
+            iframe.style.height = (height + 50) + 'px';
+        }
+    } catch (e) {
+        // Cross-origin restriction, keep min-height
+        console.log('Cannot resize iframe due to cross-origin policy');
+    }
+}
+
 // Tab switching
 document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -217,6 +233,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
             content.classList.add('hidden');
         });
         document.getElementById(tabId).classList.remove('hidden');
+        
+        // Resize iframes in the active tab
+        setTimeout(() => {
+            document.getElementById(tabId).querySelectorAll('iframe').forEach(iframe => {
+                resizeIframe(iframe);
+            });
+        }, 100);
     });
 });
 </script>
