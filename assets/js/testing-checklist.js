@@ -4,51 +4,43 @@ let testData = {};
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     testData = initializeTestData();
-    console.log('Initialized testData:', Object.keys(testData).length, 'tests');
     
     // Load saved data into testData first
     const saved = localStorage.getItem('testingChecklistData');
-    console.log('localStorage data found:', saved ? 'YES' : 'NO');
-    
     if (saved) {
         try {
             const savedData = JSON.parse(saved);
-            console.log('Parsed saved data keys:', Object.keys(savedData));
-            
-            // Check what statuses are saved
-            const statusCounts = { passed: 0, failed: 0, skipped: 0, pending: 0 };
-            Object.values(savedData).forEach(item => {
-                statusCounts[item.status || 'pending']++;
-            });
-            console.log('Saved status counts:', statusCounts);
-            
             Object.keys(savedData).forEach(testId => {
                 if (testData[testId]) {
                     testData[testId] = savedData[testId];
                 }
             });
-            
-            console.log('After merge - testData sample:', testData['1.1']);
         } catch (e) {
             console.error('Error loading saved data:', e);
         }
     }
     
-    renderCategories();      // Render with saved status
+    renderCategories();
+    applyStatusClasses();  // Apply status classes after render
     setupEventListeners();
     updateStats();
     
     // Update category progress bars
     document.querySelectorAll('.category-section').forEach(updateCategoryProgress);
-    
-    // Debug: Check if classes were applied
-    setTimeout(() => {
-        const passedElements = document.querySelectorAll('.status-passed');
-        const failedElements = document.querySelectorAll('.status-failed');
-        console.log('Elements with status-passed:', passedElements.length);
-        console.log('Elements with status-failed:', failedElements.length);
-    }, 100);
 });
+
+// Apply status classes to all test cases based on testData
+function applyStatusClasses() {
+    Object.keys(testData).forEach(testId => {
+        const status = testData[testId].status;
+        if (status && status !== 'pending') {
+            const testCase = document.querySelector(`[data-test-id="${testId}"]`);
+            if (testCase) {
+                testCase.classList.add(`status-${status}`);
+            }
+        }
+    });
+}
 
 // Render all categories
 function renderCategories() {
@@ -102,13 +94,10 @@ function createTestElement(test) {
     const savedStatus = testData[test.id]?.status || 'pending';
     const savedNotes = testData[test.id]?.notes || '';
     
-    console.log(`Creating test ${test.id} with status: ${savedStatus}`);
-    
     // Set class with status
     testCase.className = 'test-case';
     if (savedStatus && savedStatus !== 'pending') {
         testCase.className += ` status-${savedStatus}`;
-        console.log(`Applied class: status-${savedStatus} to ${test.id}`);
     }
     testCase.dataset.testId = test.id;
     
