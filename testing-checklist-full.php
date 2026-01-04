@@ -85,8 +85,8 @@ if ($useAuth && file_exists('includes/header.php')) {
     <div id="categories-container"></div>
 </div>
 
-<script src="assets/js/testing-checklist-data.js"></script>
-<script src="assets/js/testing-checklist.js"></script>
+<script src="assets/js/testing-checklist-data.js?v=<?php echo time(); ?>"></script>
+<script src="assets/js/testing-checklist.js?v=<?php echo time(); ?>"></script>
 
 <?php 
 if ($useAuth && file_exists('includes/footer.php')) {
