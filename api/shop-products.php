@@ -1,8 +1,8 @@
 <?php
 /**
- * Shop Products API - Pagination Support
+ * Shop Products API - CNY Pharmacy Integration
  * สำหรับโหลดสินค้าแบบ pagination ใน LIFF Shop
- * ใช้ตาราง business_items และ item_categories
+ * ใช้ตาราง cny_products จาก CNY Pharmacy API
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -19,61 +19,56 @@ require_once __DIR__ . '/../config/database.php';
 
 $db = Database::getInstance()->getConnection();
 
+// Check if cny_products table exists
+$useCnyProducts = false;
+try {
+    $db->query("SELECT 1 FROM cny_products LIMIT 1");
+    $useCnyProducts = true;
+} catch (Exception $e) {
+    // Fall back to business_items
+}
+
 // Action handler
 $action = $_GET['action'] ?? 'products';
 
 // Handle categories request
 if ($action === 'categories') {
     try {
-        // ตรวจสอบตารางที่มี
-        $catTable = null;
-        $hasIsActive = false;
-        
-        // ลอง item_categories ก่อน
-        try {
-            $cols = $db->query("SHOW COLUMNS FROM item_categories")->fetchAll(PDO::FETCH_COLUMN);
-            $catTable = 'item_categories';
-            $hasIsActive = in_array('is_active', $cols);
-        } catch (Exception $e) {
-            // ลอง business_categories
+        if ($useCnyProducts) {
+            // Get unique categories from cny_products
+            $stmt = $db->query("SELECT DISTINCT category_code as id, category_name as name 
+                               FROM cny_products 
+                               WHERE enable = '1' AND category_name IS NOT NULL AND category_name != ''
+                               ORDER BY category_name");
+            $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            $formattedCategories = array_map(function($cat, $index) {
+                return [
+                    'id' => $cat['id'] ?: ($index + 1),
+                    'name' => $cat['name'],
+                    'code' => $cat['id']
+                ];
+            }, $categories, array_keys($categories));
+        } else {
+            // Fallback to old tables
+            $catTable = null;
             try {
-                $cols = $db->query("SHOW COLUMNS FROM business_categories")->fetchAll(PDO::FETCH_COLUMN);
-                $catTable = 'business_categories';
-                $hasIsActive = in_array('is_active', $cols);
-            } catch (Exception $e2) {
-                // ลอง product_categories
+                $db->query("SELECT 1 FROM item_categories LIMIT 1");
+                $catTable = 'item_categories';
+            } catch (Exception $e) {
                 try {
-                    $cols = $db->query("SHOW COLUMNS FROM product_categories")->fetchAll(PDO::FETCH_COLUMN);
+                    $db->query("SELECT 1 FROM product_categories LIMIT 1");
                     $catTable = 'product_categories';
-                    $hasIsActive = in_array('is_active', $cols);
-                } catch (Exception $e3) {}
+                } catch (Exception $e2) {}
+            }
+            
+            if ($catTable) {
+                $stmt = $db->query("SELECT id, name FROM {$catTable} ORDER BY id");
+                $formattedCategories = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $formattedCategories = [];
             }
         }
-        
-        if (!$catTable) {
-            echo json_encode(['success' => true, 'categories' => []]);
-            exit;
-        }
-        
-        // ตรวจสอบว่ามี cny_code หรือไม่
-        $hasCnyCode = in_array('cny_code', $cols);
-        
-        // Build query
-        $selectCols = "id, name" . ($hasCnyCode ? ", cny_code" : "");
-        $whereClause = $hasIsActive ? "WHERE is_active = 1" : "";
-        
-        $sql = "SELECT {$selectCols} FROM {$catTable} {$whereClause} ORDER BY id";
-        $stmt = $db->query($sql);
-        $categories = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Format categories
-        $formattedCategories = array_map(function($cat) use ($hasCnyCode) {
-            return [
-                'id' => (int)$cat['id'],
-                'name' => $cat['name'],
-                'code' => $hasCnyCode ? ($cat['cny_code'] ?? null) : null
-            ];
-        }, $categories);
         
         echo json_encode([
             'success' => true,
@@ -86,80 +81,90 @@ if ($action === 'categories') {
     }
 }
 
-// Check columns exist
-$hasIsFeatured = $hasIsBestseller = $hasIsFlashSale = $hasIsChoice = $hasFlashSaleEnd = false;
-try {
-    $cols = $db->query("SHOW COLUMNS FROM business_items")->fetchAll(PDO::FETCH_COLUMN);
-    $hasIsFeatured = in_array('is_featured', $cols);
-    $hasIsBestseller = in_array('is_bestseller', $cols);
-    $hasIsFlashSale = in_array('is_flash_sale', $cols);
-    $hasIsChoice = in_array('is_choice', $cols);
-    $hasFlashSaleEnd = in_array('flash_sale_end', $cols);
-    
-    // Add missing columns if not exist
-    if (!$hasIsFlashSale) {
-        $db->exec("ALTER TABLE business_items ADD COLUMN is_flash_sale TINYINT(1) DEFAULT 0 AFTER is_featured");
-        $hasIsFlashSale = true;
-    }
-    if (!$hasIsChoice) {
-        $db->exec("ALTER TABLE business_items ADD COLUMN is_choice TINYINT(1) DEFAULT 0 AFTER is_flash_sale");
-        $hasIsChoice = true;
-    }
-    if (!$hasFlashSaleEnd) {
-        $db->exec("ALTER TABLE business_items ADD COLUMN flash_sale_end DATETIME NULL AFTER is_choice");
-        $hasFlashSaleEnd = true;
-    }
-} catch (Exception $e) {}
-
 // Check if requesting single product
 $productId = $_GET['product_id'] ?? null;
-if ($productId) {
+$productSku = $_GET['sku'] ?? null;
+
+if ($productId || $productSku) {
     try {
-        $featuredCol = $hasIsFeatured ? "COALESCE(is_featured, 0)" : "0";
-        $bestsellerCol = $hasIsBestseller ? "COALESCE(is_bestseller, 0)" : "0";
-        $flashSaleCol = $hasIsFlashSale ? "COALESCE(is_flash_sale, 0)" : "0";
-        $choiceCol = $hasIsChoice ? "COALESCE(is_choice, 0)" : "0";
-        $flashSaleEndCol = $hasFlashSaleEnd ? "flash_sale_end" : "NULL";
-        
-        $sql = "SELECT id, name, sku, barcode, price, sale_price, stock, image_url, 
-                       unit, manufacturer, generic_name, description, usage_instructions, category_id,
-                       $featuredCol as is_featured,
-                       $bestsellerCol as is_bestseller,
-                       $flashSaleCol as is_flash_sale,
-                       $choiceCol as is_choice,
-                       $flashSaleEndCol as flash_sale_end
-                FROM business_items WHERE id = ? AND is_active = 1";
-        $stmt = $db->prepare($sql);
-        $stmt->execute([$productId]);
-        $product = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($product) {
-            echo json_encode([
-                'success' => true,
-                'product' => [
-                    'id' => (int)$product['id'],
-                    'name' => $product['name'],
-                    'sku' => $product['sku'],
-                    'barcode' => $product['barcode'],
-                    'price' => (float)$product['price'],
-                    'sale_price' => $product['sale_price'] ? (float)$product['sale_price'] : null,
-                    'stock' => (int)($product['stock'] ?? 999),
-                    'image_url' => $product['image_url'],
-                    'unit' => $product['unit'] ?? 'ชิ้น',
-                    'manufacturer' => $product['manufacturer'],
-                    'generic_name' => $product['generic_name'],
-                    'description' => $product['description'],
-                    'usage_instructions' => $product['usage_instructions'],
-                    'category_id' => $product['category_id'] ? (int)$product['category_id'] : null,
-                    'is_featured' => (int)($product['is_featured'] ?? 0),
-                    'is_bestseller' => (int)($product['is_bestseller'] ?? 0),
-                    'is_flash_sale' => (int)($product['is_flash_sale'] ?? 0),
-                    'is_choice' => (int)($product['is_choice'] ?? 0),
-                    'flash_sale_end' => $product['flash_sale_end']
-                ]
-            ]);
+        if ($useCnyProducts) {
+            if ($productSku) {
+                $stmt = $db->prepare("SELECT * FROM cny_products WHERE sku = ? AND enable = '1'");
+                $stmt->execute([$productSku]);
+            } else {
+                $stmt = $db->prepare("SELECT * FROM cny_products WHERE id = ? AND enable = '1'");
+                $stmt->execute([$productId]);
+            }
+            $product = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($product) {
+                $priceData = json_decode($product['product_price'], true);
+                $price = $priceData[0]['price'] ?? 0;
+                $unit = $priceData[0]['unit'] ?? '';
+                
+                echo json_encode([
+                    'success' => true,
+                    'product' => [
+                        'id' => (int)$product['id'],
+                        'sku' => $product['sku'],
+                        'name' => $product['name'],
+                        'name_en' => $product['name_en'],
+                        'price' => (float)$price,
+                        'sale_price' => null,
+                        'stock' => (int)($product['qty'] ?? 0),
+                        'image_url' => $product['photo_path'],
+                        'unit' => $unit,
+                        'manufacturer' => $product['manufacturer'],
+                        'generic_name' => $product['spec_name'],
+                        'description' => $product['description'],
+                        'usage_instructions' => $product['usage'],
+                        'category_id' => $product['category_code'],
+                        'category_name' => $product['category_name'],
+                        'barcode' => $product['barcode'],
+                        'is_featured' => 0,
+                        'is_bestseller' => 0,
+                        'is_flash_sale' => 0,
+                        'is_choice' => 0,
+                        'flash_sale_end' => null
+                    ]
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Product not found']);
+            }
         } else {
-            echo json_encode(['success' => false, 'error' => 'Product not found']);
+            // Fallback to business_items
+            $stmt = $db->prepare("SELECT * FROM business_items WHERE id = ? AND is_active = 1");
+            $stmt->execute([$productId]);
+            $product = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($product) {
+                echo json_encode([
+                    'success' => true,
+                    'product' => [
+                        'id' => (int)$product['id'],
+                        'name' => $product['name'],
+                        'sku' => $product['sku'],
+                        'barcode' => $product['barcode'] ?? null,
+                        'price' => (float)$product['price'],
+                        'sale_price' => $product['sale_price'] ? (float)$product['sale_price'] : null,
+                        'stock' => (int)($product['stock'] ?? 999),
+                        'image_url' => $product['image_url'],
+                        'unit' => $product['unit'] ?? 'ชิ้น',
+                        'manufacturer' => $product['manufacturer'] ?? null,
+                        'generic_name' => $product['generic_name'] ?? null,
+                        'description' => $product['description'],
+                        'usage_instructions' => $product['usage_instructions'] ?? null,
+                        'category_id' => $product['category_id'],
+                        'is_featured' => (int)($product['is_featured'] ?? 0),
+                        'is_bestseller' => (int)($product['is_bestseller'] ?? 0),
+                        'is_flash_sale' => (int)($product['is_flash_sale'] ?? 0),
+                        'is_choice' => (int)($product['is_choice'] ?? 0),
+                        'flash_sale_end' => $product['flash_sale_end'] ?? null
+                    ]
+                ]);
+            } else {
+                echo json_encode(['success' => false, 'error' => 'Product not found']);
+            }
         }
         exit;
     } catch (Exception $e) {
@@ -172,132 +177,166 @@ if ($productId) {
 $page = max(1, (int)($_GET['page'] ?? 1));
 $limit = min(50, max(10, (int)($_GET['limit'] ?? 20)));
 $categoryId = $_GET['category'] ?? null;
-$lineAccountId = $_GET['account'] ?? null;
 $search = trim($_GET['search'] ?? '');
-$sort = $_GET['sort'] ?? 'newest'; // newest, price_asc, price_desc, name
-$featuredOnly = isset($_GET['featured']) && $_GET['featured'] == '1';
-$flashSaleOnly = isset($_GET['flash_sale']) && $_GET['flash_sale'] == '1';
-$choiceOnly = isset($_GET['choice']) && $_GET['choice'] == '1';
-$type = $_GET['type'] ?? null; // featured, flash_sale, choice
+$sort = $_GET['sort'] ?? 'newest';
+$type = $_GET['type'] ?? null;
 
 $offset = ($page - 1) * $limit;
 
-// Build column selects
-$featuredCol = $hasIsFeatured ? "COALESCE(is_featured, 0)" : "0";
-$bestsellerCol = $hasIsBestseller ? "COALESCE(is_bestseller, 0)" : "0";
-$flashSaleCol = $hasIsFlashSale ? "COALESCE(is_flash_sale, 0)" : "0";
-$choiceCol = $hasIsChoice ? "COALESCE(is_choice, 0)" : "0";
-$flashSaleEndCol = $hasFlashSaleEnd ? "flash_sale_end" : "NULL";
-
 try {
-    // Build query
-    $where = ["is_active = 1"];
-    $params = [];
-    
-    if ($lineAccountId) {
-        // แสดงสินค้าทั้งหมด ไม่ว่าจะเป็นของ account ไหน
-        // $where[] = "(line_account_id = ? OR line_account_id IS NULL)";
-        // $params[] = $lineAccountId;
-    }
-    
-    if ($categoryId) {
-        $where[] = "category_id = ?";
-        $params[] = $categoryId;
-    }
-    
-    // Filter by type
-    if ($type === 'featured' || $featuredOnly) {
-        if ($hasIsFeatured) $where[] = "is_featured = 1";
-    }
-    if ($type === 'flash_sale' || $flashSaleOnly) {
-        if ($hasIsFlashSale) {
-            $where[] = "is_flash_sale = 1";
-            // Only show active flash sales (not expired)
-            if ($hasFlashSaleEnd) {
-                $where[] = "(flash_sale_end IS NULL OR flash_sale_end > NOW())";
-            }
+    if ($useCnyProducts) {
+        // Use CNY Products
+        $where = ["enable = '1'"];
+        $params = [];
+        
+        if ($categoryId) {
+            $where[] = "category_code = ?";
+            $params[] = $categoryId;
         }
+        
+        if ($search) {
+            $where[] = "(name LIKE ? OR name_en LIKE ? OR sku LIKE ? OR barcode LIKE ?)";
+            $searchTerm = "%{$search}%";
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+        }
+        
+        $whereClause = implode(' AND ', $where);
+        
+        // Sort
+        switch ($sort) {
+            case 'price_asc':
+                $orderBy = "CAST(JSON_UNQUOTE(JSON_EXTRACT(product_price, '$[0].price')) AS DECIMAL(10,2)) ASC";
+                break;
+            case 'price_desc':
+                $orderBy = "CAST(JSON_UNQUOTE(JSON_EXTRACT(product_price, '$[0].price')) AS DECIMAL(10,2)) DESC";
+                break;
+            case 'name':
+                $orderBy = "name ASC";
+                break;
+            default:
+                $orderBy = "id DESC";
+        }
+        
+        // Count total
+        $countSql = "SELECT COUNT(*) FROM cny_products WHERE {$whereClause}";
+        $stmt = $db->prepare($countSql);
+        $stmt->execute($params);
+        $total = (int)$stmt->fetchColumn();
+        
+        // Get products
+        $sql = "SELECT * FROM cny_products WHERE {$whereClause} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Format products
+        $formattedProducts = array_map(function($p) {
+            $priceData = json_decode($p['product_price'], true);
+            $price = $priceData[0]['price'] ?? 0;
+            $unit = $priceData[0]['unit'] ?? '';
+            
+            return [
+                'id' => (int)$p['id'],
+                'sku' => $p['sku'],
+                'name' => $p['name'],
+                'name_en' => $p['name_en'],
+                'price' => (float)$price,
+                'sale_price' => null,
+                'stock' => (int)($p['qty'] ?? 0),
+                'image_url' => $p['photo_path'],
+                'unit' => $unit,
+                'manufacturer' => $p['manufacturer'],
+                'generic_name' => $p['spec_name'],
+                'description' => $p['description'],
+                'category_id' => $p['category_code'],
+                'category_name' => $p['category_name'],
+                'barcode' => $p['barcode'],
+                'is_featured' => 0,
+                'is_bestseller' => 0,
+                'is_flash_sale' => 0,
+                'is_choice' => 0,
+                'flash_sale_end' => null
+            ];
+        }, $products);
+        
+    } else {
+        // Fallback to business_items
+        $where = ["is_active = 1"];
+        $params = [];
+        
+        if ($categoryId) {
+            $where[] = "category_id = ?";
+            $params[] = $categoryId;
+        }
+        
+        if ($type === 'flash_sale') {
+            $where[] = "is_flash_sale = 1";
+        } elseif ($type === 'choice') {
+            $where[] = "is_choice = 1";
+        } elseif ($type === 'featured') {
+            $where[] = "is_featured = 1";
+        }
+        
+        if ($search) {
+            $where[] = "(name LIKE ? OR sku LIKE ? OR barcode LIKE ?)";
+            $searchTerm = "%{$search}%";
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+            $params[] = $searchTerm;
+        }
+        
+        $whereClause = implode(' AND ', $where);
+        
+        switch ($sort) {
+            case 'price_asc':
+                $orderBy = "COALESCE(sale_price, price) ASC";
+                break;
+            case 'price_desc':
+                $orderBy = "COALESCE(sale_price, price) DESC";
+                break;
+            case 'name':
+                $orderBy = "name ASC";
+                break;
+            default:
+                $orderBy = "id DESC";
+        }
+        
+        $countSql = "SELECT COUNT(*) FROM business_items WHERE {$whereClause}";
+        $stmt = $db->prepare($countSql);
+        $stmt->execute($params);
+        $total = (int)$stmt->fetchColumn();
+        
+        $sql = "SELECT * FROM business_items WHERE {$whereClause} ORDER BY {$orderBy} LIMIT {$limit} OFFSET {$offset}";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $formattedProducts = array_map(function($p) {
+            return [
+                'id' => (int)$p['id'],
+                'name' => $p['name'],
+                'sku' => $p['sku'],
+                'barcode' => $p['barcode'] ?? null,
+                'price' => (float)$p['price'],
+                'sale_price' => $p['sale_price'] ? (float)$p['sale_price'] : null,
+                'stock' => (int)($p['stock'] ?? 999),
+                'image_url' => $p['image_url'],
+                'unit' => $p['unit'] ?? 'ชิ้น',
+                'manufacturer' => $p['manufacturer'] ?? null,
+                'generic_name' => $p['generic_name'] ?? null,
+                'description' => $p['description'],
+                'category_id' => $p['category_id'],
+                'is_featured' => (int)($p['is_featured'] ?? 0),
+                'is_bestseller' => (int)($p['is_bestseller'] ?? 0),
+                'is_flash_sale' => (int)($p['is_flash_sale'] ?? 0),
+                'is_choice' => (int)($p['is_choice'] ?? 0),
+                'flash_sale_end' => $p['flash_sale_end'] ?? null
+            ];
+        }, $products);
     }
-    if ($type === 'choice' || $choiceOnly) {
-        if ($hasIsChoice) $where[] = "is_choice = 1";
-    }
-    
-    if ($search) {
-        $where[] = "(name LIKE ? OR sku LIKE ? OR barcode LIKE ? OR generic_name LIKE ?)";
-        $searchTerm = "%{$search}%";
-        $params[] = $searchTerm;
-        $params[] = $searchTerm;
-        $params[] = $searchTerm;
-        $params[] = $searchTerm;
-    }
-    
-    $whereClause = implode(' AND ', $where);
-    
-    // Sort
-    switch ($sort) {
-        case 'price_asc':
-            $orderBy = "COALESCE(sale_price, price) ASC";
-            break;
-        case 'price_desc':
-            $orderBy = "COALESCE(sale_price, price) DESC";
-            break;
-        case 'name':
-            $orderBy = "name ASC";
-            break;
-        case 'popular':
-            $orderBy = "id DESC";
-            break;
-        default:
-            $orderBy = "id DESC";
-    }
-    
-    // Count total
-    $countSql = "SELECT COUNT(*) FROM business_items WHERE {$whereClause}";
-    $stmt = $db->prepare($countSql);
-    $stmt->execute($params);
-    $total = (int)$stmt->fetchColumn();
-    
-    // Get products
-    $sql = "SELECT id, name, sku, barcode, price, sale_price, stock, image_url, 
-                   unit, manufacturer, generic_name, description, usage_instructions, category_id,
-                   $featuredCol as is_featured,
-                   $bestsellerCol as is_bestseller,
-                   $flashSaleCol as is_flash_sale,
-                   $choiceCol as is_choice,
-                   $flashSaleEndCol as flash_sale_end
-            FROM business_items 
-            WHERE {$whereClause}
-            ORDER BY {$orderBy}
-            LIMIT {$limit} OFFSET {$offset}";
-    
-    $stmt = $db->prepare($sql);
-    $stmt->execute($params);
-    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // Format products
-    $formattedProducts = array_map(function($p) {
-        return [
-            'id' => (int)$p['id'],
-            'name' => $p['name'],
-            'sku' => $p['sku'],
-            'barcode' => $p['barcode'],
-            'price' => (float)$p['price'],
-            'sale_price' => $p['sale_price'] ? (float)$p['sale_price'] : null,
-            'stock' => (int)($p['stock'] ?? 999),
-            'image_url' => $p['image_url'],
-            'unit' => $p['unit'] ?? 'ชิ้น',
-            'manufacturer' => $p['manufacturer'],
-            'generic_name' => $p['generic_name'],
-            'description' => $p['description'],
-            'usage_instructions' => $p['usage_instructions'],
-            'category_id' => $p['category_id'] ? (int)$p['category_id'] : null,
-            'is_featured' => (int)($p['is_featured'] ?? 0),
-            'is_bestseller' => (int)($p['is_bestseller'] ?? 0),
-            'is_flash_sale' => (int)($p['is_flash_sale'] ?? 0),
-            'is_choice' => (int)($p['is_choice'] ?? 0),
-            'flash_sale_end' => $p['flash_sale_end'] ?? null
-        ];
-    }, $products);
     
     $totalPages = ceil($total / $limit);
     $hasMore = $page < $totalPages;
@@ -305,6 +344,7 @@ try {
     echo json_encode([
         'success' => true,
         'products' => $formattedProducts,
+        'source' => $useCnyProducts ? 'cny_products' : 'business_items',
         'pagination' => [
             'page' => $page,
             'limit' => $limit,
