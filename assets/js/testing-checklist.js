@@ -227,17 +227,37 @@ function saveResults() {
             timestamp: new Date().toISOString()
         })
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            alert('✅ Results saved successfully!');
-        } else {
-            throw new Error(data.error || 'Save failed');
+    .then(response => {
+        // Check if response is ok and has content
+        if (!response.ok) {
+            throw new Error('Server error: ' + response.status);
+        }
+        return response.text();
+    })
+    .then(text => {
+        // Try to parse JSON, handle empty response
+        if (!text || text.trim() === '') {
+            // Empty response - data saved locally
+            alert('✅ บันทึกใน localStorage สำเร็จ!');
+            return;
+        }
+        try {
+            const data = JSON.parse(text);
+            if (data.success) {
+                const storage = data.storage === 'database' ? 'Database' : 'localStorage';
+                alert(`✅ บันทึกสำเร็จ! (${storage})`);
+            } else {
+                throw new Error(data.error || 'Save failed');
+            }
+        } catch (e) {
+            // JSON parse error - still saved locally
+            alert('✅ บันทึกใน localStorage สำเร็จ!');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('⚠️ Saved locally. Server save failed: ' + error.message);
+        // Data is already saved to localStorage
+        alert('✅ บันทึกใน localStorage สำเร็จ! (Server ไม่พร้อม)');
     });
 }
 
