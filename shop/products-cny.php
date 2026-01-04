@@ -64,10 +64,7 @@ $whereClause = implode(' AND ', $where);
 
 // Get total count
 $countStmt = $db->prepare("SELECT COUNT(*) FROM cny_products WHERE {$whereClause}");
-foreach ($params as $key => $value) {
-    $countStmt->bindValue($key, $value);
-}
-$countStmt->execute();
+$countStmt->execute($params);
 $totalProducts = $countStmt->fetchColumn();
 $totalPages = ceil($totalProducts / $perPage);
 
@@ -76,15 +73,10 @@ $stmt = $db->prepare("
     SELECT * FROM cny_products 
     WHERE {$whereClause}
     ORDER BY name
-    LIMIT :limit OFFSET :offset
+    LIMIT {$perPage} OFFSET {$offset}
 ");
 
-foreach ($params as $key => $value) {
-    $stmt->bindValue($key, $value);
-}
-$stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
-$stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-$stmt->execute();
+$stmt->execute($params);
 $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Get last sync time
