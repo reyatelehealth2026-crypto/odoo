@@ -153,7 +153,7 @@ $carriers = [
                 <tbody class="divide-y">
                     <?php foreach ($recentlyShipped as $order): 
                         $carrierInfo = $carriers[$order['carrier']] ?? ['icon' => '📦', 'tracking_url' => ''];
-                        $trackingUrl = $carrierInfo['tracking_url'] . urlencode($order['tracking_number'] ?? '');
+                        $trackingUrl = $carrierInfo['tracking_url'] . urlencode($order['shipping_tracking'] ?? '');
                     ?>
                     <tr class="hover:bg-gray-50">
                         <td class="px-4 py-3">
@@ -168,14 +168,14 @@ $carriers = [
                         </td>
                         <td class="px-4 py-3">
                             <span class="font-mono bg-gray-100 px-2 py-1 rounded text-sm">
-                                <?= htmlspecialchars($order['tracking_number'] ?? '-') ?>
+                                <?= htmlspecialchars($order['shipping_tracking'] ?? '-') ?>
                             </span>
                         </td>
                         <td class="px-4 py-3 text-center text-sm text-gray-500">
                             <?= $order['shipped_at'] ? date('d/m/Y H:i', strtotime($order['shipped_at'])) : '-' ?>
                         </td>
                         <td class="px-4 py-3 text-center">
-                            <?php if ($order['tracking_number'] && $carrierInfo['tracking_url']): ?>
+                            <?php if (($order['shipping_tracking'] ?? '') && $carrierInfo['tracking_url']): ?>
                             <a href="<?= htmlspecialchars($trackingUrl) ?>" target="_blank"
                                class="px-3 py-1 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 text-sm">
                                 <i class="fas fa-external-link-alt mr-1"></i>Track

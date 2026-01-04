@@ -1837,7 +1837,7 @@ class WMSService {
             $stmt = $this->db->prepare("
                 SELECT t.*, 
                        t.order_number,
-                       t.tracking_number,
+                       t.shipping_tracking as tracking_number,
                        t.carrier,
                        u.line_user_id,
                        u.display_name as customer_name,
