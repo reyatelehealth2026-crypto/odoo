@@ -1,4 +1,4 @@
-<?php
+x<?php
 /**
  * Setup CNY Products - Create table and sync data
  * This page can be accessed directly without login for initial setup

@@ -76,22 +76,9 @@ function createCategoryElement(category) {
 function createTestElement(test) {
     const testCase = document.createElement('div');
     
-    // Check if we have saved status for this test
-    const savedData = localStorage.getItem('testingChecklistData');
-    let savedStatus = 'pending';
-    let savedNotes = '';
-    
-    if (savedData) {
-        try {
-            const parsed = JSON.parse(savedData);
-            if (parsed[test.id]) {
-                savedStatus = parsed[test.id].status || 'pending';
-                savedNotes = parsed[test.id].notes || '';
-            }
-        } catch (e) {
-            console.error('Error parsing saved data in createTestElement:', e);
-        }
-    }
+    // Get status from testData (already loaded from localStorage)
+    const savedStatus = testData[test.id]?.status || 'pending';
+    const savedNotes = testData[test.id]?.notes || '';
     
     // Set class with status
     testCase.className = 'test-case';

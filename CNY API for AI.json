@@ -1,169 +1,195 @@
-CNY API for AI			
-URL	https://manager.cnypharmacy.com/api/		
-Header	Authorization	Bearer  90xcKekelCqCAjmgkpI1saJF6N55eiNexcI4hdcYM2M	
-	Content/Type	application/json	
-			
-Method	Endpoint	Example Json	Remark
-POST	/update_product	"{
-    ""sku"": ""4235-กล่อง[1แผง]"",
-    ""product_id"": 9283,
-    ""product_code"": ""4235"",
-    ""uom_factor"": 1.0,
-    ""uom_name"": ""กล่อง[1แผง]"",
-    ""barcode"": ""42351"",
-    ""name"": ""ULTRACARBON 1X10'S [PML]"",
-    ""list_price"": 0.0,
-    ""active"": true,
-    ""benefit"": false,
-    ""how_to_use"": false,
-    ""caution"": false,
-    ""category"": ""GIS-04-แก้ท้องเสีย-ท้องผูก"",
-    ""product_price_ids"": [
-        {
-            ""price_name"": ""01-GEN"",
-            ""price_code"": ""001"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""02-MEMBER"",
-            ""price_code"": ""002"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""03-RX/MED"",
-            ""price_code"": ""003"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""04-SHOP/ORG"",
-            ""price_code"": ""004"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""05-ONLINE"",
-            ""price_code"": ""005"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""06-BIG LOT"",
-            ""price_code"": ""006"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""07-EXPORT"",
-            ""price_code"": ""007"",
-            ""price"": 0.0
-        },
-        {
-            ""price_name"": ""08-GOV"",
-            ""price_code"": ""008"",
-            ""price"": 0.0
-        }
-    ],
-    ""saleable_qty"": 0.0,
-    ""all_uom_saleable_qty"": 0.0
-}"	อัพเดทรายละเอียดสินค้า, หน่วย, ราคา เท่านั้น
-GET	/get_product_all	"[
+{
+  "api_info": {
+    "title": "CNY API for AI",
+    "base_url": "https://manager.cnypharmacy.com/api/",
+    "headers": {
+      "Authorization": "Bearer 90xcKekelCqCAjmgkpI1saJF6N55eiNexcI4hdcYM2M",
+      "Content-Type": "application/json"
+    }
+  },
+  "endpoints": [
     {
-        ""id"": ""1"",
-        ""sku"": ""0001"",
-        ""barcode"": ""0001"",
-        ""name_en"": ""CLINIBLU SUSPENSION 60ML [BKD-02] กล่องส้ม"",
-        ""init_name"": """",
-        ""spec_name"": ""IBUPROFEN 100 MG/5 ML"",
-        ""description"": ""Product detail"",
-        ""hashtag"": """",
-        ""intro"": """",
-        ""name"": ""คลินิบูลซัลเพนชั้น 100 มิลลิกรัม 60 มิลลิลิตร"",
-        ""properties_other"": ""ลดไข้ (ที่มิได้มีสาเหตุจากไข้เลือดออก )แก้ปวด และบรรเทาอาการอักเสบ"",
-        ""enable"": ""1"",
-        ""remark"": """",
-        ""how_to_use"": "" เด็กอายุ 2-5 ปี รับประทานครั้งละ 1/2-1 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 6-11 ปี รับประทานครั้งละ 1- 1 1/2 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 12 ปีขึ้นไป รับประทานครั้งละ2 ช้อนชา วันล"",
-        ""photo_path"": ""https://manager.cnypharmacy.com/uploads/product_photo/0001.jpg"",
-        ""qty"": ""10.00"",
-        ""qty_incoming"": ""0.00"",
-        ""product_price"": [
-            {
-                ""price"": ""64.00"",
-                ""enable"": ""1"",
-                ""unit"": ""ขวด[60ML]"",
-                ""unit_num"": ""1.00"",
-                ""customer_group"": ""GEN-ระดับราคา-01""
-            },
-            {
-                ""price"": ""34.00"",
-                ""enable"": ""1"",
-                ""unit"": ""ขวด[60ML]"",
-                ""unit_num"": ""1.00"",
-                ""customer_group"": ""RX/MED-ระดับราคา-03""
-            }
-        ]
+      "method": "POST",
+      "endpoint": "/update_product",
+      "description": "อัพเดทรายละเอียดสินค้า, หน่วย, ราคา เท่านั้น",
+      "example_request": {
+        "sku": "4235-กล่อง[ 1แผง ]",
+        "product_id": 9283,
+        "product_code": "4235",
+        "uom_factor": 1.0,
+        "uom_name": "กล่อง[ 1แผง ]",
+        "barcode": "42351",
+        "name": "ULTRACARBON 1X10'S [PML ]",
+        "list_price": 0.0,
+        "active": true,
+        "benefit": false,
+        "how_to_use": false,
+        "caution": false,
+        "category": "GIS-04-แก้ท้องเสีย-ท้องผูก",
+        "product_price_ids": [
+          {
+            "price_name": "01-GEN",
+            "price_code": "001",
+            "price": 0.0
+          },
+          {
+            "price_name": "02-MEMBER",
+            "price_code": "002",
+            "price": 0.0
+          },
+          {
+            "price_name": "03-RX/MED",
+            "price_code": "003",
+            "price": 0.0
+          },
+          {
+            "price_name": "04-SHOP/ORG",
+            "price_code": "004",
+            "price": 0.0
+          },
+          {
+            "price_name": "05-ONLINE",
+            "price_code": "005",
+            "price": 0.0
+          },
+          {
+            "price_name": "06-BIG LOT",
+            "price_code": "006",
+            "price": 0.0
+          },
+          {
+            "price_name": "07-EXPORT",
+            "price_code": "007",
+            "price": 0.0
+          },
+          {
+            "price_name": "08-GOV",
+            "price_code": "008",
+            "price": 0.0
+          }
+        ],
+        "saleable_qty": 0.0,
+        "all_uom_saleable_qty": 0.0
+      }
     },
     {
-        ""id"": ""2"",
-        ""sku"": ""0002"",
-        ""barcode"": ""0002"",
-        ""name_en"": ""SULIDINE CP SYRUP 60ML [BMP] #แพ็ค12ขวด"",
-        ""init_name"": """",
-        ""spec_name"": ""CHLORPHENAMINE MALEATE 2 MG/5 ML + PHENYLEPHRINE HYDROCHLORIDE 5 MG/5 ML"",
-        ""description"": """",
-        ""hashtag"": ""[\""บรรเทาอาการไข้หวัด ที่มีอาการจาม คัดจมูก\""]"",
-        ""intro"": """",
-        ""name"": ""ซูลิดีน-ซีพี ไซรัป 60มล."",
-        ""properties_other"": ""บรรเทาอาการไข้หวัด ที่มีอาการจาม คัดจมูก"",
-        ""enable"": ""1"",
-        ""remark"": """",
-        ""how_to_use"": ""-เด็ก 1 ปี รับประทานครั้งละ 1/2 ช้อนชา ทุก 4 ชม. -เด็ก 2-6 ปี รับประทานครั้งละ 1 ช้อนชา ทุก 4 ชม. -เด็ก 7-12 ปี รับประทานครั้งละ 1-2 ช้อนชา ทุก 4 ชม."",
-        ""photo_path"": ""https://manager.cnypharmacy.com/uploads/product_photo/0002.jpg"",
-        ""qty"": ""263.00"",
-        ""qty_incoming"": ""0.00"",
-        ""product_price"": [
-            {
-                ""price"": ""38.00"",
-                ""enable"": ""1"",
-                ""unit"": ""ขวด[60ML]"",
-                ""unit_num"": ""1.00"",
-                ""customer_group"": ""GEN-ระดับราคา-01""
-            }
-        ]
-    }
-]"	ดึงข้อมูลยาทั้งหมด
-GET	/get_product_sku/{sku}	"{
-    ""id"": ""1"",
-    ""sku"": ""0001"",
-    ""barcode"": ""0001"",
-    ""name_en"": ""CLINIBLU SUSPENSION 60ML [BKD-02] กล่องส้ม"",
-    ""init_name"": """",
-    ""spec_name"": ""IBUPROFEN 100 MG/5 ML"",
-    ""description"": ""Product detail"",
-    ""hashtag"": """",
-    ""intro"": """",
-    ""name"": ""คลินิบูลซัลเพนชั้น 100 มิลลิกรัม 60 มิลลิลิตร"",
-    ""properties_other"": ""ลดไข้ (ที่มิได้มีสาเหตุจากไข้เลือดออก )แก้ปวด และบรรเทาอาการอักเสบ"",
-    ""enable"": ""1"",
-    ""remark"": """",
-    ""how_to_use"": "" เด็กอายุ 2-5 ปี รับประทานครั้งละ 1/2-1 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 6-11 ปี รับประทานครั้งละ 1- 1 1/2 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 12 ปีขึ้นไป รับประทานครั้งละ2 ช้อนชา วันล"",
-    ""photo_path"": ""https://manager.cnypharmacy.com/uploads/product_photo/0001.jpg"",
-    ""qty"": ""10.00"",
-    ""qty_incoming"": ""0.00"",
-    ""product_price"": [
+      "method": "GET",
+      "endpoint": "/get_product_all",
+      "description": "ดึงข้อมูลยาทั้งหมด",
+      "example_response": [
         {
-            ""price"": ""64.00"",
-            ""enable"": ""1"",
-            ""unit"": ""ขวด[60ML]"",
-            ""unit_num"": ""1.00"",
-            ""customer_group"": ""GEN-ระดับราคา-01""
+          "id": "1",
+          "sku": "0001",
+          "barcode": "0001",
+          "name_en": "CLINIBLU SUSPENSION 60ML [BKD-02 ] กล่องส้ม",
+          "init_name": "",
+          "spec_name": "IBUPROFEN 100 MG/5 ML",
+          "description": "Product detail",
+          "hashtag": "",
+          "intro": "",
+          "name": "คลินิบูลซัลเพนชั้น 100 มิลลิกรัม 60 มิลลิลิตร",
+          "properties_other": "ลดไข้ (ที่มิได้มีสาเหตุจากไข้เลือดออก )แก้ปวด และบรรเทาอาการอักเสบ",
+          "enable": "1",
+          "remark": "",
+          "how_to_use": " เด็กอายุ 2-5 ปี รับประทานครั้งละ 1/2-1 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 6-11 ปี รับประทานครั้งละ 1- 1 1/2 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 12 ปีขึ้นไป รับประทานครั้งละ2 ช้อนชา วันล",
+          "photo_path": "https://manager.cnypharmacy.com/uploads/product_photo/0001.jpg",
+          "qty": "10.00",
+          "qty_incoming": "0.00",
+          "product_price": [
+            {
+              "price": "64.00",
+              "enable": "1",
+              "unit": "ขวด[ 60ML ]",
+              "unit_num": "1.00",
+              "customer_group": "GEN-ระดับราคา-01"
+            },
+            {
+              "price": "34.00",
+              "enable": "1",
+              "unit": "ขวด[ 60ML ]",
+              "unit_num": "1.00",
+              "customer_group": "RX/MED-ระดับราคา-03"
+            }
+          ]
         },
         {
-            ""price"": ""34.00"",
-            ""enable"": ""1"",
-            ""unit"": ""ขวด[60ML]"",
-            ""unit_num"": ""1.00"",
-            ""customer_group"": ""RX/MED-ระดับราคา-03""
+          "id": "2",
+          "sku": "0002",
+          "barcode": "0002",
+          "name_en": "SULIDINE CP SYRUP 60ML [BMP ] #แพ็ค12ขวด",
+          "init_name": "",
+          "spec_name": "CHLORPHENAMINE MALEATE 2 MG/5 ML + PHENYLEPHRINE HYDROCHLORIDE 5 MG/5 ML",
+          "description": "",
+          "hashtag": "[\"บรรเทาอาการไข้หวัด ที่มีอาการจาม คัดจมูก\" ]",
+          "intro": "",
+          "name": "ซูลิดีน-ซีพี ไซรัป 60มล.",
+          "properties_other": "บรรเทาอาการไข้หวัด ที่มีอาการจาม คัดจมูก",
+          "enable": "1",
+          "remark": "",
+          "how_to_use": "-เด็ก 1 ปี รับประทานครั้งละ 1/2 ช้อนชา ทุก 4 ชม. -เด็ก 2-6 ปี รับประทานครั้งละ 1 ช้อนชา ทุก 4 ชม. -เด็ก 7-12 ปี รับประทานครั้งละ 1-2 ช้อนชา ทุก 4 ชม.",
+          "photo_path": "https://manager.cnypharmacy.com/uploads/product_photo/0002.jpg",
+          "qty": "263.00",
+          "qty_incoming": "0.00",
+          "product_price": [
+            {
+              "price": "38.00",
+              "enable": "1",
+              "unit": "ขวด[ 60ML ]",
+              "unit_num": "1.00",
+              "customer_group": "GEN-ระดับราคา-01"
+            }
+          ]
         }
-    ]
-}"	ดึงข้อมูลยาด้วยรหัสสินค้า
-POST	/update_product_description	"{
-    ""sku"": ""0001"",
-    ""description"": ""Product description""
-}"	อัพเดทข้อมูลสินค้า บทความ
+      ]
+    },
+    {
+      "method": "GET",
+      "endpoint": "/get_product_sku/{sku}",
+      "description": "ดึงข้อมูลยาด้วยรหัสสินค้า",
+      "example_response": {
+        "id": "1",
+        "sku": "0001",
+        "barcode": "0001",
+        "name_en": "CLINIBLU SUSPENSION 60ML [BKD-02 ] กล่องส้ม",
+        "init_name": "",
+        "spec_name": "IBUPROFEN 100 MG/5 ML",
+        "description": "Product detail",
+        "hashtag": "",
+        "intro": "",
+        "name": "คลินิบูลซัลเพนชั้น 100 มิลลิกรัม 60 มิลลิลิตร",
+        "properties_other": "ลดไข้ (ที่มิได้มีสาเหตุจากไข้เลือดออก )แก้ปวด และบรรเทาอาการอักเสบ",
+        "enable": "1",
+        "remark": "",
+        "how_to_use": " เด็กอายุ 2-5 ปี รับประทานครั้งละ 1/2-1 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 6-11 ปี รับประทานครั้งละ 1- 1 1/2 ช้อนชา วันละ 3-4 ครั้ง เด็กอายุ 12 ปีขึ้นไป รับประทานครั้งละ2 ช้อนชา วันล",
+        "photo_path": "https://manager.cnypharmacy.com/uploads/product_photo/0001.jpg",
+        "qty": "10.00",
+        "qty_incoming": "0.00",
+        "product_price": [
+          {
+            "price": "64.00",
+            "enable": "1",
+            "unit": "ขวด[ 60ML ]",
+            "unit_num": "1.00",
+            "customer_group": "GEN-ระดับราคา-01"
+          },
+          {
+            "price": "34.00",
+            "enable": "1",
+            "unit": "ขวด[ 60ML ]",
+            "unit_num": "1.00",
+            "customer_group": "RX/MED-ระดับราคา-03"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "endpoint": "/update_product_description",
+      "description": "อัพเดทคำอธิบายสินค้า",
+      "example_request": {
+        "sku": "0001",
+        "description": "Product description"
+      }
+    }
+  ]
+}
