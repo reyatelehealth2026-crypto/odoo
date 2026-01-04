@@ -138,7 +138,11 @@ $inStock = $stock > 0;
                 <div class="tab-content" id="description">
                     <?php if (!empty($product['description'])): ?>
                     <div class="prose max-w-none">
-                        <?= nl2br(htmlspecialchars(strip_tags($product['description']))) ?>
+                        <?php
+                        // Allow safe HTML tags for formatting
+                        $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
+                        echo strip_tags($product['description'], $allowedTags);
+                        ?>
                     </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีรายละเอียด</p>
@@ -149,7 +153,10 @@ $inStock = $stock > 0;
                 <div class="tab-content hidden" id="usage">
                     <?php if (!empty($product['how_to_use'])): ?>
                     <div class="prose max-w-none">
-                        <?= nl2br(htmlspecialchars(strip_tags($product['how_to_use']))) ?>
+                        <?php
+                        $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
+                        echo strip_tags($product['how_to_use'], $allowedTags);
+                        ?>
                     </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลวิธีใช้</p>
@@ -160,7 +167,10 @@ $inStock = $stock > 0;
                 <div class="tab-content hidden" id="properties">
                     <?php if (!empty($product['properties_other'])): ?>
                     <div class="prose max-w-none">
-                        <?= nl2br(htmlspecialchars(strip_tags($product['properties_other']))) ?>
+                        <?php
+                        $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
+                        echo strip_tags($product['properties_other'], $allowedTags);
+                        ?>
                     </div>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลสรรพคุณ</p>
