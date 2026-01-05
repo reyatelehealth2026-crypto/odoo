@@ -86,6 +86,11 @@ class PutAwayService {
             $locations = $this->locationService->getLocations($fallbackFilters);
         }
         
+        // Fallback 2: try getting all locations without line_account_id filter
+        if (empty($locations)) {
+            $locations = $this->locationService->getAllActiveLocations();
+        }
+        
         if (empty($locations)) {
             return [
                 'success' => false,

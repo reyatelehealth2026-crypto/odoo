@@ -342,7 +342,6 @@ class LocationService {
             $sql .= " AND zone = ?";
             $params[] = strtoupper($filters['zone']);
         }
-        
         if (isset($filters['zone_type'])) {
             $sql .= " AND zone_type = ?";
             $params[] = $filters['zone_type'];
@@ -373,6 +372,24 @@ class LocationService {
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    
+    /**
+     * Get all active locations (without line_account_id filter)
+     * Used as fallback when no locations found for specific account
+     * 
+     * @return array List of locations
+     */
+    public function getAllActiveLocations(): array {
+        $stmt = $this->db->prepare("
+            SELECT * FROM warehouse_locations 
+            WHERE is_active = 1
+            ORDER BY zone, shelf, bin
+            LIMIT 100
+        ");
+        $stmt->execute();
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
