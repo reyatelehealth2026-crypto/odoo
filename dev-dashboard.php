@@ -33,6 +33,16 @@ if ($action === 'test_webhook') {
     }
 }
 
+if ($action === 'clear_error_log') {
+    $logFile = __DIR__ . '/error_log';
+    if (file_exists($logFile) && is_writable($logFile)) {
+        file_put_contents($logFile, '');
+        $message = '✅ ล้าง error log แล้ว';
+    } else {
+        $message = '❌ ไม่สามารถล้าง error log ได้';
+    }
+}
+
 // Create dev_logs table if not exists
 try {
     $db->exec("CREATE TABLE IF NOT EXISTS dev_logs (
@@ -110,8 +120,8 @@ try {
 $phpErrorLog = '';
 $errorLogPath = ini_get('error_log');
 $possiblePaths = [
+    __DIR__ . '/error_log',  // Local error_log first
     $errorLogPath,
-    __DIR__ . '/error_log',
     __DIR__ . '/php_errors.log',
     __DIR__ . '/logs/error.log',
     '/var/log/apache2/error.log',
@@ -125,15 +135,57 @@ $foundLogPath = null;
 foreach ($possiblePaths as $path) {
     if ($path && file_exists($path) && is_readable($path)) {
         $foundLogPath = $path;
-        // Read last 100 lines
+        // Read last 200 lines
         $lines = file($path);
         if ($lines) {
-            $phpErrorLog = implode('', array_slice($lines, -100));
+            $phpErrorLog = implode('', array_slice($lines, -200));
         }
         break;
     }
 }
 $errorLogPath = $foundLogPath ?: $errorLogPath;
+
+// Parse error log into structured format
+$parsedErrors = [];
+if ($phpErrorLog) {
+    $logLines = explode("\n", $phpErrorLog);
+    $currentError = null;
+    
+    foreach ($logLines as $line) {
+        $line = trim($line);
+        if (empty($line)) continue;
+        
+        // Match PHP error format: [date] PHP message: ...
+        if (preg_match('/^\[([^\]]+)\]\s*(.+)$/', $line, $matches)) {
+            if ($currentError) {
+                $parsedErrors[] = $currentError;
+            }
+            $currentError = [
+                'datetime' => $matches[1],
+                'message' => $matches[2],
+                'type' => 'info'
+            ];
+            
+            // Determine error type
+            if (stripos($matches[2], 'error') !== false || stripos($matches[2], 'fatal') !== false) {
+                $currentError['type'] = 'error';
+            } elseif (stripos($matches[2], 'warning') !== false || stripos($matches[2], 'deprecated') !== false) {
+                $currentError['type'] = 'warning';
+            } elseif (stripos($matches[2], 'notice') !== false) {
+                $currentError['type'] = 'notice';
+            }
+        } elseif ($currentError) {
+            // Continuation of previous error
+            $currentError['message'] .= "\n" . $line;
+        }
+    }
+    if ($currentError) {
+        $parsedErrors[] = $currentError;
+    }
+    
+    // Reverse to show newest first
+    $parsedErrors = array_reverse($parsedErrors);
+}
 
 include 'includes/header.php';
 ?>
@@ -325,20 +377,86 @@ include 'includes/header.php';
     
     <!-- PHP Error Log Tab -->
     <div id="content-php" class="tab-content p-4 hidden">
-        <div class="mb-4 flex flex-wrap gap-4 items-center">
+        <div class="mb-4 flex flex-wrap gap-4 items-center justify-between">
             <p class="text-sm text-gray-600">
                 <i class="fas fa-file-alt mr-1"></i>Error Log Path: 
                 <code class="bg-gray-100 px-2 py-1 rounded"><?= htmlspecialchars($errorLogPath ?: 'Not configured') ?></code>
             </p>
-            <?php if (!$phpErrorLog): ?>
-            <div class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded text-sm">
-                <i class="fas fa-info-circle mr-1"></i>
-                ไม่พบ error log file - ลองเพิ่มใน php.ini: <code>error_log = <?= __DIR__ ?>/error_log</code>
+            <div class="flex gap-2">
+                <button onclick="location.reload()" class="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600">
+                    <i class="fas fa-sync-alt mr-1"></i>Refresh
+                </button>
+                <?php if ($foundLogPath): ?>
+                <a href="?action=clear_error_log" onclick="return confirm('ล้าง error log?')" class="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600">
+                    <i class="fas fa-trash mr-1"></i>Clear Log
+                </a>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
         </div>
         
-        <?php if ($phpErrorLog): ?>
+        <?php if (!$phpErrorLog): ?>
+        <div class="bg-yellow-100 text-yellow-800 px-3 py-2 rounded text-sm mb-4">
+            <i class="fas fa-info-circle mr-1"></i>
+            ไม่พบ error log file - ลองเพิ่มใน php.ini: <code>error_log = <?= __DIR__ ?>/error_log</code>
+        </div>
+        <?php endif; ?>
+        
+        <!-- Filter by type -->
+        <div class="mb-4 flex gap-2">
+            <button onclick="filterErrors('all')" class="error-filter-btn px-3 py-1 rounded text-sm bg-gray-200 hover:bg-gray-300" data-filter="all">
+                ทั้งหมด (<?= count($parsedErrors) ?>)
+            </button>
+            <button onclick="filterErrors('error')" class="error-filter-btn px-3 py-1 rounded text-sm bg-red-100 text-red-700 hover:bg-red-200" data-filter="error">
+                🔴 Errors (<?= count(array_filter($parsedErrors, fn($e) => $e['type'] === 'error')) ?>)
+            </button>
+            <button onclick="filterErrors('warning')" class="error-filter-btn px-3 py-1 rounded text-sm bg-yellow-100 text-yellow-700 hover:bg-yellow-200" data-filter="warning">
+                🟡 Warnings (<?= count(array_filter($parsedErrors, fn($e) => $e['type'] === 'warning')) ?>)
+            </button>
+            <button onclick="filterErrors('notice')" class="error-filter-btn px-3 py-1 rounded text-sm bg-blue-100 text-blue-700 hover:bg-blue-200" data-filter="notice">
+                🔵 Notices (<?= count(array_filter($parsedErrors, fn($e) => $e['type'] === 'notice')) ?>)
+            </button>
+        </div>
+        
+        <?php if (!empty($parsedErrors)): ?>
+        <!-- Parsed Error List -->
+        <div class="space-y-2 max-h-[500px] overflow-y-auto" id="errorList">
+            <?php foreach ($parsedErrors as $idx => $err): ?>
+            <?php
+            $bgColor = match($err['type']) {
+                'error' => 'bg-red-50 border-red-400',
+                'warning' => 'bg-yellow-50 border-yellow-400',
+                'notice' => 'bg-blue-50 border-blue-400',
+                default => 'bg-gray-50 border-gray-400'
+            };
+            $textColor = match($err['type']) {
+                'error' => 'text-red-800',
+                'warning' => 'text-yellow-800',
+                'notice' => 'text-blue-800',
+                default => 'text-gray-800'
+            };
+            ?>
+            <div class="error-item border-l-4 <?= $bgColor ?> p-3 rounded-r" data-type="<?= $err['type'] ?>">
+                <div class="flex justify-between items-start mb-1">
+                    <span class="text-xs text-gray-500 font-mono"><?= htmlspecialchars($err['datetime']) ?></span>
+                    <span class="px-2 py-0.5 rounded text-xs font-medium <?= $textColor ?> <?= str_replace('border', 'bg', $bgColor) ?>">
+                        <?= strtoupper($err['type']) ?>
+                    </span>
+                </div>
+                <pre class="text-sm <?= $textColor ?> whitespace-pre-wrap break-words font-mono"><?= htmlspecialchars(substr($err['message'], 0, 500)) ?><?= strlen($err['message']) > 500 ? '...' : '' ?></pre>
+                <?php if (strlen($err['message']) > 500): ?>
+                <button onclick="showFullError(<?= $idx ?>)" class="text-blue-500 text-xs mt-1 hover:underline">ดูทั้งหมด</button>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        
+        <!-- Hidden full errors for modal -->
+        <script>
+        const fullErrors = <?= json_encode(array_map(fn($e) => $e['message'], $parsedErrors)) ?>;
+        </script>
+        
+        <?php elseif ($phpErrorLog): ?>
+        <!-- Raw log fallback -->
         <pre class="bg-gray-900 text-green-400 p-4 rounded-lg overflow-x-auto text-xs font-mono max-h-96 overflow-y-auto"><?= htmlspecialchars($phpErrorLog) ?></pre>
         <?php else: ?>
         <div class="bg-gray-100 p-6 rounded-lg text-center">
@@ -535,6 +653,33 @@ function showData(data) {
     }
     document.getElementById('dataModal').classList.remove('hidden');
     document.getElementById('dataModal').classList.add('flex');
+}
+
+function showFullError(idx) {
+    if (typeof fullErrors !== 'undefined' && fullErrors[idx]) {
+        document.getElementById('modalData').textContent = fullErrors[idx];
+        document.getElementById('dataModal').classList.remove('hidden');
+        document.getElementById('dataModal').classList.add('flex');
+    }
+}
+
+function filterErrors(type) {
+    const items = document.querySelectorAll('.error-item');
+    items.forEach(item => {
+        if (type === 'all' || item.dataset.type === type) {
+            item.style.display = 'block';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+    
+    // Update active button
+    document.querySelectorAll('.error-filter-btn').forEach(btn => {
+        btn.classList.remove('ring-2', 'ring-offset-1');
+        if (btn.dataset.filter === type) {
+            btn.classList.add('ring-2', 'ring-offset-1');
+        }
+    });
 }
 
 function closeModal() {
