@@ -54,7 +54,20 @@ try {
     $stmt = $db->prepare("SELECT id, name, sku FROM business_items WHERE is_active = 1 AND line_account_id = ? ORDER BY name");
     $stmt->execute([$lineAccountId]);
     $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+} catch (Exception $e) {
+    error_log("Batches - Error loading products: " . $e->getMessage());
+}
+
+// Debug: If no products found, try without line_account_id filter
+if (empty($products)) {
+    try {
+        $stmt = $db->prepare("SELECT id, name, sku FROM business_items WHERE is_active = 1 ORDER BY name LIMIT 100");
+        $stmt->execute();
+        $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        error_log("Batches - Error loading products (fallback): " . $e->getMessage());
+    }
+}
 
 // Status labels
 $statusLabels = [

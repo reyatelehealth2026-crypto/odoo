@@ -16,7 +16,7 @@ require_once __DIR__ . '/../classes/InventoryService.php';
 require_once __DIR__ . '/../includes/components/tabs.php';
 
 $db = Database::getInstance()->getConnection();
-$lineAccountId = $_SESSION['current_bot_id'] ?? null;
+$lineAccountId = $_SESSION['current_bot_id'] ?? 1;
 
 // Check if inventory tables exist
 $tableExists = false;
