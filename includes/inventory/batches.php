@@ -473,7 +473,7 @@ function closeDisposeBatchModal() {
 // View batch details
 async function viewBatch(id) {
     try {
-        const response = await fetch(`api/batches.php?action=get&id=${id}`);
+        const response = await fetch(`../api/batches.php?action=get&id=${id}`);
         const data = await response.json();
         
         if (data.success) {
@@ -546,7 +546,7 @@ async function editBatch(id) {
 // Dispose batch
 async function disposeBatch(id) {
     try {
-        const response = await fetch(`api/batches.php?action=get&id=${id}`);
+        const response = await fetch(`../api/batches.php?action=get&id=${id}`);
         const data = await response.json();
         
         if (data.success) {
@@ -569,7 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
         data.action = 'create';
         
         try {
-            const response = await fetch('api/batches.php', {
+            const response = await fetch('../api/batches.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -603,7 +603,7 @@ document.addEventListener('DOMContentLoaded', function() {
         };
         
         try {
-            const response = await fetch('api/batches.php', {
+            const response = await fetch('../api/batches.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -623,3 +623,4 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+

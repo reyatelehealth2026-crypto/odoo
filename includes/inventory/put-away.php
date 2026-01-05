@@ -410,7 +410,7 @@ async function suggestLocation(productId) {
     `;
     
     try {
-        const response = await fetch(`api/put-away.php?action=suggest&product_id=${productId}`);
+        const response = await fetch(`../api/put-away.php?action=suggest&product_id=${productId}`);
         const data = await response.json();
         
         if (data.success) {
@@ -445,7 +445,7 @@ async function suggestLocationForBatch(batchId) {
     `;
     
     try {
-        const response = await fetch(`api/put-away.php?action=suggest_batch&batch_id=${batchId}`);
+        const response = await fetch(`../api/put-away.php?action=suggest_batch&batch_id=${batchId}`);
         const data = await response.json();
         
         if (data.success) {
@@ -551,7 +551,7 @@ async function assignLocation(productId) {
     
     // Load product info
     try {
-        const response = await fetch(`api/put-away.php?action=suggest&product_id=${productId}`);
+        const response = await fetch(`../api/put-away.php?action=suggest&product_id=${productId}`);
         const data = await response.json();
         
         if (data.product) {
@@ -571,7 +571,7 @@ async function assignLocation(productId) {
 // Load locations into select
 async function loadLocations(selectedId = null) {
     try {
-        const response = await fetch('api/locations.php?action=list');
+        const response = await fetch('../api/locations.php?action=list');
         const data = await response.json();
         
         if (data.success) {
@@ -599,7 +599,7 @@ async function runABCAnalysis() {
     if (!confirm('ต้องการ Run ABC Analysis ใหม่หรือไม่? ระบบจะวิเคราะห์ข้อมูลการขาย 90 วันย้อนหลัง')) return;
     
     try {
-        const response = await fetch('api/put-away.php', {
+        const response = await fetch('../api/put-away.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'run_abc_analysis' })
@@ -669,7 +669,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         try {
-            const response = await fetch('api/put-away.php', {
+            const response = await fetch('../api/put-away.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
