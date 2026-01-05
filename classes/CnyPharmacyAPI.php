@@ -444,10 +444,15 @@ class CnyPharmacyAPI
             }
         }
         
-        // Get unit from first price
-        $unit = 'ชิ้น';
+        // Get unit from first price (หน่วยจำนวน เช่น ขวด[ 60ML ])
+        $unit = null;
+        $baseUnit = null;
         if (!empty($prices[0]['unit'])) {
             $unit = $prices[0]['unit'];
+            // Extract base unit from unit string (e.g., "ขวด[ 60ML ]" -> "ขวด")
+            if (preg_match('/^([^\[\s]+)/', $unit, $matches)) {
+                $baseUnit = trim($matches[1]);
+            }
         }
         
         // Auto-create category from CNY category field
@@ -462,12 +467,14 @@ class CnyPharmacyAPI
             'sku' => $cnyProduct['sku'] ?? null,
             'barcode' => $cnyProduct['barcode'] ?? null,
             'name' => $cnyProduct['name'] ?? $cnyProduct['name_en'] ?? 'Unknown',
+            'name_en' => $cnyProduct['name_en'] ?? null,
             'description' => $this->buildDescription($cnyProduct),
             'manufacturer' => $this->extractManufacturer($cnyProduct['name_en'] ?? ''),
             'generic_name' => $cnyProduct['spec_name'] ?? null,
             'usage_instructions' => $cnyProduct['how_to_use'] ?? null,
             'price' => $price,
             'unit' => $unit,
+            'base_unit' => $baseUnit,
             'stock' => intval($cnyProduct['qty'] ?? 0),
             'image_url' => $cnyProduct['photo_path'] ?? null,
             'is_active' => ($cnyProduct['enable'] ?? '1') == '1' ? 1 : 0,
@@ -796,8 +803,8 @@ class CnyPharmacyAPI
         
         // Define allowed columns per table
         $allowedColumns = [
-            'sku', 'barcode', 'name', 'description', 'manufacturer', 'generic_name',
-            'usage_instructions', 'price', 'unit', 'stock', 'image_url', 'is_active',
+            'sku', 'barcode', 'name', 'name_en', 'description', 'manufacturer', 'generic_name',
+            'usage_instructions', 'price', 'unit', 'base_unit', 'stock', 'image_url', 'is_active',
             'category_id', 'line_account_id', 'item_type', 'delivery_method'
         ];
         
@@ -844,8 +851,8 @@ class CnyPharmacyAPI
         
         // Define allowed columns per table
         $allowedColumns = [
-            'sku', 'barcode', 'name', 'description', 'manufacturer', 'generic_name',
-            'usage_instructions', 'price', 'unit', 'stock', 'image_url', 'is_active',
+            'sku', 'barcode', 'name', 'name_en', 'description', 'manufacturer', 'generic_name',
+            'usage_instructions', 'price', 'unit', 'base_unit', 'stock', 'image_url', 'is_active',
             'category_id', 'line_account_id', 'item_type', 'delivery_method'
         ];
         
@@ -881,8 +888,8 @@ class CnyPharmacyAPI
         
         // Columns to update
         $updateColumns = [
-            'barcode', 'name', 'description', 'manufacturer', 'generic_name',
-            'usage_instructions', 'price', 'unit', 'stock', 'image_url', 'is_active',
+            'barcode', 'name', 'name_en', 'description', 'manufacturer', 'generic_name',
+            'usage_instructions', 'price', 'unit', 'base_unit', 'stock', 'image_url', 'is_active',
             'category_id'  // Added category_id to update list
         ];
         
