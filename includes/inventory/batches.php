@@ -348,12 +348,18 @@ function formatExpiryCountdown($days) {
         <form id="createBatchForm" class="p-4 space-y-4">
             <div>
                 <label class="block text-sm font-medium mb-1">สินค้า <span class="text-red-500">*</span></label>
-                <select name="product_id" required class="w-full px-3 py-2 border rounded-lg">
-                    <option value="">-- เลือกสินค้า --</option>
-                    <?php foreach ($products as $p): ?>
-                    <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['name']) ?> (<?= $p['sku'] ?>)</option>
-                    <?php endforeach; ?>
-                </select>
+                <input type="hidden" name="product_id" id="batchProductId" required>
+                <div class="relative">
+                    <input type="text" id="batchProductSearch" placeholder="พิมพ์ชื่อสินค้าหรือ SKU เพื่อค้นหา..."
+                           class="w-full px-3 py-2 border rounded-lg" autocomplete="off">
+                    <div id="batchProductResults" class="absolute z-10 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-60 overflow-y-auto hidden"></div>
+                </div>
+                <div id="batchSelectedProduct" class="mt-2 p-2 bg-blue-50 rounded-lg hidden">
+                    <span class="text-sm text-blue-700"></span>
+                    <button type="button" onclick="clearBatchProduct()" class="ml-2 text-red-500 hover:text-red-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
@@ -634,6 +640,73 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('เกิดข้อผิดพลาด');
         }
     });
+    
+    // Product search for batch creation
+    let searchTimeout = null;
+    const productSearch = document.getElementById('batchProductSearch');
+    const productResults = document.getElementById('batchProductResults');
+    
+    productSearch.addEventListener('input', function() {
+        const query = this.value.trim();
+        
+        if (searchTimeout) clearTimeout(searchTimeout);
+        
+        if (query.length < 2) {
+            productResults.classList.add('hidden');
+            return;
+        }
+        
+        searchTimeout = setTimeout(async () => {
+            try {
+                const response = await fetch(`../api/batches.php?action=search_products&q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                if (data.success && data.products.length > 0) {
+                    productResults.innerHTML = data.products.map(p => `
+                        <div class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0" 
+                             onclick="selectBatchProduct(${p.id}, '${escapeHtml(p.name)}', '${escapeHtml(p.sku || '')}')">
+                            <div class="font-medium">${escapeHtml(p.name)}</div>
+                            <div class="text-sm text-gray-500">SKU: ${escapeHtml(p.sku || '-')}</div>
+                        </div>
+                    `).join('');
+                    productResults.classList.remove('hidden');
+                } else {
+                    productResults.innerHTML = '<div class="px-3 py-2 text-gray-500">ไม่พบสินค้า</div>';
+                    productResults.classList.remove('hidden');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }, 300);
+    });
+    
+    // Close results when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!productSearch.contains(e.target) && !productResults.contains(e.target)) {
+            productResults.classList.add('hidden');
+        }
+    });
 });
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function selectBatchProduct(id, name, sku) {
+    document.getElementById('batchProductId').value = id;
+    document.getElementById('batchProductSearch').value = '';
+    document.getElementById('batchProductResults').classList.add('hidden');
+    
+    const selectedDiv = document.getElementById('batchSelectedProduct');
+    selectedDiv.querySelector('span').textContent = `${name} (SKU: ${sku || '-'})`;
+    selectedDiv.classList.remove('hidden');
+}
+
+function clearBatchProduct() {
+    document.getElementById('batchProductId').value = '';
+    document.getElementById('batchSelectedProduct').classList.add('hidden');
+}
 </script>
 

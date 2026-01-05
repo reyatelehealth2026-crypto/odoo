@@ -443,6 +443,36 @@ try {
             break;
         
         // =============================================
+        // PRODUCT SEARCH (for batch creation)
+        // =============================================
+        
+        /**
+         * Search products by name or SKU
+         */
+        case 'search_products':
+            $query = trim($_GET['q'] ?? '');
+            
+            if (strlen($query) < 2) {
+                echo json_encode(['success' => true, 'products' => []]);
+                break;
+            }
+            
+            $searchTerm = '%' . $query . '%';
+            $stmt = $db->prepare("
+                SELECT id, name, sku, barcode, stock, unit 
+                FROM business_items 
+                WHERE is_active = 1 
+                AND (name LIKE ? OR sku LIKE ? OR barcode LIKE ?)
+                ORDER BY name
+                LIMIT 20
+            ");
+            $stmt->execute([$searchTerm, $searchTerm, $searchTerm]);
+            $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode(['success' => true, 'products' => $products]);
+            break;
+        
+        // =============================================
         // DEFAULT
         // =============================================
         
