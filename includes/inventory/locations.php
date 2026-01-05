@@ -546,7 +546,7 @@ function filterByZone(zone) {
 // Edit location
 async function editLocation(id) {
     try {
-        const response = await fetch(`api/locations.php?action=get&id=${id}`);
+        const response = await fetch(`../api/locations.php?action=get&id=${id}`);
         const data = await response.json();
         
         if (data.success) {
@@ -572,7 +572,7 @@ async function deleteLocation(id) {
     if (!confirm('ยืนยันการลบตำแหน่งนี้?')) return;
     
     try {
-        const response = await fetch('api/locations.php', {
+        const response = await fetch('../api/locations.php', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'delete', id: id })
@@ -593,7 +593,7 @@ async function deleteLocation(id) {
 // Print location label
 function printLocationLabel(id, withQr = false) {
     const qrParam = withQr ? '&with_qr=1' : '';
-    window.open(`api/locations.php?action=print_label&id=${id}${qrParam}`, '_blank');
+    window.open(`../api/locations.php?action=print_label&id=${id}${qrParam}`, '_blank');
 }
 
 // Toggle print menu
@@ -626,7 +626,7 @@ function getSelectedLocationIds() {
 // Print all labels (with current filters)
 function printAllLabels(withQr = false) {
     const params = new URLSearchParams(window.location.search);
-    let url = 'api/locations.php?action=print_batch_labels';
+    let url = '../api/locations.php?action=print_batch_labels';
     
     if (params.get('zone')) url += `&zone=${encodeURIComponent(params.get('zone'))}`;
     if (params.get('zone_type')) url += `&zone_type=${encodeURIComponent(params.get('zone_type'))}`;
@@ -645,7 +645,7 @@ function printSelectedLabels(withQr = false) {
         return;
     }
     
-    let url = `api/locations.php?action=print_batch_labels&ids=${ids.join(',')}`;
+    let url = `../api/locations.php?action=print_batch_labels&ids=${ids.join(',')}`;
     if (withQr) url += '&with_qr=1';
     
     window.open(url, '_blank');
@@ -667,7 +667,7 @@ document.addEventListener('DOMContentLoaded', function() {
         data.action = 'create';
         
         try {
-            const response = await fetch('api/locations.php', {
+            const response = await fetch('../api/locations.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -699,7 +699,7 @@ document.addEventListener('DOMContentLoaded', function() {
         data.action = 'bulk_create';
         
         try {
-            const response = await fetch('api/locations.php', {
+            const response = await fetch('../api/locations.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
@@ -727,7 +727,7 @@ document.addEventListener('DOMContentLoaded', function() {
         data.action = 'update';
         
         try {
-            const response = await fetch('api/locations.php', {
+            const response = await fetch('../api/locations.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
