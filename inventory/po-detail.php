@@ -189,8 +189,20 @@ $statusColors = [
                             <?= number_format($item['received_quantity']) ?>
                         </span>
                     </td>
-                    <td class="px-4 py-3 text-right">฿<?= number_format($item['unit_cost'], 2) ?></td>
-                    <td class="px-4 py-3 text-right font-medium">฿<?= number_format($item['subtotal'], 2) ?></td>
+                    <td class="px-4 py-3 text-right">
+                        <?php if ($po['status'] === 'draft'): ?>
+                        <input type="number" 
+                               id="cost_<?= $item['id'] ?>" 
+                               value="<?= $item['unit_cost'] ?>" 
+                               min="0" 
+                               step="0.01"
+                               onchange="updateItemCost(<?= $item['id'] ?>, this.value)"
+                               class="w-24 px-2 py-1 border rounded text-right text-sm">
+                        <?php else: ?>
+                        ฿<?= number_format($item['unit_cost'], 2) ?>
+                        <?php endif; ?>
+                    </td>
+                    <td class="px-4 py-3 text-right font-medium" id="subtotal_<?= $item['id'] ?>">฿<?= number_format($item['subtotal'], 2) ?></td>
                     <?php if ($po['status'] === 'draft'): ?>
                     <td class="px-4 py-3 text-center">
                         <button onclick="removeItem(<?= $item['id'] ?>)" class="p-2 text-red-600 hover:bg-red-50 rounded">
@@ -381,6 +393,24 @@ async function cancelPO() {
     const result = await res.json();
     if (result.success) location.reload();
     else alert(result.message || 'Error');
+}
+
+async function updateItemCost(itemId, newCost) {
+    const res = await fetch('../api/inventory.php?action=update_po_item_cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId, unit_cost: parseFloat(newCost) })
+    });
+    const result = await res.json();
+    
+    if (result.success) {
+        // Update subtotal display
+        document.getElementById('subtotal_' + itemId).textContent = '฿' + result.subtotal.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        // Reload to update total
+        setTimeout(() => location.reload(), 500);
+    } else {
+        alert(result.message || 'Error updating cost');
+    }
 }
 </script>
 

@@ -170,6 +170,49 @@ try {
             echo json_encode(['success' => true]);
             break;
             
+        case 'update_po_item_cost':
+            $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+            $itemId = (int)($data['item_id'] ?? $_POST['item_id'] ?? $_GET['item_id']);
+            $unitCost = (float)($data['unit_cost'] ?? $_POST['unit_cost'] ?? 0);
+            
+            if (!$itemId) {
+                throw new Exception('Item ID is required');
+            }
+            
+            // Get current item to check PO status
+            $stmt = $db->prepare("
+                SELECT poi.*, po.status 
+                FROM purchase_order_items poi 
+                JOIN purchase_orders po ON poi.po_id = po.id 
+                WHERE poi.id = ?
+            ");
+            $stmt->execute([$itemId]);
+            $item = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$item) {
+                throw new Exception('Item not found');
+            }
+            
+            if ($item['status'] !== 'draft') {
+                throw new Exception('Can only edit items in draft PO');
+            }
+            
+            // Update unit_cost and subtotal
+            $subtotal = $unitCost * $item['quantity'];
+            $stmt = $db->prepare("UPDATE purchase_order_items SET unit_cost = ?, subtotal = ? WHERE id = ?");
+            $stmt->execute([$unitCost, $subtotal, $itemId]);
+            
+            // Update PO total
+            $stmt = $db->prepare("
+                UPDATE purchase_orders 
+                SET total_amount = (SELECT COALESCE(SUM(subtotal), 0) FROM purchase_order_items WHERE po_id = ?)
+                WHERE id = ?
+            ");
+            $stmt->execute([$item['po_id'], $item['po_id']]);
+            
+            echo json_encode(['success' => true, 'subtotal' => $subtotal]);
+            break;
+            
         case 'remove_po_item':
             $itemId = (int)($_POST['item_id'] ?? $_GET['item_id']);
             $poService->removePOItem($itemId);
