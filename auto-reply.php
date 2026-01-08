@@ -9,6 +9,9 @@ require_once 'config/database.php';
 $db = Database::getInstance()->getConnection();
 $pageTitle = 'Auto-Reply';
 
+// Get current bot ID from session or default to null
+$currentBotId = $_SESSION['current_bot_id'] ?? $_SESSION['line_account_id'] ?? null;
+
 // Check if new columns exist
 $hasNewColumns = false;
 $hasShareColumn = false;
