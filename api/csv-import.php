@@ -243,21 +243,52 @@ function importToBusinessItems($db, $data) {
     
     // Get price from product_price JSON or price field
     $price = 0;
-    if (!empty($data['product_price'])) {
-        $priceData = json_decode($data['product_price'], true);
-        if (is_array($priceData) && !empty($priceData[0]['price'])) {
-            $price = (float)$priceData[0]['price'];
+    $productPriceJson = $data['product_price'] ?? '';
+    
+    // Debug: log what we're getting
+    error_log("SKU: {$sku} - product_price raw: " . substr($productPriceJson, 0, 200));
+    
+    if (!empty($productPriceJson)) {
+        // Handle double-encoded JSON (CSV might escape quotes)
+        $priceData = json_decode($productPriceJson, true);
+        
+        // If still a string, try decoding again
+        if (is_string($priceData)) {
+            $priceData = json_decode($priceData, true);
+        }
+        
+        if (is_array($priceData) && !empty($priceData)) {
+            // Try to find GEN price first
+            foreach ($priceData as $p) {
+                $group = $p['customer_group'] ?? '';
+                if (strpos($group, 'GEN') !== false) {
+                    $price = floatval($p['price'] ?? 0);
+                    error_log("SKU: {$sku} - Found GEN price: {$price}");
+                    break;
+                }
+            }
+            // Fallback to first price
+            if ($price == 0 && isset($priceData[0]['price'])) {
+                $price = floatval($priceData[0]['price']);
+                error_log("SKU: {$sku} - Using first price: {$price}");
+            }
         }
     }
+    
+    // Fallback to direct price field
     if ($price == 0 && !empty($data['price'])) {
         $price = (float)$data['price'];
+        error_log("SKU: {$sku} - Using direct price field: {$price}");
     }
     
     // Get unit from product_price
     $unit = '';
     $baseUnit = '';
-    if (!empty($data['product_price'])) {
-        $priceData = json_decode($data['product_price'], true);
+    if (!empty($productPriceJson)) {
+        $priceData = json_decode($productPriceJson, true);
+        if (is_string($priceData)) {
+            $priceData = json_decode($priceData, true);
+        }
         if (is_array($priceData) && !empty($priceData[0]['unit'])) {
             $unit = $priceData[0]['unit'];
             if (preg_match('/^([^\[\s]+)/', $unit, $matches)) {

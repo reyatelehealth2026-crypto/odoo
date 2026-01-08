@@ -1,18 +1,36 @@
 <?php
 // Debug price extraction from cny_products
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 require_once __DIR__ . '/config/database.php';
 
-$db = Database::getInstance()->getConnection();
+try {
+    $db = Database::getInstance()->getConnection();
+} catch (Exception $e) {
+    die("Database connection error: " . $e->getMessage());
+}
 
 echo "<h2>Debug CNY Products Price</h2>";
 
+// Check if cny_products table exists
+try {
+    $db->query("SELECT 1 FROM cny_products LIMIT 1");
+} catch (PDOException $e) {
+    die("<p style='color:red;'>Table cny_products does not exist! Please run sync first.</p>");
+}
+
 // Check if product_price column has data
-$stmt = $db->query("SELECT COUNT(*) as total, 
-                           SUM(CASE WHEN product_price IS NOT NULL AND product_price != '' THEN 1 ELSE 0 END) as with_price
-                    FROM cny_products");
-$stats = $stmt->fetch(PDO::FETCH_ASSOC);
-echo "<p><strong>Total products:</strong> {$stats['total']}</p>";
-echo "<p><strong>Products with product_price:</strong> {$stats['with_price']}</p>";
+try {
+    $stmt = $db->query("SELECT COUNT(*) as total, 
+                               SUM(CASE WHEN product_price IS NOT NULL AND product_price != '' THEN 1 ELSE 0 END) as with_price
+                        FROM cny_products");
+    $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    echo "<p><strong>Total products:</strong> {$stats['total']}</p>";
+    echo "<p><strong>Products with product_price:</strong> {$stats['with_price']}</p>";
+} catch (PDOException $e) {
+    die("<p style='color:red;'>Error: " . $e->getMessage() . "</p>");
+}
 
 echo "<hr>";
 
