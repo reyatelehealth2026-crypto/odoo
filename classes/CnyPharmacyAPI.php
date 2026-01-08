@@ -482,6 +482,16 @@ class CnyPharmacyAPI
             'line_account_id' => $this->lineAccountId,
             'item_type' => 'physical',
             'delivery_method' => 'shipping',
+            // New CNY-specific fields for full compatibility
+            'product_price' => json_encode($prices, JSON_UNESCAPED_UNICODE),
+            'properties_other' => $cnyProduct['properties_other'] ?? null,
+            'photo_path' => $cnyProduct['photo_path'] ?? null,
+            'cny_id' => $cnyProduct['id'] ?? null,
+            'cny_category' => $cnyProduct['category'] ?? null,
+            'hashtag' => $cnyProduct['hashtag'] ?? null,
+            'qty_incoming' => intval($cnyProduct['qty_incoming'] ?? 0),
+            'enable' => ($cnyProduct['enable'] ?? '1') == '1' ? 1 : 0,
+            'last_synced_at' => date('Y-m-d H:i:s'),
             'extra_data' => json_encode([
                 'cny_id' => $cnyProduct['id'] ?? null,
                 'cny_category' => $cnyProduct['category'] ?? null,
@@ -803,11 +813,14 @@ class CnyPharmacyAPI
         $placeholders = [];
         $values = [];
         
-        // Define allowed columns per table
+        // Define allowed columns per table - including new CNY fields
         $allowedColumns = [
             'sku', 'barcode', 'name', 'name_en', 'description', 'manufacturer', 'generic_name',
             'usage_instructions', 'price', 'unit', 'base_unit', 'stock', 'image_url', 'is_active',
-            'category_id', 'line_account_id', 'item_type', 'delivery_method'
+            'category_id', 'line_account_id', 'item_type', 'delivery_method',
+            // New CNY-specific fields
+            'product_price', 'properties_other', 'photo_path', 'cny_id', 'cny_category',
+            'hashtag', 'qty_incoming', 'enable', 'last_synced_at'
         ];
         
         foreach ($allowedColumns as $col) {
@@ -851,11 +864,14 @@ class CnyPharmacyAPI
         $placeholders = ['?'];
         $values = [$id];
         
-        // Define allowed columns per table
+        // Define allowed columns per table - including new CNY fields
         $allowedColumns = [
             'sku', 'barcode', 'name', 'name_en', 'description', 'manufacturer', 'generic_name',
             'usage_instructions', 'price', 'unit', 'base_unit', 'stock', 'image_url', 'is_active',
-            'category_id', 'line_account_id', 'item_type', 'delivery_method'
+            'category_id', 'line_account_id', 'item_type', 'delivery_method',
+            // New CNY-specific fields
+            'product_price', 'properties_other', 'photo_path', 'cny_id', 'cny_category',
+            'hashtag', 'qty_incoming', 'enable', 'last_synced_at'
         ];
         
         foreach ($allowedColumns as $col) {
@@ -888,11 +904,14 @@ class CnyPharmacyAPI
         $sets = [];
         $values = [];
         
-        // Columns to update
+        // Columns to update - including new CNY fields
         $updateColumns = [
             'barcode', 'name', 'name_en', 'description', 'manufacturer', 'generic_name',
             'usage_instructions', 'price', 'unit', 'base_unit', 'stock', 'image_url', 'is_active',
-            'category_id'  // Added category_id to update list
+            'category_id',
+            // New CNY-specific fields
+            'product_price', 'properties_other', 'photo_path', 'cny_id', 'cny_category',
+            'hashtag', 'qty_incoming', 'enable', 'last_synced_at'
         ];
         
         foreach ($updateColumns as $col) {
