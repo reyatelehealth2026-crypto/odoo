@@ -663,12 +663,26 @@ $pageTitle = 'CNY Sync Dashboard';
             progressText.textContent = 'กำลัง Import...';
             progressBar.style.width = '30%';
             
+            // Debug: log what we're sending
+            console.log('FormData entries:');
+            for (let pair of formData.entries()) {
+                console.log(pair[0] + ': ' + (pair[1] instanceof File ? pair[1].name : pair[1]));
+            }
+            
             const response = await fetch('api/csv-import.php', {
                 method: 'POST',
                 body: formData
             });
             
-            const data = await response.json();
+            const text = await response.text();
+            console.log('Raw response:', text);
+            
+            let data;
+            try {
+                data = JSON.parse(text);
+            } catch (e) {
+                throw new Error('Invalid JSON response: ' + text.substring(0, 500));
+            }
             
             if (data.success) {
                 progressBar.style.width = '100%';
