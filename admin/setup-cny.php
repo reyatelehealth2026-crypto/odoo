@@ -1,4 +1,4 @@
-x<?php
+<?php
 /**
  * Setup CNY Products - Create table and sync data
  * This page can be accessed directly without login for initial setup
@@ -18,6 +18,7 @@ require_once __DIR__ . '/../config/database.php';
 
 $db = Database::getInstance()->getConnection();
 $step = $_GET['step'] ?? 'check';
+$targets = isset($_GET['targets']) ? explode(',', $_GET['targets']) : ['cny_products'];
 $output = '';
 
 ?>
@@ -136,7 +137,68 @@ $output = '';
                 set_time_limit(300);
                 ob_start();
                 
-                include __DIR__ . '/../cron/import_cny_csv.php';
+                echo "=== Import CNY Products from CSV ===\n";
+                echo "Target tables: " . implode(', ', $targets) . "\n\n";
+                
+                // Import to cny_products
+                if (in_array('cny_products', $targets)) {
+                    echo "--- Importing to cny_products ---\n";
+                    include __DIR__ . '/../cron/import_cny_csv.php';
+                    echo "\n";
+                }
+                
+                // Import to business_items
+                if (in_array('business_items', $targets)) {
+                    echo "--- Syncing to business_items ---\n";
+                    require_once __DIR__ . '/../classes/CnyPharmacyAPI.php';
+                    $cnyApi = new CnyPharmacyAPI($db);
+                    
+                    // Get products from cny_products table
+                    $stmt = $db->query("SELECT * FROM cny_products");
+                    $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    $stats = ['created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0];
+                    
+                    foreach ($products as $product) {
+                        try {
+                            // Convert to CNY API format
+                            $cnyProduct = [
+                                'id' => $product['id'] ?? null,
+                                'sku' => $product['sku'],
+                                'barcode' => $product['barcode'],
+                                'name' => $product['name'],
+                                'name_en' => $product['name_en'],
+                                'spec_name' => $product['spec_name'],
+                                'description' => $product['description'],
+                                'properties_other' => $product['properties_other'],
+                                'how_to_use' => $product['how_to_use'],
+                                'photo_path' => $product['photo_path'],
+                                'qty' => $product['qty'],
+                                'enable' => $product['enable'],
+                                'product_price' => json_decode($product['product_price'], true) ?: []
+                            ];
+                            
+                            $result = $cnyApi->syncProduct($cnyProduct, ['update_existing' => true, 'auto_category' => true]);
+                            
+                            if ($result['action'] === 'created') $stats['created']++;
+                            elseif ($result['action'] === 'updated') $stats['updated']++;
+                            else $stats['skipped']++;
+                            
+                        } catch (Exception $e) {
+                            $stats['failed']++;
+                        }
+                        
+                        if (($stats['created'] + $stats['updated'] + $stats['skipped'] + $stats['failed']) % 100 == 0) {
+                            echo "Processed " . ($stats['created'] + $stats['updated'] + $stats['skipped'] + $stats['failed']) . " products...\n";
+                        }
+                    }
+                    
+                    echo "\nBusiness Items Sync Complete!\n";
+                    echo "Created: {$stats['created']}\n";
+                    echo "Updated: {$stats['updated']}\n";
+                    echo "Skipped: {$stats['skipped']}\n";
+                    echo "Failed: {$stats['failed']}\n";
+                }
                 
                 $output = ob_get_clean();
                 ?>
@@ -163,7 +225,41 @@ $output = '';
                 set_time_limit(300);
                 ob_start();
                 
-                include __DIR__ . '/../cron/sync_cny_products.php';
+                echo "=== Sync CNY Products from API ===\n";
+                echo "Target tables: " . implode(', ', $targets) . "\n\n";
+                
+                // Sync to cny_products
+                if (in_array('cny_products', $targets)) {
+                    echo "--- Syncing to cny_products ---\n";
+                    include __DIR__ . '/../cron/sync_cny_products.php';
+                    echo "\n";
+                }
+                
+                // Sync to business_items
+                if (in_array('business_items', $targets)) {
+                    echo "--- Syncing to business_items ---\n";
+                    require_once __DIR__ . '/../classes/CnyPharmacyAPI.php';
+                    $cnyApi = new CnyPharmacyAPI($db);
+                    
+                    $result = $cnyApi->syncAllProducts([
+                        'update_existing' => true,
+                        'auto_category' => true
+                    ]);
+                    
+                    if ($result['success']) {
+                        $stats = $result['stats'];
+                        echo "Business Items Sync Complete!\n";
+                        echo "Total: {$stats['total']}\n";
+                        echo "Created: {$stats['created']}\n";
+                        echo "Updated: {$stats['updated']}\n";
+                        echo "Skipped: {$stats['skipped']}\n";
+                        if (!empty($stats['errors'])) {
+                            echo "Errors: " . count($stats['errors']) . "\n";
+                        }
+                    } else {
+                        echo "Error: " . ($result['error'] ?? 'Unknown error') . "\n";
+                    }
+                }
                 
                 $output = ob_get_clean();
                 ?>

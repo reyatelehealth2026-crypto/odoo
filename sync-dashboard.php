@@ -168,14 +168,26 @@ $pageTitle = 'CNY Sync Dashboard';
                 </div>
                 <div class="p-6">
                     <p class="text-gray-600 mb-4">
-                        Import ข้อมูลจากไฟล์ <code class="bg-gray-100 px-2 py-1 rounded">CNY API for AI - AI.csv</code> 
-                        เข้าตาราง <code class="bg-gray-100 px-2 py-1 rounded">cny_products</code>
+                        Import ข้อมูลจากไฟล์ <code class="bg-gray-100 px-2 py-1 rounded">CNY API for AI - AI.csv</code>
                     </p>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">เลือกตารางปลายทาง:</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="csvToCny" checked class="w-4 h-4 text-purple-600 rounded">
+                                <span class="text-sm">cny_products (Cache)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="csvToBusiness" class="w-4 h-4 text-purple-600 rounded">
+                                <span class="text-sm">business_items (ระบบหลัก)</span>
+                            </label>
+                        </div>
+                    </div>
                     <div class="flex gap-3">
-                        <a href="admin/setup-cny.php?key=cny2024&step=import_csv" 
+                        <button onclick="importCSV()" 
                            class="flex-1 text-center px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium">
                             <i class="fas fa-file-import mr-2"></i>Import CSV
-                        </a>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -190,13 +202,26 @@ $pageTitle = 'CNY Sync Dashboard';
                 </div>
                 <div class="p-6">
                     <p class="text-gray-600 mb-4">
-                        ดึงข้อมูลจาก CNY Pharmacy API โดยตรง เข้าตาราง <code class="bg-gray-100 px-2 py-1 rounded">cny_products</code>
+                        ดึงข้อมูลจาก CNY Pharmacy API โดยตรง
                     </p>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">เลือกตารางปลายทาง:</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="apiToCny" checked class="w-4 h-4 text-green-600 rounded">
+                                <span class="text-sm">cny_products (Cache)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" id="apiToBusiness" class="w-4 h-4 text-green-600 rounded">
+                                <span class="text-sm">business_items (ระบบหลัก)</span>
+                            </label>
+                        </div>
+                    </div>
                     <div class="flex gap-3">
-                        <a href="admin/setup-cny.php?key=cny2024&step=sync" 
+                        <button onclick="syncFromAPI()" 
                            class="flex-1 text-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
                             <i class="fas fa-sync mr-2"></i>Sync from API
-                        </a>
+                        </button>
                     </div>
                 </div>
             </div>
@@ -550,6 +575,42 @@ $pageTitle = 'CNY Sync Dashboard';
         } catch (e) {
             alert('Network error: ' + e.message);
         }
+    }
+    
+    // Import CSV with table selection
+    function importCSV() {
+        const toCny = document.getElementById('csvToCny').checked;
+        const toBusiness = document.getElementById('csvToBusiness').checked;
+        
+        if (!toCny && !toBusiness) {
+            alert('กรุณาเลือกอย่างน้อย 1 ตาราง');
+            return;
+        }
+        
+        let targets = [];
+        if (toCny) targets.push('cny_products');
+        if (toBusiness) targets.push('business_items');
+        
+        const url = `admin/setup-cny.php?key=cny2024&step=import_csv&targets=${targets.join(',')}`;
+        window.location.href = url;
+    }
+    
+    // Sync from API with table selection
+    function syncFromAPI() {
+        const toCny = document.getElementById('apiToCny').checked;
+        const toBusiness = document.getElementById('apiToBusiness').checked;
+        
+        if (!toCny && !toBusiness) {
+            alert('กรุณาเลือกอย่างน้อย 1 ตาราง');
+            return;
+        }
+        
+        let targets = [];
+        if (toCny) targets.push('cny_products');
+        if (toBusiness) targets.push('business_items');
+        
+        const url = `admin/setup-cny.php?key=cny2024&step=sync&targets=${targets.join(',')}`;
+        window.location.href = url;
     }
     </script>
 </body>
