@@ -2,6 +2,7 @@
 /**
  * Product Detail - Business Items
  * Display single product details from business_items table
+ * UI เหมือน product-detail-cny.php
  */
 session_start();
 require_once __DIR__ . '/../config/config.php';
@@ -9,7 +10,7 @@ require_once __DIR__ . '/../config/database.php';
 
 $db = Database::getInstance()->getConnection();
 
-// Get product ID from URL
+// Get product ID or SKU from URL
 $productId = $_GET['id'] ?? '';
 $sku = $_GET['sku'] ?? '';
 
@@ -41,28 +42,9 @@ if (!$product) {
     exit;
 }
 
-// Check available columns
-$columns = [];
-$colStmt = $db->query("SHOW COLUMNS FROM {$productsTable}");
-while ($col = $colStmt->fetch(PDO::FETCH_ASSOC)) {
-    $columns[] = $col['Field'];
-}
-
-$hasProductPrice = in_array('product_price', $columns);
-$hasPhotoPath = in_array('photo_path', $columns);
-$hasGenericName = in_array('generic_name', $columns);
-$hasUsageInstructions = in_array('usage_instructions', $columns);
-$hasPropertiesOther = in_array('properties_other', $columns);
-$hasNameEn = in_array('name_en', $columns);
-$hasManufacturer = in_array('manufacturer', $columns);
-$hasBarcode = in_array('barcode', $columns);
-$hasUnit = in_array('unit', $columns);
-
 // Decode JSON fields
-if ($hasProductPrice && !empty($product['product_price'])) {
-    if (is_string($product['product_price'])) {
-        $product['product_price'] = json_decode($product['product_price'], true);
-    }
+if (!empty($product['product_price']) && is_string($product['product_price'])) {
+    $product['product_price'] = json_decode($product['product_price'], true);
 }
 if (!is_array($product['product_price'] ?? null)) {
     $product['product_price'] = [];
@@ -112,21 +94,21 @@ $imageUrl = $product['photo_path'] ?? $product['image_url'] ?? '';
                     <div class="text-sm text-gray-500 mb-2">SKU: <?= htmlspecialchars($product['sku']) ?></div>
                     <?php endif; ?>
                     
-                    <?php if ($hasBarcode && !empty($product['barcode'])): ?>
+                    <?php if (!empty($product['barcode'])): ?>
                     <div class="text-sm text-gray-500 mb-2">Barcode: <?= htmlspecialchars($product['barcode']) ?></div>
                     <?php endif; ?>
                     
                     <h1 class="text-3xl font-bold text-gray-800 mb-2"><?= htmlspecialchars($product['name']) ?></h1>
                     
-                    <?php if ($hasNameEn && !empty($product['name_en'])): ?>
+                    <?php if (!empty($product['name_en'])): ?>
                     <p class="text-lg text-gray-600 mb-2"><?= htmlspecialchars($product['name_en']) ?></p>
                     <?php endif; ?>
                     
-                    <?php if ($hasGenericName && !empty($product['generic_name'])): ?>
+                    <?php if (!empty($product['generic_name'])): ?>
                     <p class="text-sm text-blue-600 font-medium"><?= htmlspecialchars($product['generic_name']) ?></p>
                     <?php endif; ?>
                     
-                    <?php if ($hasManufacturer && !empty($product['manufacturer'])): ?>
+                    <?php if (!empty($product['manufacturer'])): ?>
                     <p class="text-sm text-gray-500 mt-1">
                         <i class="fas fa-industry mr-1"></i><?= htmlspecialchars($product['manufacturer']) ?>
                     </p>
@@ -186,7 +168,7 @@ $imageUrl = $product['photo_path'] ?? $product['image_url'] ?? '';
                         <div class="text-3xl font-bold text-blue-600">฿<?= number_format($product['price'] ?? 0, 2) ?></div>
                         <?php endif; ?>
                     </div>
-                    <?php if ($hasUnit && !empty($product['unit'])): ?>
+                    <?php if (!empty($product['unit'])): ?>
                     <div class="text-sm text-gray-500 mt-1"><?= htmlspecialchars($product['unit']) ?></div>
                     <?php endif; ?>
                 </div>
@@ -200,83 +182,71 @@ $imageUrl = $product['photo_path'] ?? $product['image_url'] ?? '';
                 <button class="tab-btn active px-6 py-3 font-medium border-b-2 border-blue-600 text-blue-600 whitespace-nowrap" data-tab="description">
                     <i class="fas fa-info-circle mr-2"></i>รายละเอียด
                 </button>
-                <?php if ($hasUsageInstructions): ?>
                 <button class="tab-btn px-6 py-3 font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap" data-tab="usage">
                     <i class="fas fa-pills mr-2"></i>วิธีใช้
                 </button>
-                <?php endif; ?>
-                <?php if ($hasPropertiesOther): ?>
                 <button class="tab-btn px-6 py-3 font-medium text-gray-600 hover:text-blue-600 whitespace-nowrap" data-tab="properties">
                     <i class="fas fa-flask mr-2"></i>สรรพคุณ
                 </button>
-                <?php endif; ?>
             </div>
 
             <div class="p-6">
                 <!-- Description Tab -->
                 <div class="tab-content" id="description">
-                    <?php if (!empty($product['description'])): ?>
-                        <?php
-                        // Check if description contains full HTML document
-                        if (stripos($product['description'], '<!doctype') !== false || 
-                            stripos($product['description'], '<html') !== false) {
+                    <?php 
+                    $description = $product['description'] ?? '';
+                    if (!empty($description)): 
+                        if (stripos($description, '<!doctype') !== false || stripos($description, '<html') !== false):
                             $iframeId = 'desc-iframe-' . uniqid();
-                            echo '<iframe id="' . $iframeId . '" srcdoc="' . htmlspecialchars($product['description']) . '" 
-                                  style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
-                                  sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>';
-                        } else {
-                            $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
-                            echo '<div class="prose max-w-none">' . strip_tags($product['description'], $allowedTags) . '</div>';
-                        }
-                        ?>
+                    ?>
+                        <iframe id="<?= $iframeId ?>" srcdoc="<?= htmlspecialchars($description) ?>" 
+                              style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
+                              sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>
+                    <?php else: ?>
+                        <div class="prose max-w-none"><?= nl2br(htmlspecialchars($description)) ?></div>
+                    <?php endif; ?>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีรายละเอียด</p>
                     <?php endif; ?>
                 </div>
 
-                <?php if ($hasUsageInstructions): ?>
                 <!-- Usage Tab -->
                 <div class="tab-content hidden" id="usage">
-                    <?php if (!empty($product['usage_instructions'])): ?>
-                        <?php
-                        if (stripos($product['usage_instructions'], '<!doctype') !== false || 
-                            stripos($product['usage_instructions'], '<html') !== false) {
+                    <?php 
+                    $usageInstructions = $product['usage_instructions'] ?? $product['how_to_use'] ?? '';
+                    if (!empty($usageInstructions)): 
+                        if (stripos($usageInstructions, '<!doctype') !== false || stripos($usageInstructions, '<html') !== false):
                             $iframeId = 'usage-iframe-' . uniqid();
-                            echo '<iframe id="' . $iframeId . '" srcdoc="' . htmlspecialchars($product['usage_instructions']) . '" 
-                                  style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
-                                  sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>';
-                        } else {
-                            $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
-                            echo '<div class="prose max-w-none">' . strip_tags($product['usage_instructions'], $allowedTags) . '</div>';
-                        }
-                        ?>
+                    ?>
+                        <iframe id="<?= $iframeId ?>" srcdoc="<?= htmlspecialchars($usageInstructions) ?>" 
+                              style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
+                              sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>
+                    <?php else: ?>
+                        <div class="prose max-w-none"><?= nl2br(htmlspecialchars($usageInstructions)) ?></div>
+                    <?php endif; ?>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลวิธีใช้</p>
                     <?php endif; ?>
                 </div>
-                <?php endif; ?>
 
-                <?php if ($hasPropertiesOther): ?>
                 <!-- Properties Tab -->
                 <div class="tab-content hidden" id="properties">
-                    <?php if (!empty($product['properties_other'])): ?>
-                        <?php
-                        if (stripos($product['properties_other'], '<!doctype') !== false || 
-                            stripos($product['properties_other'], '<html') !== false) {
+                    <?php 
+                    $propertiesOther = $product['properties_other'] ?? '';
+                    if (!empty($propertiesOther)): 
+                        if (stripos($propertiesOther, '<!doctype') !== false || stripos($propertiesOther, '<html') !== false):
                             $iframeId = 'prop-iframe-' . uniqid();
-                            echo '<iframe id="' . $iframeId . '" srcdoc="' . htmlspecialchars($product['properties_other']) . '" 
-                                  style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
-                                  sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>';
-                        } else {
-                            $allowedTags = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><h4><h5><h6><span><div>';
-                            echo '<div class="prose max-w-none">' . strip_tags($product['properties_other'], $allowedTags) . '</div>';
-                        }
-                        ?>
+                    ?>
+                        <iframe id="<?= $iframeId ?>" srcdoc="<?= htmlspecialchars($propertiesOther) ?>" 
+                              style="width:100%; min-height:600px; border:1px solid #e5e7eb; border-radius:8px;"
+                              sandbox="allow-same-origin" onload="resizeIframe(this)"></iframe>
+                    <?php else: ?>
+                        <div class="prose max-w-none"><?= nl2br(htmlspecialchars($propertiesOther)) ?></div>
+                    <?php endif; ?>
                     <?php else: ?>
                     <p class="text-gray-500">ไม่มีข้อมูลสรรพคุณ</p>
                     <?php endif; ?>
                 </div>
-                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -323,5 +293,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 </script>
+
+<style>
+.tab-btn.active {
+    border-bottom-width: 2px;
+}
+</style>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
