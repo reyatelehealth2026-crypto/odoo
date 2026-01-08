@@ -1209,7 +1209,7 @@ $menuGroups = [
                 <div class="quick-access-section">
                     <div class="flex items-center justify-between mb-2">
                         <div class="menu-section-title mb-0">⚡ Quick Access</div>
-                        <a href="<?= $baseUrl ?>quick-access-settings.php" class="text-xs text-gray-400 hover:text-green-600" title="ตั้งค่า Quick Access">
+                        <a href="<?= $baseUrl ?>settings.php?tab=quick-access" class="text-xs text-gray-400 hover:text-green-600" title="ตั้งค่า Quick Access">
                             <i class="fas fa-cog"></i>
                         </a>
                     </div>
@@ -1328,28 +1328,23 @@ $menuGroups = [
                         </button>
                         <div x-show="open" @click.away="open = false" x-transition
                              class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                            <a href="<?= $baseUrl ?>inbox.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
-                                <i class="fas fa-inbox text-green-500"></i>
-                                <span class="text-sm">กล่องข้อความ</span>
+                            <?php foreach ($quickAccessItems as $item): 
+                                $itemUrl = $baseUrl . ltrim($item['url'], '/');
+                                $colorClass = [
+                                    'green' => 'text-green-500', 'orange' => 'text-orange-500', 'blue' => 'text-blue-500',
+                                    'purple' => 'text-purple-500', 'cyan' => 'text-cyan-500', 'pink' => 'text-pink-500',
+                                    'indigo' => 'text-indigo-500', 'teal' => 'text-teal-500', 'amber' => 'text-amber-500',
+                                    'emerald' => 'text-emerald-500', 'sky' => 'text-sky-500', 'violet' => 'text-violet-500',
+                                    'rose' => 'text-rose-500', 'lime' => 'text-lime-500', 'slate' => 'text-slate-500',
+                                ][$item['color'] ?? 'gray'] ?? 'text-gray-500';
+                            ?>
+                            <a href="<?= $itemUrl ?>" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
+                                <i class="fas <?= $item['icon'] ?> <?= $colorClass ?>"></i>
+                                <span class="text-sm"><?= htmlspecialchars($item['label']) ?></span>
                             </a>
-                            <a href="<?= $baseUrl ?>shop/orders.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
-                                <i class="fas fa-shopping-bag text-orange-500"></i>
-                                <span class="text-sm">ออเดอร์</span>
-                            </a>
-                            <a href="<?= $baseUrl ?>pharmacy.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
-                                <i class="fas fa-pills text-blue-500"></i>
-                                <span class="text-sm">ร้านยา</span>
-                            </a>
-                            <a href="<?= $baseUrl ?>members.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
-                                <i class="fas fa-users text-purple-500"></i>
-                                <span class="text-sm">สมาชิก</span>
-                            </a>
-                            <a href="<?= $baseUrl ?>shop/products.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
-                                <i class="fas fa-box text-teal-500"></i>
-                                <span class="text-sm">สินค้า</span>
-                            </a>
+                            <?php endforeach; ?>
                             <div class="border-t my-1"></div>
-                            <a href="<?= $baseUrl ?>quick-access-settings.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition text-gray-500">
+                            <a href="<?= $baseUrl ?>settings.php?tab=quick-access" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition text-gray-500">
                                 <i class="fas fa-cog"></i>
                                 <span class="text-sm">ตั้งค่า Quick Access</span>
                             </a>
