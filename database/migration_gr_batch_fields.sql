@@ -64,6 +64,19 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- Add unit_cost column if not exists
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS 
+     WHERE TABLE_SCHEMA = DATABASE() 
+     AND TABLE_NAME = 'goods_receive_items' 
+     AND COLUMN_NAME = 'unit_cost') = 0,
+    "ALTER TABLE `goods_receive_items` ADD COLUMN `unit_cost` DECIMAL(12,2) NOT NULL DEFAULT 0 COMMENT 'Unit cost at time of receive'",
+    "SELECT 'Column unit_cost already exists'"
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
 -- Add index for batch_number for faster lookups
 SET @sql = (SELECT IF(
     (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS 
