@@ -2,40 +2,13 @@
 /**
  * Procurement Suppliers Tab - จัดการ Supplier
  * Tab content for procurement.php
+ * 
+ * Note: AJAX handlers are in procurement.php (parent file)
  */
 
 require_once __DIR__ . '/../../classes/SupplierService.php';
 
 $supplierService = new SupplierService($db, $lineAccountId);
-
-// Handle AJAX
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
-    header('Content-Type: application/json; charset=utf-8');
-    $action = $_POST['action'];
-    
-    try {
-        switch ($action) {
-            case 'create':
-                $id = $supplierService->create($_POST);
-                echo json_encode(['success' => true, 'id' => $id]);
-                break;
-            case 'update':
-                $supplierService->update((int)$_POST['id'], $_POST);
-                echo json_encode(['success' => true]);
-                break;
-            case 'toggle':
-                $id = (int)$_POST['id'];
-                $active = (int)$_POST['active'];
-                $active ? $supplierService->activate($id) : $supplierService->deactivate($id);
-                echo json_encode(['success' => true]);
-                break;
-        }
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
-    }
-    exit;
-}
-
 $suppliers = $supplierService->getAll();
 ?>
 

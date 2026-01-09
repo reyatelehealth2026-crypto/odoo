@@ -17,6 +17,47 @@ require_once __DIR__ . '/includes/components/tabs.php';
 $db = Database::getInstance()->getConnection();
 $lineAccountId = $_SESSION['current_bot_id'] ?? null;
 
+// Handle AJAX requests BEFORE any HTML output
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $tab = $_GET['tab'] ?? 'po';
+    
+    try {
+        switch ($tab) {
+            case 'suppliers':
+                require_once __DIR__ . '/classes/SupplierService.php';
+                $supplierService = new SupplierService($db, $lineAccountId);
+                $action = $_POST['action'];
+                
+                switch ($action) {
+                    case 'create':
+                        $id = $supplierService->create($_POST);
+                        echo json_encode(['success' => true, 'id' => $id]);
+                        break;
+                    case 'update':
+                        $supplierService->update((int)$_POST['id'], $_POST);
+                        echo json_encode(['success' => true]);
+                        break;
+                    case 'toggle':
+                        $id = (int)$_POST['id'];
+                        $active = (int)$_POST['active'];
+                        $active ? $supplierService->activate($id) : $supplierService->deactivate($id);
+                        echo json_encode(['success' => true]);
+                        break;
+                    default:
+                        echo json_encode(['success' => false, 'message' => 'Unknown action']);
+                }
+                break;
+            // Add other tabs' AJAX handlers here if needed
+            default:
+                echo json_encode(['success' => false, 'message' => 'Unknown tab']);
+        }
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+    exit;
+}
+
 // Check if procurement tables exist
 $tableExists = false;
 try {
