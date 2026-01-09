@@ -5,17 +5,17 @@
  */
 
 $featuredProducts = $featuredProductService->getFeaturedProducts(8);
-if (empty($featuredProducts)) return;
 ?>
 
 <!-- Featured Products Section -->
 <section class="featured-products-section" id="featured-products">
     <div class="container">
         <div class="section-title">
-            <h2>สินค้าแนะนำ</h2>
+            <h2>🛍️ สินค้าแนะนำ</h2>
             <p>สินค้าคุณภาพ คัดสรรมาเพื่อคุณ</p>
         </div>
         
+        <?php if (!empty($featuredProducts)): ?>
         <div class="products-grid">
             <?php foreach ($featuredProducts as $product): ?>
             <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/product/' . $product['id'] : '#' ?>" 
@@ -58,6 +58,19 @@ if (empty($featuredProducts)) return;
                 <i class="fas fa-th-large"></i>
                 ดูสินค้าทั้งหมด
             </a>
+        </div>
+        <?php endif; ?>
+        
+        <?php else: ?>
+        <div class="no-products-message">
+            <i class="fas fa-box-open"></i>
+            <p>กำลังเตรียมสินค้าแนะนำ</p>
+            <?php if ($liffUrl): ?>
+            <a href="<?= htmlspecialchars($liffUrl) ?>#/shop" class="btn btn-outline-primary">
+                <i class="fas fa-shopping-bag"></i>
+                เข้าชมร้านค้า
+            </a>
+            <?php endif; ?>
         </div>
         <?php endif; ?>
     </div>
@@ -215,5 +228,23 @@ if (empty($featuredProducts)) return;
     background: var(--primary);
     color: white;
     transform: translateY(-2px);
+}
+
+/* No Products Message */
+.no-products-message {
+    text-align: center;
+    padding: 48px 20px;
+    color: #6b7280;
+}
+
+.no-products-message i {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.no-products-message p {
+    font-size: 1.1rem;
+    margin-bottom: 24px;
 }
 </style>

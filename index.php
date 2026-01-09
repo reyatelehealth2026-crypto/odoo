@@ -877,35 +877,8 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
     <!-- Banner Slider Section (moved to top) -->
     <?php include 'includes/landing/banner-slider.php'; ?>
     
-    <!-- Hero Section (Requirements: 1.1, 1.2, 1.3) -->
-    <section class="hero-section">
-        <div class="container">
-            <div class="hero-content">
-                <h1 class="hero-title"><?= htmlspecialchars($shopName) ?></h1>
-                <p class="hero-subtitle"><?= htmlspecialchars($shopDescription) ?></p>
-                
-                <div class="hero-cta">
-                    <?php if ($liffUrl): ?>
-                    <!-- Requirements: 2.1, 2.2, 2.3, 2.4 -->
-                    <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-primary">
-                        <i class="fab fa-line"></i>
-                        เริ่มใช้งานเลย
-                    </a>
-                    <?php else: ?>
-                    <span class="btn btn-outline" style="cursor: default;">
-                        <i class="fas fa-clock"></i>
-                        เร็วๆ นี้
-                    </span>
-                    <?php endif; ?>
-                    
-                    <a href="#services" class="btn btn-outline">
-                        <i class="fas fa-info-circle"></i>
-                        ดูบริการ
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
+    <!-- Featured Products Section (แทน Hero Section) -->
+    <?php include 'includes/landing/featured-products.php'; ?>
     
     <!-- Services Section (Requirements: 1.4, 5.1) -->
     <section class="services-section" id="services">
