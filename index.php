@@ -943,46 +943,6 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         </div>
     </section>
     
-    <?php if (!empty($promotions)): ?>
-    <!-- Promotions Section (Requirements: 5.2) -->
-    <section class="promotions-section" id="promotions">
-        <div class="container">
-            <div class="section-title">
-                <h2>สินค้าแนะนำ</h2>
-                <p>สินค้าคุณภาพ ราคาพิเศษ</p>
-            </div>
-            
-            <div class="promotions-grid">
-                <?php foreach ($promotions as $product): ?>
-                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/product/' . $product['id'] : '#' ?>" class="promo-card">
-                    <div class="promo-image">
-                        <?php if (!empty($product['image_url'])): ?>
-                        <img src="<?= htmlspecialchars($product['image_url']) ?>" alt="<?= htmlspecialchars($product['name']) ?>" loading="lazy">
-                        <?php else: ?>
-                        <div style="width:100%;height:100%;background:#F3F4F6;display:flex;align-items:center;justify-content:center;">
-                            <i class="fas fa-image" style="font-size:32px;color:#D1D5DB;"></i>
-                        </div>
-                        <?php endif; ?>
-                        
-                        <?php if (!empty($product['is_featured'])): ?>
-                        <span class="promo-badge badge-featured">แนะนำ</span>
-                        <?php elseif (!empty($product['is_bestseller'])): ?>
-                        <span class="promo-badge badge-bestseller">ขายดี</span>
-                        <?php elseif (!empty($product['is_new'])): ?>
-                        <span class="promo-badge badge-new">ใหม่</span>
-                        <?php endif; ?>
-                    </div>
-                    <div class="promo-info">
-                        <div class="promo-name"><?= htmlspecialchars($product['name']) ?></div>
-                        <div class="promo-price">฿<?= number_format($product['price'], 0) ?></div>
-                    </div>
-                </a>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </section>
-    <?php endif; ?>
-
     <!-- Contact Section with Operating Hours, Phone/LINE Links, and Map (Requirements: 7.1, 7.2, 7.3, 7.4, 7.5) -->
     <?php include 'includes/landing/contact-section.php'; ?>
     
@@ -1022,9 +982,6 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
                 
                 <div class="footer-links">
                     <a href="#services">บริการ</a>
-                    <?php if (!empty($promotions)): ?>
-                    <a href="#promotions">สินค้า</a>
-                    <?php endif; ?>
                     <a href="#contact">ติดต่อ</a>
                     <a href="privacy-policy.php">นโยบายความเป็นส่วนตัว</a>
                     <a href="terms-of-service.php">ข้อกำหนดการใช้งาน</a>
