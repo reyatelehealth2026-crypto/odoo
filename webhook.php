@@ -717,7 +717,45 @@ if (!$line) {
             // Handle different message types
             $mediaUrl = null;
             if (in_array($messageType, ['image', 'video', 'audio', 'file'])) {
-                $messageContent = "[{$messageType}] ID: {$messageId}";
+                // ดาวน์โหลดและเก็บ media ไว้ใน server ทันที (LINE จะลบ content หลังจากผ่านไประยะหนึ่ง)
+                $savedMediaUrl = null;
+                if ($messageType === 'image') {
+                    try {
+                        $imageData = $line->getMessageContent($messageId);
+                        if ($imageData && strlen($imageData) > 100) {
+                            $uploadDir = __DIR__ . '/uploads/line_images/';
+                            if (!is_dir($uploadDir)) {
+                                mkdir($uploadDir, 0755, true);
+                            }
+                            
+                            // Detect extension from binary
+                            $finfo = new finfo(FILEINFO_MIME_TYPE);
+                            $mimeType = $finfo->buffer($imageData) ?: 'image/jpeg';
+                            $ext = 'jpg';
+                            if ($mimeType === 'image/png') $ext = 'png';
+                            elseif ($mimeType === 'image/gif') $ext = 'gif';
+                            elseif ($mimeType === 'image/webp') $ext = 'webp';
+                            
+                            $filename = 'line_' . $messageId . '_' . time() . '.' . $ext;
+                            $filepath = $uploadDir . $filename;
+                            
+                            if (file_put_contents($filepath, $imageData)) {
+                                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+                                $host = $_SERVER['HTTP_HOST'] ?? (defined('BASE_URL') ? parse_url(BASE_URL, PHP_URL_HOST) : 'localhost');
+                                $savedMediaUrl = $protocol . $host . '/uploads/line_images/' . $filename;
+                            }
+                        }
+                    } catch (Exception $e) {
+                        error_log("Failed to save LINE image: " . $e->getMessage());
+                    }
+                }
+                
+                // ถ้าบันทึกรูปได้ ใช้ URL ที่บันทึก ถ้าไม่ได้ใช้ LINE message ID เป็น fallback
+                if ($savedMediaUrl) {
+                    $messageContent = $savedMediaUrl;
+                } else {
+                    $messageContent = "[{$messageType}] ID: {$messageId}";
+                }
                 $mediaUrl = $messageId;
                 
                 // Check if user is in "waiting_slip" or "awaiting_slip" state - auto accept slip

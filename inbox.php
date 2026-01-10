@@ -836,11 +836,15 @@ function formatThaiDateTime($datetime) {
                     <?php elseif ($type === 'image'): ?>
                         <?php 
                         $imgSrc = $content;
+                        // ถ้าเป็น URL ให้ใช้ตรงๆ ถ้าเป็น LINE message ID ให้ใช้ line_content.php
                         if (preg_match('/ID:\s*(\d+)/', $content, $m)) {
                             $imgSrc = 'api/line_content.php?id=' . $m[1];
+                        } elseif (!preg_match('/^https?:\/\//', $content)) {
+                            // ถ้าไม่ใช่ URL และไม่ใช่ ID format ให้ลองใช้เป็น message ID
+                            $imgSrc = 'api/line_content.php?id=' . $content;
                         }
                         ?>
-                        <img src="<?= htmlspecialchars($imgSrc) ?>" class="rounded-xl max-w-[200px] border shadow-sm cursor-pointer hover:opacity-90" onclick="openImage(this.src)">
+                        <img src="<?= htmlspecialchars($imgSrc) ?>" class="rounded-xl max-w-[200px] border shadow-sm cursor-pointer hover:opacity-90" onclick="openImage(this.src)" onerror="this.src='assets/images/image-not-found.svg'; this.classList.add('opacity-50')">
                     <?php elseif ($type === 'sticker'): ?>
                         <?php 
                         $stickerId = '';
@@ -1603,8 +1607,13 @@ function appendMessage(msg) {
     } else if (type === 'image') {
         let imgSrc = content;
         const match = content.match(/ID:\s*(\d+)/);
-        if (match) imgSrc = 'api/line_content.php?id=' + match[1];
-        contentHtml = `<img src="${imgSrc}" class="rounded-xl max-w-[200px] border shadow-sm cursor-pointer hover:opacity-90" onclick="openImage(this.src)">`;
+        if (match) {
+            imgSrc = 'api/line_content.php?id=' + match[1];
+        } else if (!content.match(/^https?:\/\//)) {
+            // ถ้าไม่ใช่ URL และไม่ใช่ ID format ให้ลองใช้เป็น message ID
+            imgSrc = 'api/line_content.php?id=' + content;
+        }
+        contentHtml = `<img src="${imgSrc}" class="rounded-xl max-w-[200px] border shadow-sm cursor-pointer hover:opacity-90" onclick="openImage(this.src)" onerror="this.src='assets/images/image-not-found.svg'; this.classList.add('opacity-50')">`;
     } else if (type === 'sticker') {
         let stickerId = '';
         try {
