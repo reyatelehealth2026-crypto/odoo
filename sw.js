@@ -2,7 +2,7 @@
  * Service Worker for LINE OA Manager PWA
  */
 
-const CACHE_NAME = 'line-oa-manager-v2';
+const CACHE_NAME = 'line-oa-manager-v3';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache
