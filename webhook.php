@@ -1038,12 +1038,29 @@ if (!$line) {
                     require_once __DIR__ . '/classes/GeminiChat.php';
                     $gemini = new GeminiChat($db, $lineAccountId);
                     
+                    devLog($db, 'debug', 'webhook', 'AI Simple Mode check', [
+                        'is_enabled' => $gemini->isEnabled() ? 'yes' : 'no',
+                        'message' => mb_substr($messageText, 0, 30)
+                    ], $userId);
+                    
                     if ($gemini->isEnabled()) {
                         $currentReplyToken = $event['replyToken'] ?? $replyToken ?? null;
                         
+                        devLog($db, 'debug', 'webhook', 'Calling Gemini API...', [
+                            'has_token' => $currentReplyToken ? 'yes' : 'no'
+                        ], $userId);
+                        
                         // เรียก Gemini ตอบเลย
                         set_time_limit(60);
+                        $startTime = microtime(true);
                         $response = $gemini->generateResponse($messageText, $user['id'], []);
+                        $elapsed = round((microtime(true) - $startTime) * 1000);
+                        
+                        devLog($db, 'debug', 'webhook', 'Gemini response received', [
+                            'elapsed_ms' => $elapsed,
+                            'has_response' => $response ? 'yes' : 'no',
+                            'response_length' => $response ? mb_strlen($response) : 0
+                        ], $userId);
                         
                         if ($response) {
                             $aiReply = [[
@@ -1056,8 +1073,11 @@ if (!$line) {
                                 $replyResult = $line->replyMessage($currentReplyToken, $aiReply);
                                 devLog($db, 'debug', 'webhook', 'AI reply sent', [
                                     'code' => $replyResult['code'] ?? 0,
+                                    'body' => json_encode($replyResult['body'] ?? null),
                                     'message' => mb_substr($messageText, 0, 30)
                                 ], $userId);
+                            } else {
+                                devLog($db, 'error', 'webhook', 'No replyToken for AI response', [], $userId);
                             }
                             
                             saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'text');
