@@ -1033,9 +1033,28 @@ if (!$line) {
             
             // ===== AI ตอบเฉพาะเมื่อใช้ / หรือ @ command =====
             // ตรวจสอบว่าเป็น AI command หรือไม่ (รองรับทั้ง English และ Thai)
+            // หรือถ้าไม่มี / นำหน้า ก็ให้ส่งไป AI ถ้า AI enabled
             $isAICommand = preg_match('/^[\/\@][\w\p{Thai}]+/u', trim($messageText));
             
-            if ($isAICommand && isset($user['id'])) {
+            // ถ้าไม่ใช่ AI command แต่ AI enabled → ส่งไป AI เหมือนกัน
+            $shouldProcessAI = $isAICommand;
+            if (!$shouldProcessAI && isset($user['id'])) {
+                // ตรวจสอบว่า AI enabled หรือไม่
+                try {
+                    $stmt = $db->prepare("SELECT is_enabled FROM ai_settings WHERE line_account_id = ? LIMIT 1");
+                    $stmt->execute([$lineAccountId]);
+                    $aiEnabled = $stmt->fetchColumn();
+                    if ($aiEnabled) {
+                        $shouldProcessAI = true;
+                        devLog($db, 'debug', 'webhook', 'Non-command message sent to AI', [
+                            'message' => mb_substr($messageText, 0, 50),
+                            'user_id' => $userId
+                        ], $userId);
+                    }
+                } catch (Exception $e) {}
+            }
+            
+            if ($shouldProcessAI && isset($user['id'])) {
                 try {
                     // ดึง replyToken จาก event โดยตรง (ไม่ใช้ parameter ที่อาจถูกแก้ไข)
                     $currentReplyToken = $event['replyToken'] ?? $replyToken ?? null;
