@@ -192,11 +192,24 @@ if (!$line) {
             
             // Deduplication: ป้องกันการประมวลผล event ซ้ำ
             $webhookEventId = $event['webhookEventId'] ?? null;
+            $messageText = $event['message']['text'] ?? '';
+            
+            // Log ทุก event ที่เข้ามา
+            devLog($db, 'debug', 'webhook', 'Event received', [
+                'event_id' => $webhookEventId ? substr($webhookEventId, 0, 20) : 'none',
+                'type' => $event['type'] ?? 'unknown',
+                'message' => mb_substr($messageText, 0, 30),
+                'user_id' => $userId
+            ], $userId);
+            
             if ($webhookEventId) {
                 try {
                     $stmt = $db->prepare("SELECT id FROM webhook_events WHERE event_id = ?");
                     $stmt->execute([$webhookEventId]);
                     if ($stmt->fetch()) {
+                        devLog($db, 'warning', 'webhook', 'Duplicate event skipped', [
+                            'event_id' => substr($webhookEventId, 0, 20)
+                        ], $userId);
                         continue; // Event นี้ถูกประมวลผลแล้ว
                     }
                     // บันทึก event ID
