@@ -45,7 +45,7 @@ class GeminiChat
         ];
         
         try {
-            // Load from ai_settings table
+            // Load from ai_settings table first
             $stmt = $this->db->prepare("SELECT * FROM ai_settings WHERE line_account_id = ? LIMIT 1");
             $stmt->execute([$this->lineAccountId]);
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -55,6 +55,22 @@ class GeminiChat
                 $this->apiKey = $result['gemini_api_key'] ?? '';
                 $this->model = $result['model'] ?? self::DEFAULT_MODEL;
                 $this->settings['is_enabled'] = ($result['is_enabled'] == 1);
+            }
+            
+            // Fallback: ถ้าไม่มี API key ใน ai_settings ให้ลองดึงจาก ai_chat_settings
+            if (empty($this->apiKey)) {
+                try {
+                    $stmt2 = $this->db->prepare("SELECT gemini_api_key, is_enabled FROM ai_chat_settings WHERE line_account_id = ? AND is_enabled = 1 LIMIT 1");
+                    $stmt2->execute([$this->lineAccountId]);
+                    $chatSettings = $stmt2->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($chatSettings && !empty($chatSettings['gemini_api_key'])) {
+                        $this->apiKey = $chatSettings['gemini_api_key'];
+                        $this->settings['is_enabled'] = true;
+                    }
+                } catch (Exception $e) {
+                    // ai_chat_settings table might not exist
+                }
             }
             
         } catch (Exception $e) {
