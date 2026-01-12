@@ -1032,103 +1032,40 @@ if (!$line) {
             }
             
             // ===== AI ตอบเฉพาะเมื่อใช้ / หรือ @ command =====
-            // ตรวจสอบว่าเป็น AI command หรือไม่ (รองรับทั้ง English และ Thai)
-            // หรือถ้าไม่มี / นำหน้า ก็ให้ส่งไป AI ถ้า AI enabled
-            $isAICommand = preg_match('/^[\/\@][\w\p{Thai}]+/u', trim($messageText));
-            
-            // ถ้าไม่ใช่ AI command แต่ AI enabled → ส่งไป AI เหมือนกัน
-            $shouldProcessAI = $isAICommand;
-            if (!$shouldProcessAI && isset($user['id'])) {
-                // ตรวจสอบว่า AI enabled หรือไม่
+            // ===== AI SIMPLE MODE: ลูกค้าพิมพ์อะไรก็ตอบเลย =====
+            if (isset($user['id'])) {
                 try {
-                    $stmt = $db->prepare("SELECT is_enabled FROM ai_settings WHERE line_account_id = ? LIMIT 1");
-                    $stmt->execute([$lineAccountId]);
-                    $aiEnabled = $stmt->fetchColumn();
-                    if ($aiEnabled) {
-                        $shouldProcessAI = true;
-                        devLog($db, 'debug', 'webhook', 'Non-command message sent to AI', [
-                            'message' => mb_substr($messageText, 0, 50),
-                            'user_id' => $userId
-                        ], $userId);
-                    }
-                } catch (Exception $e) {}
-            }
-            
-            if ($shouldProcessAI && isset($user['id'])) {
-                try {
-                    // ดึง replyToken จาก event โดยตรง (ไม่ใช้ parameter ที่อาจถูกแก้ไข)
-                    $currentReplyToken = $event['replyToken'] ?? $replyToken ?? null;
+                    require_once __DIR__ . '/classes/GeminiChat.php';
+                    $gemini = new GeminiChat($db, $lineAccountId);
                     
-                    // Log replyToken status
-                    devLog($db, 'debug', 'webhook', 'AI command - replyToken check', [
-                        'has_token' => $currentReplyToken ? 'yes' : 'no',
-                        'token_length' => $currentReplyToken ? strlen($currentReplyToken) : 0,
-                        'user_id' => $userId
-                    ], $userId);
-                    
-                    // บันทึกเวลาเริ่มต้น
-                    $aiStartTime = microtime(true);
-                    
-                    // แสดง Loading Animation (ไม่ใช้ replyToken)
-                    showLoadingAnimation($line, $userId, 30);
-                    
-                    $aiReply = checkAIChatbot($db, $messageText, $lineAccountId, $user['id']);
-                    
-                    // คำนวณเวลาที่ใช้
-                    $aiElapsed = round((microtime(true) - $aiStartTime) * 1000);
-                    
-                    if ($aiReply) {
-                        // Validate AI response format
-                        if (!is_array($aiReply)) {
-                            devLog($db, 'error', 'webhook', 'AI reply is not array', [
-                                'type' => gettype($aiReply),
-                                'user_id' => $userId
-                            ], $userId);
-                            $aiReply = [['type' => 'text', 'text' => (string)$aiReply]];
-                        }
+                    if ($gemini->isEnabled()) {
+                        $currentReplyToken = $event['replyToken'] ?? $replyToken ?? null;
                         
-                        // ใช้ replyMessage เท่านั้น (ไม่ fallback ไป push)
-                        if ($currentReplyToken) {
-                            $replyResult = $line->replyMessage($currentReplyToken, $aiReply);
-                            $replyCode = $replyResult['code'] ?? 0;
+                        // เรียก Gemini ตอบเลย
+                        set_time_limit(60);
+                        $response = $gemini->generateResponse($messageText, $user['id'], []);
+                        
+                        if ($response) {
+                            $aiReply = [[
+                                'type' => 'text',
+                                'text' => $response
+                            ]];
                             
-                            if ($replyCode !== 200) {
-                                $errorMsg = $replyResult['body']['message'] ?? 'Unknown error';
-                                devLog($db, 'error', 'webhook', 'replyMessage failed: ' . $errorMsg, [
-                                    'user_id' => $userId,
-                                    'replyCode' => $replyCode,
-                                    'replyBody' => $replyResult['body'] ?? null,
-                                    'elapsed_ms' => $aiElapsed,
-                                    'token_length' => strlen($currentReplyToken)
-                                ], $userId);
-                            } else {
-                                devLog($db, 'debug', 'webhook', 'replyMessage success', [
-                                    'elapsed_ms' => $aiElapsed,
-                                    'user_id' => $userId
+                            // ส่งกลับด้วย replyMessage
+                            if ($currentReplyToken) {
+                                $replyResult = $line->replyMessage($currentReplyToken, $aiReply);
+                                devLog($db, 'debug', 'webhook', 'AI reply sent', [
+                                    'code' => $replyResult['code'] ?? 0,
+                                    'message' => mb_substr($messageText, 0, 30)
                                 ], $userId);
                             }
-                        } else {
-                            devLog($db, 'error', 'webhook', 'No replyToken available for AI response', [
-                                'user_id' => $userId,
-                                'elapsed_ms' => $aiElapsed
-                            ], $userId);
+                            
+                            saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'text');
+                            return;
                         }
-                        
-                        saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'flex');
-                        devLog($db, 'debug', 'webhook', 'AI command processed', [
-                            'message' => mb_substr($messageText, 0, 50),
-                            'elapsed_ms' => $aiElapsed
-                        ], $userId);
-                        return;
-                    } else {
-                        // ไม่มี command ที่ match - log และรอแอดมิน
-                        devLog($db, 'info', 'webhook', 'No matching command - waiting for admin', ['message' => mb_substr($messageText, 0, 50)], $userId);
                     }
                 } catch (Exception $e) {
-                    devLog($db, 'error', 'webhook', 'AI command error: ' . $e->getMessage(), [
-                        'user_id' => $userId,
-                        'trace' => $e->getTraceAsString()
-                    ], $userId);
+                    devLog($db, 'error', 'webhook', 'AI error: ' . $e->getMessage(), [], $userId);
                 }
             }
             
