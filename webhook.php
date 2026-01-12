@@ -2270,6 +2270,12 @@ if (!$line) {
                 }
                 
                 // ===== ถ้าเป็น Pharmacist Mode → ใช้ PharmacyAI Adapter =====
+                devLog($db, 'debug', 'AI_before_pharmacy', 'Checking PharmacyAI condition', [
+                    'currentAIMode' => $currentAIMode,
+                    'is_pharmacist' => ($currentAIMode === 'pharmacist' || $currentAIMode === 'pharmacy') ? 'yes' : 'no',
+                    'file_exists' => file_exists(__DIR__ . '/modules/AIChat/Adapters/PharmacyAIAdapter.php') ? 'yes' : 'no'
+                ], null);
+                
                 $usePharmacyAI = ($currentAIMode === 'pharmacist' || $currentAIMode === 'pharmacy') 
                                  && file_exists(__DIR__ . '/modules/AIChat/Adapters/PharmacyAIAdapter.php');
                 
