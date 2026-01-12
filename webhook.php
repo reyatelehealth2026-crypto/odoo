@@ -2185,6 +2185,12 @@ if (!$line) {
                 // ถ้าใช้ command /ai ให้ใช้ข้อความหลัง command
                 $messageToProcess = ($commandMode === 'pharmacy' && !empty($commandMessage)) ? $commandMessage : $text;
                 
+                devLog($db, 'debug', 'AI_flow', 'Entering AI section', [
+                    'command_mode' => $commandMode,
+                    'message_to_process' => mb_substr($messageToProcess, 0, 50),
+                    'line_account_id' => $lineAccountId
+                ], null);
+                
                 // ดึง AI mode จาก ai_settings
                 $currentAIMode = 'sales'; // default
                 try {
