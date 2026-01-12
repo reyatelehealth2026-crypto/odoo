@@ -2354,13 +2354,18 @@ async function pollMessages() {
         const url = `api/messages.php?action=poll&user_id=${userId}&last_id=${lastMessageId}&_t=${Date.now()}`;
         console.log('📡 Delta polling:', url);
         
-        const res = await fetch(url);
+        // Also fetch all conversations to update sidebar order
+        const [msgRes, convRes] = await Promise.all([
+            fetch(url),
+            fetch(`api/messages.php?action=get_conversations&_t=${Date.now()}`)
+        ]);
         
-        if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
+        if (!msgRes.ok) {
+            throw new Error(`HTTP ${msgRes.status}`);
         }
         
-        const data = await res.json();
+        const data = await msgRes.json();
+        const convData = await convRes.json();
         console.log('📥 Poll response:', data);
         
         if (data.success) {
@@ -2368,6 +2373,21 @@ async function pollMessages() {
             lastPollTime = Date.now();
             currentPollInterval = getPollingInterval(); // Reset to normal interval
             if (indicator) indicator.style.background = '#86EFAC'; // green = success
+            
+            // Update sidebar order from conversations data
+            if (convData.success && convData.conversations) {
+                const sortedConvs = convData.conversations.sort((a, b) => {
+                    const timeA = a.last_time ? new Date(a.last_time).getTime() : 0;
+                    const timeB = b.last_time ? new Date(b.last_time).getTime() : 0;
+                    return timeB - timeA;
+                });
+                reorderSidebar(sortedConvs);
+                sortedConvs.forEach(conv => updateSidebarUser(conv));
+                
+                if (convData.total_unread > 0) {
+                    document.getElementById('totalUnread').textContent = convData.total_unread;
+                }
+            }
             
             // Add new messages to chat (delta update)
             if (data.messages && data.messages.length > 0) {
@@ -2409,8 +2429,15 @@ async function pollMessages() {
             
             // Notifications for other users + update sidebar
             if (data.updated_conversations) {
-                data.updated_conversations.forEach(conv => {
-                    // Update sidebar item
+                // Sort by last_time (newest first)
+                const sortedConvs = data.updated_conversations.sort((a, b) => {
+                    const timeA = a.last_time ? new Date(a.last_time).getTime() : 0;
+                    const timeB = b.last_time ? new Date(b.last_time).getTime() : 0;
+                    return timeB - timeA;
+                });
+                
+                sortedConvs.forEach(conv => {
+                    // Update sidebar item and move to top
                     updateSidebarUser(conv);
                     
                     // Show notification for other users - Requirements: 1.2
@@ -2516,8 +2543,18 @@ async function pollSidebar() {
         const data = await res.json();
         
         if (data.success && data.conversations) {
+            // Sort conversations by last_time (newest first)
+            const sortedConvs = data.conversations.sort((a, b) => {
+                const timeA = a.last_time ? new Date(a.last_time).getTime() : 0;
+                const timeB = b.last_time ? new Date(b.last_time).getTime() : 0;
+                return timeB - timeA;
+            });
+            
+            // Reorder sidebar to match sorted order
+            reorderSidebar(sortedConvs);
+            
             // Update sidebar with new data
-            data.conversations.forEach(conv => {
+            sortedConvs.forEach(conv => {
                 updateSidebarUser(conv);
             });
             
@@ -2529,6 +2566,26 @@ async function pollSidebar() {
     } catch (err) {
         console.error('Sidebar poll error:', err);
     }
+}
+
+// Reorder sidebar items to match sorted conversations
+function reorderSidebar(sortedConvs) {
+    const userList = document.getElementById('userList');
+    if (!userList) return;
+    
+    sortedConvs.forEach((conv, index) => {
+        const item = userList.querySelector(`[data-user-id="${conv.id}"]`);
+        if (item) {
+            const currentIndex = Array.from(userList.children).indexOf(item);
+            if (currentIndex !== index) {
+                // Move item to correct position
+                const referenceNode = userList.children[index];
+                if (referenceNode && referenceNode !== item) {
+                    userList.insertBefore(item, referenceNode);
+                }
+            }
+        }
+    });
 }
 
 // ===== Conversation Caching - Requirements: 11.6 =====
