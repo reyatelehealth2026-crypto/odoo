@@ -1032,8 +1032,8 @@ if (!$line) {
             }
             
             // ===== AI ตอบเฉพาะเมื่อใช้ / หรือ @ command =====
-            // ตรวจสอบว่าเป็น AI command หรือไม่
-            $isAICommand = preg_match('/^[\/\@](\w+)/u', trim($messageText));
+            // ตรวจสอบว่าเป็น AI command หรือไม่ (รองรับทั้ง English และ Thai)
+            $isAICommand = preg_match('/^[\/\@][\w\p{Thai}]+/u', trim($messageText));
             
             if ($isAICommand && isset($user['id'])) {
                 try {
