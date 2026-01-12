@@ -98,20 +98,13 @@ echo "<h3>Step 3: แก้ไข</h3>";
 if (isset($_POST['fix'])) {
     try {
         if ($aiSettings) {
-            // Update existing
-            $sql = "UPDATE ai_settings SET is_enabled = 1, ai_mode = 'sales'";
-            $params = [];
+            // Update existing - ใช้ COLLATE เพื่อหลีกเลี่ยง collation error
+            $db->exec("UPDATE ai_settings SET is_enabled = 1, ai_mode = 'sales' WHERE line_account_id = {$lineAccountId}");
             
             if ($apiKey && empty($aiSettings['gemini_api_key'])) {
-                $sql .= ", gemini_api_key = ?";
-                $params[] = $apiKey;
+                $stmt = $db->prepare("UPDATE ai_settings SET gemini_api_key = ? WHERE line_account_id = ?");
+                $stmt->execute([$apiKey, $lineAccountId]);
             }
-            
-            $sql .= " WHERE line_account_id = ?";
-            $params[] = $lineAccountId;
-            
-            $stmt = $db->prepare($sql);
-            $stmt->execute($params);
             
             echo "<p class='ok'>✅ อัพเดท ai_settings สำเร็จ!</p>";
         } else {

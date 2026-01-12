@@ -1037,35 +1037,77 @@ if (!$line) {
             
             if ($isAICommand && isset($user['id'])) {
                 try {
-                    // แสดง Loading Animation
+                    // บันทึกเวลาเริ่มต้น
+                    $aiStartTime = microtime(true);
+                    
+                    // แสดง Loading Animation (ไม่ใช้ replyToken)
                     showLoadingAnimation($line, $userId, 30);
                     
                     $aiReply = checkAIChatbot($db, $messageText, $lineAccountId, $user['id']);
                     
+                    // คำนวณเวลาที่ใช้
+                    $aiElapsed = round((microtime(true) - $aiStartTime) * 1000);
+                    
                     if ($aiReply) {
-                        // ลอง replyMessage ก่อน (ฟรี!)
-                        $replyResult = $line->replyMessage($replyToken, $aiReply);
-                        $replyCode = $replyResult['code'] ?? 0;
+                        // Validate AI response format
+                        if (!is_array($aiReply)) {
+                            devLog($db, 'error', 'webhook', 'AI reply is not array', [
+                                'type' => gettype($aiReply),
+                                'user_id' => $userId
+                            ], $userId);
+                            $aiReply = [['type' => 'text', 'text' => (string)$aiReply]];
+                        }
                         
-                        // ถ้า reply ไม่สำเร็จ ให้ใช้ pushMessage แทน
-                        if ($replyCode !== 200) {
-                            devLog($db, 'warning', 'webhook', 'replyMessage failed, using pushMessage', [
-                                'user_id' => $userId,
-                                'replyCode' => $replyCode,
-                                'replyBody' => $replyResult['body'] ?? null
+                        // ตรวจสอบว่า replyToken ยังใช้ได้ (ไม่เกิน 25 วินาที)
+                        $canUseReply = ($aiElapsed < 25000);
+                        
+                        if ($canUseReply && $replyToken) {
+                            // ลอง replyMessage ก่อน (ฟรี!)
+                            $replyResult = $line->replyMessage($replyToken, $aiReply);
+                            $replyCode = $replyResult['code'] ?? 0;
+                            
+                            // ถ้า reply ไม่สำเร็จ ให้ใช้ pushMessage แทน
+                            if ($replyCode !== 200) {
+                                $errorMsg = $replyResult['body']['message'] ?? 'Unknown error';
+                                devLog($db, 'warning', 'webhook', 'replyMessage failed: ' . $errorMsg, [
+                                    'user_id' => $userId,
+                                    'replyCode' => $replyCode,
+                                    'replyBody' => $replyResult['body'] ?? null,
+                                    'elapsed_ms' => $aiElapsed,
+                                    'reply_count' => count($aiReply)
+                                ], $userId);
+                                
+                                // Fallback to pushMessage
+                                $pushResult = $line->pushMessage($userId, $aiReply);
+                                devLog($db, 'debug', 'webhook', 'pushMessage result', [
+                                    'code' => $pushResult['code'] ?? 0,
+                                    'user_id' => $userId
+                                ], $userId);
+                            }
+                        } else {
+                            // ใช้ pushMessage โดยตรง (token อาจหมดอายุ)
+                            devLog($db, 'info', 'webhook', 'Using pushMessage directly (elapsed > 25s or no token)', [
+                                'elapsed_ms' => $aiElapsed,
+                                'has_token' => $replyToken ? 'yes' : 'no'
                             ], $userId);
                             $line->pushMessage($userId, $aiReply);
                         }
                         
                         saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'flex');
-                        devLog($db, 'debug', 'webhook', 'AI command processed', ['message' => mb_substr($messageText, 0, 50)], $userId);
+                        devLog($db, 'debug', 'webhook', 'AI command processed', [
+                            'message' => mb_substr($messageText, 0, 50),
+                            'elapsed_ms' => $aiElapsed
+                        ], $userId);
                         return;
                     } else {
                         // ไม่มี command ที่ match - log และรอแอดมิน
                         devLog($db, 'info', 'webhook', 'No matching command - waiting for admin', ['message' => mb_substr($messageText, 0, 50)], $userId);
                     }
                 } catch (Exception $e) {
-                    devLog($db, 'error', 'webhook', 'AI command error: ' . $e->getMessage(), ['user_id' => $userId], $userId);
+                    devLog($db, 'error', 'webhook', 'AI command error: ' . $e->getMessage(), [
+                        'user_id' => $userId,
+                        'trace' => $e->getTraceAsString()
+                    ], $userId);
                 }
             }
             
@@ -2148,7 +2190,15 @@ if (!$line) {
                             'history_count' => count($history)
                         ], null);
                         
+                        $startTime = microtime(true);
                         $response = $gemini->generateResponse($messageToProcess, $userId, $history);
+                        $elapsed = round((microtime(true) - $startTime) * 1000);
+                        
+                        devLog($db, 'debug', 'AI_sales', 'GeminiChat response received', [
+                            'elapsed_ms' => $elapsed,
+                            'response_null' => $response === null ? 'yes' : 'no',
+                            'response_length' => $response ? mb_strlen($response) : 0
+                        ], null);
                         
                         if ($response) {
                             // ใช้ sender จาก ai_settings

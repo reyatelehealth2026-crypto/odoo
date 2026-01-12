@@ -427,13 +427,21 @@ class GeminiChat
             CURLOPT_POST => true,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
             CURLOPT_POSTFIELDS => json_encode($data),
-            CURLOPT_TIMEOUT => 30,
+            CURLOPT_TIMEOUT => 25,
+            CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_SSL_VERIFYPEER => true
         ]);
         
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        $curlErrno = curl_errno($ch);
         curl_close($ch);
+        
+        // Log curl error if any
+        if ($curlError || $curlErrno) {
+            error_log("GeminiChat curl error: [{$curlErrno}] {$curlError}");
+        }
         
         $result = json_decode($response, true);
         if ($httpCode === 200 && isset($result['candidates'][0]['content']['parts'][0]['text'])) {
