@@ -1024,9 +1024,12 @@ if (!$line) {
             $stopAICommands = ['ปรึกษาเภสัชกร', 'คุยกับเภสัชกร', 'ขอคุยกับคน', 'ขอคุยกับแอดมิน', 'ติดต่อเภสัชกร', 'ติดต่อแอดมิน', 'หยุดบอท', 'stop bot', 'human'];
             $isStopAICommand = in_array($textLower, $stopAICommands);
             
-            // ตรวจสอบว่าเรียก AI หรือไม่ (@บอท, @bot, @ai)
+            // ตรวจสอบว่าเรียก AI หรือไม่ (@บอท, @bot, @ai หรือ /xxx)
             $isAICall = preg_match('/^@(บอท|bot|ai)\s*/iu', $textTrimmed, $aiMatch);
             $aiMessage = $isAICall ? trim(preg_replace('/^@(บอท|bot|ai)\s*/iu', '', $textTrimmed)) : '';
+            
+            // ตรวจสอบว่าเป็น / command หรือไม่ (เรียก AI โดยตรง)
+            $isSlashCommand = preg_match('/^\/[\w\p{Thai}]+/u', $textTrimmed);
             
             // ถ้าพิมพ์ขอคุยกับเภสัชกร - หยุด AI
             if ($isStopAICommand) {
@@ -1245,6 +1248,28 @@ if (!$line) {
                 } else {
                     // AI ไม่ได้เปิดใช้งาน
                     $line->replyMessage($replyToken, [['type' => 'text', 'text' => '❌ ระบบ AI ยังไม่ได้เปิดใช้งาน กรุณาติดต่อแอดมิน']]);
+                    return;
+                }
+            }
+            
+            // ถ้าเป็น / command - ส่งไปให้ AI ตอบ
+            if ($isSlashCommand) {
+                devLog($db, 'info', 'webhook', 'AI called with / command', [
+                    'user_id' => $userId,
+                    'message' => $messageText
+                ], $userId);
+                
+                $aiReply = checkAIChatbot($db, $messageText, $lineAccountId, $user['id'] ?? null);
+                if ($aiReply) {
+                    $replyResult = $line->replyMessage($replyToken, $aiReply);
+                    $replyCode = $replyResult['code'] ?? 0;
+                    
+                    devLog($db, 'debug', 'webhook', 'AI / command reply result', [
+                        'code' => $replyCode,
+                        'message' => mb_substr($messageText, 0, 30)
+                    ], $userId);
+                    
+                    saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'flex');
                     return;
                 }
             }
