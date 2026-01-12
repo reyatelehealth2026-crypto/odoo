@@ -2181,12 +2181,68 @@ if (!$line) {
                     }
                 }
                 
-                // ===== 5. /ai หรือ Default - PharmacyAI Adapter =====
+                // ===== 5. /ai หรือ Default - ตรวจสอบ AI Mode ก่อน =====
                 // ถ้าใช้ command /ai ให้ใช้ข้อความหลัง command
                 $messageToProcess = ($commandMode === 'pharmacy' && !empty($commandMessage)) ? $commandMessage : $text;
                 
-                // ถ้าไม่มี command และไม่มี keyword พิเศษ → ใช้ PharmacyAI
-                $usePharmacyAI = file_exists(__DIR__ . '/modules/AIChat/Adapters/PharmacyAIAdapter.php');
+                // ดึง AI mode จาก ai_settings
+                $currentAIMode = 'sales'; // default
+                try {
+                    $stmt = $db->prepare("SELECT ai_mode FROM ai_settings WHERE line_account_id = ? LIMIT 1");
+                    $stmt->execute([$lineAccountId]);
+                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                    if ($result && $result['ai_mode']) {
+                        $currentAIMode = $result['ai_mode'];
+                    }
+                } catch (Exception $e) {}
+                
+                devLog($db, 'debug', 'AI_mode_check', 'Current AI mode', [
+                    'mode' => $currentAIMode,
+                    'command_mode' => $commandMode,
+                    'line_account_id' => $lineAccountId
+                ], null);
+                
+                // ===== ถ้าเป็น Sales Mode → ใช้ GeminiChat (ไม่ใช่ PharmacyAI) =====
+                if ($currentAIMode === 'sales' && file_exists(__DIR__ . '/classes/GeminiChat.php')) {
+                    require_once __DIR__ . '/classes/GeminiChat.php';
+                    
+                    $gemini = new GeminiChat($db, $lineAccountId);
+                    
+                    if ($gemini->isEnabled()) {
+                        $history = $userId ? $gemini->getConversationHistory($userId, 10) : [];
+                        
+                        devLog($db, 'debug', 'AI_sales', 'Processing AI request (Sales Mode)', [
+                            'user_id' => $userId,
+                            'line_account_id' => $lineAccountId,
+                            'message' => mb_substr($messageToProcess, 0, 50),
+                            'history_count' => count($history)
+                        ], null);
+                        
+                        $response = $gemini->generateResponse($messageToProcess, $userId, $history);
+                        
+                        if ($response) {
+                            $message = [
+                                'type' => 'text',
+                                'text' => $response,
+                                'sender' => [
+                                    'name' => '🛒 พนักงานขาย AI',
+                                    'iconUrl' => 'https://cdn-icons-png.flaticon.com/512/4712/4712109.png'
+                                ]
+                            ];
+                            
+                            devLog($db, 'debug', 'AI_sales', 'AI response generated (Sales Mode)', [
+                                'user_id' => $userId,
+                                'response_length' => mb_strlen($response)
+                            ], null);
+                            
+                            return [$message];
+                        }
+                    }
+                }
+                
+                // ===== ถ้าเป็น Pharmacist Mode → ใช้ PharmacyAI Adapter =====
+                $usePharmacyAI = ($currentAIMode === 'pharmacist' || $currentAIMode === 'pharmacy') 
+                                 && file_exists(__DIR__ . '/modules/AIChat/Adapters/PharmacyAIAdapter.php');
                 
                 if ($usePharmacyAI && $userId) {
                     try {
