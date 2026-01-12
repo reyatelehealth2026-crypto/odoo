@@ -120,9 +120,10 @@ require_once __DIR__ . '/includes/header.php';
                         <div>
                             <label class="block text-sm font-medium mb-2">Model</label>
                             <select name="default_model" class="w-full px-4 py-3 border rounded-lg">
-                                <option value="gemini-2.0-flash" <?= $defaultModel === 'gemini-2.0-flash' ? 'selected' : '' ?>>Gemini 2.0 Flash</option>
-                                <option value="gemini-1.5-flash" <?= $defaultModel === 'gemini-1.5-flash' ? 'selected' : '' ?>>Gemini 1.5 Flash</option>
+                                <option value="gemini-2.5-flash-preview-05-20" <?= $defaultModel === 'gemini-2.5-flash-preview-05-20' ? 'selected' : '' ?>>⭐ Gemini 2.5 Flash (ใหม่ล่าสุด)</option>
+                                <option value="gemini-2.0-flash" <?= $defaultModel === 'gemini-2.0-flash' ? 'selected' : '' ?>>Gemini 2.0 Flash (แนะนำ)</option>
                                 <option value="gemini-1.5-pro" <?= $defaultModel === 'gemini-1.5-pro' ? 'selected' : '' ?>>Gemini 1.5 Pro</option>
+                                <option value="gemini-1.5-flash" <?= $defaultModel === 'gemini-1.5-flash' ? 'selected' : '' ?>>Gemini 1.5 Flash</option>
                             </select>
                         </div>
                         <div>
