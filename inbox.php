@@ -3958,24 +3958,47 @@ async function searchProducts(query) {
 function renderProductResults() {
     const resultsContainer = document.getElementById('productSearchResults');
     
-    resultsContainer.innerHTML = productSearchResults.map((p, index) => `
+    if (!productSearchResults || productSearchResults.length === 0) {
+        resultsContainer.innerHTML = '<div class="p-4 text-center text-gray-400 text-sm">ไม่พบสินค้า</div>';
+        return;
+    }
+    
+    resultsContainer.innerHTML = productSearchResults.map((p, index) => {
+        const name = p.name || '';
+        const sku = p.sku || '';
+        const price = Number(p.price || 0).toLocaleString();
+        const imgUrl = p.image_url || '';
+        
+        return `
         <div class="product-item p-3 rounded-lg cursor-pointer hover:bg-emerald-50 ${index === selectedProductIndex ? 'bg-emerald-100' : ''}"
-             onclick="selectProduct(${index})"
-             onmouseenter="selectedProductIndex = ${index}; renderProductResults();">
+             data-product-index="${index}">
             <div class="flex gap-3">
                 <div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
-                    ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>'}
+                    ${imgUrl ? `<img src="${imgUrl}" class="w-full h-full object-cover" onerror="this.style.display='none'">` : '<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>'}
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="font-medium text-gray-800 truncate">${escapeHtml(p.name)}</div>
-                    <div class="text-xs text-gray-500">${p.sku ? `SKU: ${escapeHtml(p.sku)}` : ''}</div>
+                    <div class="font-medium text-gray-800 truncate">${name}</div>
+                    <div class="text-xs text-gray-500">${sku ? `SKU: ${sku}` : ''}</div>
                     <div class="flex items-center gap-2 mt-1">
-                        <span class="text-emerald-600 font-semibold">฿${Number(p.price || 0).toLocaleString()}</span>
+                        <span class="text-emerald-600 font-semibold">฿${price}</span>
                     </div>
                 </div>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
+    
+    // Add click event listeners
+    resultsContainer.querySelectorAll('.product-item').forEach(item => {
+        item.addEventListener('click', function() {
+            const idx = parseInt(this.dataset.productIndex);
+            selectProduct(idx);
+        });
+        item.addEventListener('mouseenter', function() {
+            selectedProductIndex = parseInt(this.dataset.productIndex);
+            renderProductResults();
+        });
+    });
 }
 
 function handleProductSearchKeydown(e) {
