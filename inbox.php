@@ -3910,6 +3910,9 @@ async function openProductSearchModal(initialQuery = '') {
             searchProducts(e.target.value);
         });
         modal.querySelector('#productSearchInput').addEventListener('keydown', handleProductSearchKeydown);
+        
+        // Setup event delegation for results
+        setupProductResultsEvents();
     }
     
     modal.classList.remove('hidden');
@@ -3979,8 +3982,8 @@ function renderProductResults() {
         
         return `
         <div class="product-item p-3 rounded-lg cursor-pointer hover:bg-emerald-50 ${index === selectedProductIndex ? 'bg-emerald-100' : ''}"
-             data-product-index="${index}">
-            <div class="flex gap-3">
+             data-product-index="${index}" style="pointer-events: auto;">
+            <div class="flex gap-3" style="pointer-events: none;">
                 <div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
                     ${imgUrl ? `<img src="${imgUrl}" class="w-full h-full object-cover" onerror="this.style.display='none'">` : '<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>'}
                 </div>
@@ -3995,17 +3998,37 @@ function renderProductResults() {
         </div>
         `;
     }).join('');
+}
+
+// Setup event delegation for product results (call once)
+function setupProductResultsEvents() {
+    const resultsContainer = document.getElementById('productSearchResults');
+    if (!resultsContainer || resultsContainer.dataset.eventsAttached) return;
     
-    // Add click event listeners
-    resultsContainer.querySelectorAll('.product-item').forEach(item => {
-        item.addEventListener('click', function() {
-            const idx = parseInt(this.dataset.productIndex);
-            selectProduct(idx);
-        });
-        item.addEventListener('mouseenter', function() {
-            selectedProductIndex = parseInt(this.dataset.productIndex);
-            renderProductResults();
-        });
+    resultsContainer.dataset.eventsAttached = 'true';
+    
+    resultsContainer.addEventListener('click', function(e) {
+        const item = e.target.closest('.product-item');
+        if (item) {
+            const idx = parseInt(item.dataset.productIndex);
+            if (!isNaN(idx)) {
+                doSelectProduct(idx);
+            }
+        }
+    });
+    
+    resultsContainer.addEventListener('mouseover', function(e) {
+        const item = e.target.closest('.product-item');
+        if (item) {
+            const idx = parseInt(item.dataset.productIndex);
+            if (!isNaN(idx) && idx !== selectedProductIndex) {
+                selectedProductIndex = idx;
+                // Just update highlight without re-rendering
+                resultsContainer.querySelectorAll('.product-item').forEach((el, i) => {
+                    el.classList.toggle('bg-emerald-100', i === idx);
+                });
+            }
+        }
     });
 }
 
@@ -4015,19 +4038,26 @@ function handleProductSearchKeydown(e) {
     } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         selectedProductIndex = Math.min(selectedProductIndex + 1, productSearchResults.length - 1);
-        renderProductResults();
+        updateProductHighlight();
     } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         selectedProductIndex = Math.max(selectedProductIndex - 1, 0);
-        renderProductResults();
+        updateProductHighlight();
     } else if (e.key === 'Enter' && productSearchResults.length > 0) {
         e.preventDefault();
-        selectProduct(selectedProductIndex);
+        doSelectProduct(selectedProductIndex);
     }
 }
 
-// Make selectProduct global
-window.selectProduct = function(index) {
+function updateProductHighlight() {
+    const resultsContainer = document.getElementById('productSearchResults');
+    if (!resultsContainer) return;
+    resultsContainer.querySelectorAll('.product-item').forEach((el, i) => {
+        el.classList.toggle('bg-emerald-100', i === selectedProductIndex);
+    });
+}
+
+function doSelectProduct(index) {
     const product = productSearchResults[index];
     if (!product) return;
     
@@ -4040,12 +4070,16 @@ window.selectProduct = function(index) {
         (product.description ? `\n📝 ${product.description.substring(0, 100)}${product.description.length > 100 ? '...' : ''}` : '');
     
     // Put in message input
-    document.getElementById('messageInput').value = message;
-    document.getElementById('messageInput').focus();
-    
-    // Auto-resize textarea
-    autoResize(document.getElementById('messageInput'));
+    const input = document.getElementById('messageInput');
+    if (input) {
+        input.value = message;
+        input.focus();
+        autoResize(input);
+    }
 }
+
+// Keep for backward compatibility
+window.selectProduct = doSelectProduct;
 // Highlight quick reply on hover
 function highlightQuickReply(index) {
     selectedQuickReplyIndex = index;
