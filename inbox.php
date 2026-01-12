@@ -3693,6 +3693,10 @@ let filteredTemplates = [];
 let selectedQuickReplyIndex = 0;
 let quickReplyLoaded = false;
 
+// ===== Product Search Variables =====
+let productSearchResults = [];
+let selectedProductIndex = 0;
+
 // Handle message input for "/" trigger - Requirements: 2.1
 function handleMessageInput(textarea) {
     const value = textarea.value;
@@ -3701,6 +3705,24 @@ function handleMessageInput(textarea) {
     if (value.match(/^\/ai\s*$/i) || value.match(/^\/ช่วย\s*$/)) {
         textarea.value = '';
         generateAIReply();
+        return;
+    }
+    
+    // Check for Product command: /p or /สินค้า
+    const productMatch = value.match(/^\/(p|สินค้า)\s+(.+)$/i);
+    if (productMatch) {
+        const searchQuery = productMatch[2].trim();
+        if (searchQuery.length >= 2) {
+            textarea.value = '';
+            openProductSearchModal(searchQuery);
+            return;
+        }
+    }
+    
+    // Open product modal with empty search
+    if (value.match(/^\/(p|สินค้า)\s*$/i)) {
+        textarea.value = '';
+        openProductSearchModal('');
         return;
     }
     
@@ -3804,12 +3826,27 @@ function renderQuickReplyList(templates) {
         </div>
     `;
     
+    // Add Product Search option
+    let productOption = `
+        <div class="quick-reply-item product-option ${selectedQuickReplyIndex === -2 ? 'selected' : ''}" 
+             data-index="-2"
+             onclick="openProductSearchModal('')"
+             onmouseenter="highlightQuickReply(-2)"
+             style="background: linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%); border-left: 3px solid #10B981;">
+            <div class="quick-reply-name" style="color: #059669;"><i class="fas fa-box mr-2"></i>ค้นหาสินค้า</div>
+            <div class="quick-reply-preview" style="color: #6B7280;">ค้นหาสินค้าด้วย SKU หรือชื่อ แล้วส่งข้อมูลพร้อมราคาให้ลูกค้า</div>
+            <div class="quick-reply-meta">
+                <span style="color: #10B981;"><i class="fas fa-search"></i> พิมพ์ /p หรือ /สินค้า</span>
+            </div>
+        </div>
+    `;
+    
     if (templates.length === 0) {
-        listContainer.innerHTML = aiOption + '<div class="p-4 text-center text-gray-400 text-sm">ไม่พบ template ที่ตรงกัน</div>';
+        listContainer.innerHTML = aiOption + productOption + '<div class="p-4 text-center text-gray-400 text-sm">ไม่พบ template ที่ตรงกัน</div>';
         return;
     }
     
-    listContainer.innerHTML = aiOption + templates.map((t, index) => `
+    listContainer.innerHTML = aiOption + productOption + templates.map((t, index) => `
         <div class="quick-reply-item ${index === selectedQuickReplyIndex ? 'selected' : ''}" 
              data-index="${index}"
              onclick="selectQuickReply(${index})"
@@ -3831,6 +3868,154 @@ function triggerAIReply() {
     generateAIReply();
 }
 
+// ===== Product Search Functions =====
+async function openProductSearchModal(initialQuery = '') {
+    closeQuickReplyModal();
+    
+    // Create modal if not exists
+    let modal = document.getElementById('productSearchModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'productSearchModal';
+        modal.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-end sm:items-center justify-center';
+        modal.innerHTML = `
+            <div class="bg-white w-full sm:w-[500px] sm:max-h-[70vh] max-h-[60vh] rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col">
+                <div class="p-4 border-b flex items-center justify-between bg-emerald-50 rounded-t-2xl">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-box text-emerald-600"></i>
+                        <span class="font-semibold text-emerald-800">ค้นหาสินค้า</span>
+                    </div>
+                    <button onclick="closeProductSearchModal()" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+                <div class="p-3 border-b">
+                    <input type="text" id="productSearchInput" 
+                           class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                           placeholder="พิมพ์ SKU หรือชื่อสินค้า..."
+                           oninput="searchProducts(this.value)"
+                           onkeydown="handleProductSearchKeydown(event)">
+                </div>
+                <div id="productSearchResults" class="flex-1 overflow-y-auto p-2">
+                    <div class="p-4 text-center text-gray-400 text-sm">พิมพ์เพื่อค้นหาสินค้า</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    modal.classList.remove('hidden');
+    
+    setTimeout(() => {
+        const input = document.getElementById('productSearchInput');
+        input.value = initialQuery;
+        input.focus();
+        if (initialQuery) {
+            searchProducts(initialQuery);
+        }
+    }, 100);
+}
+
+function closeProductSearchModal() {
+    const modal = document.getElementById('productSearchModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    document.getElementById('messageInput')?.focus();
+}
+
+let productSearchTimeout = null;
+async function searchProducts(query) {
+    clearTimeout(productSearchTimeout);
+    
+    const resultsContainer = document.getElementById('productSearchResults');
+    
+    if (query.length < 2) {
+        resultsContainer.innerHTML = '<div class="p-4 text-center text-gray-400 text-sm">พิมพ์อย่างน้อย 2 ตัวอักษร</div>';
+        return;
+    }
+    
+    resultsContainer.innerHTML = '<div class="p-4 text-center text-gray-400"><i class="fas fa-spinner fa-spin mr-2"></i>กำลังค้นหา...</div>';
+    
+    productSearchTimeout = setTimeout(async () => {
+        try {
+            const res = await fetch(`api/inbox.php?action=search_products&q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            
+            if (data.success && data.products && data.products.length > 0) {
+                productSearchResults = data.products;
+                selectedProductIndex = 0;
+                renderProductResults();
+            } else {
+                resultsContainer.innerHTML = '<div class="p-4 text-center text-gray-400 text-sm">ไม่พบสินค้าที่ตรงกัน</div>';
+            }
+        } catch (err) {
+            resultsContainer.innerHTML = '<div class="p-4 text-center text-red-400 text-sm">เกิดข้อผิดพลาด</div>';
+        }
+    }, 300);
+}
+
+function renderProductResults() {
+    const resultsContainer = document.getElementById('productSearchResults');
+    
+    resultsContainer.innerHTML = productSearchResults.map((p, index) => `
+        <div class="product-item p-3 rounded-lg cursor-pointer hover:bg-emerald-50 ${index === selectedProductIndex ? 'bg-emerald-100' : ''}"
+             onclick="selectProduct(${index})"
+             onmouseenter="selectedProductIndex = ${index}; renderProductResults();">
+            <div class="flex gap-3">
+                <div class="w-16 h-16 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
+                    ${p.image_url ? `<img src="${escapeHtml(p.image_url)}" class="w-full h-full object-cover">` : '<div class="w-full h-full flex items-center justify-center text-gray-300"><i class="fas fa-box text-2xl"></i></div>'}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium text-gray-800 truncate">${escapeHtml(p.name)}</div>
+                    <div class="text-xs text-gray-500">${p.sku ? `SKU: ${escapeHtml(p.sku)}` : ''}</div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="text-emerald-600 font-semibold">฿${Number(p.price).toLocaleString()}</span>
+                        ${p.stock_quantity !== undefined ? `<span class="text-xs ${p.stock_quantity > 0 ? 'text-green-600' : 'text-red-500'}">คงเหลือ: ${p.stock_quantity}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function handleProductSearchKeydown(e) {
+    if (e.key === 'Escape') {
+        closeProductSearchModal();
+    } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        selectedProductIndex = Math.min(selectedProductIndex + 1, productSearchResults.length - 1);
+        renderProductResults();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        selectedProductIndex = Math.max(selectedProductIndex - 1, 0);
+        renderProductResults();
+    } else if (e.key === 'Enter' && productSearchResults.length > 0) {
+        e.preventDefault();
+        selectProduct(selectedProductIndex);
+    }
+}
+
+async function selectProduct(index) {
+    const product = productSearchResults[index];
+    if (!product) return;
+    
+    closeProductSearchModal();
+    
+    // Format product message
+    const message = `📦 ${product.name}\n` +
+        (product.sku ? `รหัส: ${product.sku}\n` : '') +
+        `💰 ราคา: ฿${Number(product.price).toLocaleString()}\n` +
+        (product.description ? `📝 ${product.description.substring(0, 100)}${product.description.length > 100 ? '...' : ''}\n` : '') +
+        (product.stock_quantity !== undefined ? `📊 คงเหลือ: ${product.stock_quantity} ชิ้น` : '');
+    
+    // Put in message input
+    document.getElementById('messageInput').value = message;
+    document.getElementById('messageInput').focus();
+    
+    // Auto-resize textarea
+    autoResize(document.getElementById('messageInput'));
+}
 // Highlight quick reply on hover
 function highlightQuickReply(index) {
     selectedQuickReplyIndex = index;

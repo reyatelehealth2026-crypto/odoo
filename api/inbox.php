@@ -783,6 +783,55 @@ try {
             
             echo json_encode(['success' => true, 'message' => 'User unblocked']);
             break;
+        
+        // ============================================
+        // Product Search - /p command
+        // ============================================
+        case 'search_products':
+            $query = trim($_GET['q'] ?? '');
+            
+            if (strlen($query) < 2) {
+                echo json_encode(['success' => false, 'error' => 'Query too short']);
+                break;
+            }
+            
+            $searchTerm = '%' . $query . '%';
+            
+            $stmt = $db->prepare("
+                SELECT 
+                    id, name, sku, price, 
+                    description, image_url,
+                    stock_quantity
+                FROM business_items 
+                WHERE is_active = 1 
+                AND (line_account_id = ? OR line_account_id IS NULL)
+                AND (
+                    name LIKE ? 
+                    OR sku LIKE ? 
+                    OR barcode LIKE ?
+                )
+                ORDER BY 
+                    CASE WHEN sku = ? THEN 0 ELSE 1 END,
+                    CASE WHEN name LIKE ? THEN 0 ELSE 1 END,
+                    name ASC
+                LIMIT 20
+            ");
+            $stmt->execute([
+                $lineAccountId, 
+                $searchTerm, 
+                $searchTerm, 
+                $searchTerm,
+                $query,
+                $query . '%'
+            ]);
+            $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            echo json_encode([
+                'success' => true,
+                'products' => $products,
+                'count' => count($products)
+            ]);
+            break;
             
         default:
             throw new Exception('Invalid action: ' . $action);
