@@ -1037,6 +1037,16 @@ if (!$line) {
             
             if ($isAICommand && isset($user['id'])) {
                 try {
+                    // ดึง replyToken จาก event โดยตรง (ไม่ใช้ parameter ที่อาจถูกแก้ไข)
+                    $currentReplyToken = $event['replyToken'] ?? $replyToken ?? null;
+                    
+                    // Log replyToken status
+                    devLog($db, 'debug', 'webhook', 'AI command - replyToken check', [
+                        'has_token' => $currentReplyToken ? 'yes' : 'no',
+                        'token_length' => $currentReplyToken ? strlen($currentReplyToken) : 0,
+                        'user_id' => $userId
+                    ], $userId);
+                    
                     // บันทึกเวลาเริ่มต้น
                     $aiStartTime = microtime(true);
                     
@@ -1058,39 +1068,31 @@ if (!$line) {
                             $aiReply = [['type' => 'text', 'text' => (string)$aiReply]];
                         }
                         
-                        // ตรวจสอบว่า replyToken ยังใช้ได้ (ไม่เกิน 25 วินาที)
-                        $canUseReply = ($aiElapsed < 25000);
-                        
-                        if ($canUseReply && $replyToken) {
-                            // ลอง replyMessage ก่อน (ฟรี!)
-                            $replyResult = $line->replyMessage($replyToken, $aiReply);
+                        // ใช้ replyMessage เท่านั้น (ไม่ fallback ไป push)
+                        if ($currentReplyToken) {
+                            $replyResult = $line->replyMessage($currentReplyToken, $aiReply);
                             $replyCode = $replyResult['code'] ?? 0;
                             
-                            // ถ้า reply ไม่สำเร็จ ให้ใช้ pushMessage แทน
                             if ($replyCode !== 200) {
                                 $errorMsg = $replyResult['body']['message'] ?? 'Unknown error';
-                                devLog($db, 'warning', 'webhook', 'replyMessage failed: ' . $errorMsg, [
+                                devLog($db, 'error', 'webhook', 'replyMessage failed: ' . $errorMsg, [
                                     'user_id' => $userId,
                                     'replyCode' => $replyCode,
                                     'replyBody' => $replyResult['body'] ?? null,
                                     'elapsed_ms' => $aiElapsed,
-                                    'reply_count' => count($aiReply)
+                                    'token_length' => strlen($currentReplyToken)
                                 ], $userId);
-                                
-                                // Fallback to pushMessage
-                                $pushResult = $line->pushMessage($userId, $aiReply);
-                                devLog($db, 'debug', 'webhook', 'pushMessage result', [
-                                    'code' => $pushResult['code'] ?? 0,
+                            } else {
+                                devLog($db, 'debug', 'webhook', 'replyMessage success', [
+                                    'elapsed_ms' => $aiElapsed,
                                     'user_id' => $userId
                                 ], $userId);
                             }
                         } else {
-                            // ใช้ pushMessage โดยตรง (token อาจหมดอายุ)
-                            devLog($db, 'info', 'webhook', 'Using pushMessage directly (elapsed > 25s or no token)', [
-                                'elapsed_ms' => $aiElapsed,
-                                'has_token' => $replyToken ? 'yes' : 'no'
+                            devLog($db, 'error', 'webhook', 'No replyToken available for AI response', [
+                                'user_id' => $userId,
+                                'elapsed_ms' => $aiElapsed
                             ], $userId);
-                            $line->pushMessage($userId, $aiReply);
                         }
                         
                         saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'flex');
