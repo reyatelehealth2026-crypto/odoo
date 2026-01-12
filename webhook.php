@@ -1047,6 +1047,28 @@ if (!$line) {
                 return;
             }
             
+            // ===== / command - ส่งไปให้ AI ตอบโดยตรง =====
+            if ($isSlashCommand && isset($user['id'])) {
+                devLog($db, 'info', 'webhook', 'Slash command detected', [
+                    'user_id' => $userId,
+                    'message' => mb_substr($messageText, 0, 30)
+                ], $userId);
+                
+                $aiReply = checkAIChatbot($db, $messageText, $lineAccountId, $user['id']);
+                if ($aiReply) {
+                    $replyResult = $line->replyMessage($replyToken, $aiReply);
+                    $replyCode = $replyResult['code'] ?? 0;
+                    
+                    devLog($db, 'debug', 'webhook', 'Slash command reply result', [
+                        'code' => $replyCode,
+                        'message' => mb_substr($messageText, 0, 30)
+                    ], $userId);
+                    
+                    saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'flex');
+                    return;
+                }
+            }
+            
             // ===== AI ตอบเฉพาะเมื่อใช้ / หรือ @ command =====
             // ===== AI SIMPLE MODE: ลูกค้าพิมพ์อะไรก็ตอบเลย =====
             if (isset($user['id'])) {
@@ -1248,28 +1270,6 @@ if (!$line) {
                 } else {
                     // AI ไม่ได้เปิดใช้งาน
                     $line->replyMessage($replyToken, [['type' => 'text', 'text' => '❌ ระบบ AI ยังไม่ได้เปิดใช้งาน กรุณาติดต่อแอดมิน']]);
-                    return;
-                }
-            }
-            
-            // ถ้าเป็น / command - ส่งไปให้ AI ตอบ
-            if ($isSlashCommand) {
-                devLog($db, 'info', 'webhook', 'AI called with / command', [
-                    'user_id' => $userId,
-                    'message' => $messageText
-                ], $userId);
-                
-                $aiReply = checkAIChatbot($db, $messageText, $lineAccountId, $user['id'] ?? null);
-                if ($aiReply) {
-                    $replyResult = $line->replyMessage($replyToken, $aiReply);
-                    $replyCode = $replyResult['code'] ?? 0;
-                    
-                    devLog($db, 'debug', 'webhook', 'AI / command reply result', [
-                        'code' => $replyCode,
-                        'message' => mb_substr($messageText, 0, 30)
-                    ], $userId);
-                    
-                    saveOutgoingMessage($db, $user['id'], $aiReply, 'ai', 'flex');
                     return;
                 }
             }
