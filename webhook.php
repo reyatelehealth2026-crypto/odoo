@@ -1793,9 +1793,20 @@ if (!$line) {
                         } catch (Exception $e) {}
                     }
                     
-                    // บันทึกโหมด AI
+                    // ดึง AI mode จาก ai_settings
+                    $configuredMode = 'sales'; // default
+                    try {
+                        $stmt = $db->prepare("SELECT ai_mode FROM ai_settings WHERE line_account_id = ? LIMIT 1");
+                        $stmt->execute([$lineAccountId]);
+                        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($result && $result['ai_mode']) {
+                            $configuredMode = $result['ai_mode'];
+                        }
+                    } catch (Exception $e) {}
+                    
+                    // บันทึกโหมด AI ตามที่ตั้งค่าไว้
                     if ($userId) {
-                        setUserAIMode($db, $userId, 'pharmacy');
+                        setUserAIMode($db, $userId, $configuredMode);
                     }
                     
                     if ($isFirstTime) {
@@ -1828,10 +1839,15 @@ if (!$line) {
                     
                     // Map commands to modes
                     $commandMap = [
-                        'ai' => 'pharmacy',      // /ai = PharmacyAI (ทั่วไป)
-                        'pharmacy' => 'pharmacy',
-                        'ยา' => 'pharmacy',
-                        'ถาม' => 'pharmacy',     // /ถาม = เริ่ม AI
+                        'ai' => 'auto',          // /ai = ใช้ mode จาก settings
+                        'pharmacy' => 'pharmacist',
+                        'pharmacist' => 'pharmacist',
+                        'ยา' => 'pharmacist',
+                        'ถาม' => 'auto',         // /ถาม = ใช้ mode จาก settings
+                        'ขาย' => 'sales',        // /ขาย = โหมดขาย
+                        'sales' => 'sales',
+                        'support' => 'support',  // /support = โหมดซัพพอร์ต
+                        'ซัพพอร์ต' => 'support',
                         
                         'mims' => 'mims',        // /mims = MIMS AI (ความรู้ทางการแพทย์)
                         'med' => 'mims',
@@ -1855,6 +1871,19 @@ if (!$line) {
                     
                     if (isset($commandMap[$command])) {
                         $commandMode = $commandMap[$command];
+                        
+                        // ถ้าเป็น 'auto' ให้ดึง mode จาก ai_settings
+                        if ($commandMode === 'auto') {
+                            try {
+                                $stmt = $db->prepare("SELECT ai_mode FROM ai_settings WHERE line_account_id = ? LIMIT 1");
+                                $stmt->execute([$lineAccountId]);
+                                $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                                $commandMode = ($result && $result['ai_mode']) ? $result['ai_mode'] : 'sales';
+                            } catch (Exception $e) {
+                                $commandMode = 'sales';
+                            }
+                        }
+                        
                         devLog($db, 'debug', 'AI_command', 'Command detected', [
                             'command' => $command, 
                             'mode' => $commandMode, 
@@ -1864,11 +1893,19 @@ if (!$line) {
                         ], null);
                     } else {
                         // Unknown command → ถือว่าเป็นคำถามถาม AI
-                        // เช่น /มีพารามั้ย → ส่ง "มีพารามั้ย" ไป AI
-                        $commandMode = 'pharmacy';
+                        // ใช้ mode จาก ai_settings
+                        try {
+                            $stmt = $db->prepare("SELECT ai_mode FROM ai_settings WHERE line_account_id = ? LIMIT 1");
+                            $stmt->execute([$lineAccountId]);
+                            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                            $commandMode = ($result && $result['ai_mode']) ? $result['ai_mode'] : 'sales';
+                        } catch (Exception $e) {
+                            $commandMode = 'sales';
+                        }
                         $commandMessage = $command . ($commandMessage ? ' ' . $commandMessage : '');
                         devLog($db, 'debug', 'AI_command', 'Unknown command - treating as AI question', [
                             'command' => $command,
+                            'mode' => $commandMode,
                             'message' => $commandMessage,
                             'original' => $originalText
                         ], null);
@@ -1893,7 +1930,7 @@ if (!$line) {
                 }
                 
                 // ถ้าพิมพ์ command ใหม่ → บันทึกโหมด
-                if ($commandMode && $userId && in_array($commandMode, ['pharmacy', 'mims', 'triage'])) {
+                if ($commandMode && $userId && in_array($commandMode, ['pharmacist', 'pharmacy', 'sales', 'support', 'mims', 'triage'])) {
                     setUserAIMode($db, $userId, $commandMode);
                 }
                 
