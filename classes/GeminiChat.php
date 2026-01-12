@@ -115,14 +115,17 @@ class GeminiChat
     {
         $mode = $this->getMode();
         
+        // Log mode for debugging
+        error_log("GeminiChat buildPrompt - mode: " . $mode);
+        
         switch ($mode) {
-            case 'sales':
-                return $this->buildSalesPrompt($userMessage, $userId, $conversationHistory);
+            case 'pharmacist':
+                return $this->buildPharmacistPrompt($userMessage, $userId, $conversationHistory);
             case 'support':
                 return $this->buildSupportPrompt($userMessage, $userId, $conversationHistory);
-            case 'pharmacist':
+            case 'sales':
             default:
-                return $this->buildPharmacistPrompt($userMessage, $userId, $conversationHistory);
+                return $this->buildSalesPrompt($userMessage, $userId, $conversationHistory);
         }
     }
     
