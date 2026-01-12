@@ -2189,9 +2189,12 @@ if (!$line) {
                     }
                 }
                 
-                // ===== 5. /ai หรือ Default - ตรวจสอบ AI Mode ก่อน =====
-                // ถ้าใช้ command /ai ให้ใช้ข้อความหลัง command
-                $messageToProcess = ($commandMode === 'pharmacy' && !empty($commandMessage)) ? $commandMessage : $text;
+                // ===== 5. /ai, /sales หรือ Default - ตรวจสอบ AI Mode ก่อน =====
+                // ถ้าใช้ command /ai หรือ /sales ให้ใช้ข้อความหลัง command
+                $messageToProcess = $text;
+                if (!empty($commandMessage)) {
+                    $messageToProcess = $commandMessage;
+                }
                 
                 devLog($db, 'debug', 'AI_flow', 'Entering AI section', [
                     'command_mode' => $commandMode,
@@ -2199,25 +2202,36 @@ if (!$line) {
                     'line_account_id' => $lineAccountId
                 ], null);
                 
-                // ดึง AI mode จาก ai_settings
-                $currentAIMode = 'sales'; // default
-                try {
-                    $stmt = $db->prepare("SELECT ai_mode FROM ai_settings WHERE line_account_id = ? LIMIT 1");
-                    $stmt->execute([$lineAccountId]);
-                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                    if ($result && $result['ai_mode']) {
-                        $currentAIMode = $result['ai_mode'];
-                    }
-                } catch (Exception $e) {}
+                // ดึง AI mode จาก ai_settings - แต่ถ้า commandMode เป็น sales ให้ใช้ sales เลย
+                $currentAIMode = 'sales'; // default to sales
                 
-                devLog($db, 'debug', 'AI_mode_check', 'Current AI mode', [
-                    'mode' => $currentAIMode,
-                    'command_mode' => $commandMode,
-                    'line_account_id' => $lineAccountId
-                ], null);
+                // ถ้า commandMode เป็น sales หรือ support → ใช้ GeminiChat
+                if (in_array($commandMode, ['sales', 'support'])) {
+                    $currentAIMode = $commandMode;
+                    devLog($db, 'debug', 'AI_mode_check', 'Using command mode', [
+                        'mode' => $currentAIMode,
+                        'command_mode' => $commandMode
+                    ], null);
+                } else {
+                    // ดึงจาก ai_settings
+                    try {
+                        $stmt = $db->prepare("SELECT ai_mode FROM ai_settings WHERE line_account_id = ? LIMIT 1");
+                        $stmt->execute([$lineAccountId]);
+                        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                        if ($result && $result['ai_mode']) {
+                            $currentAIMode = $result['ai_mode'];
+                        }
+                    } catch (Exception $e) {}
+                    
+                    devLog($db, 'debug', 'AI_mode_check', 'Current AI mode from settings', [
+                        'mode' => $currentAIMode,
+                        'command_mode' => $commandMode,
+                        'line_account_id' => $lineAccountId
+                    ], null);
+                }
                 
                 // ===== ถ้าเป็น Sales Mode → ใช้ GeminiChat (ไม่ใช่ PharmacyAI) =====
-                if ($currentAIMode === 'sales' && file_exists(__DIR__ . '/classes/GeminiChat.php')) {
+                if (($currentAIMode === 'sales' || $currentAIMode === 'support') && file_exists(__DIR__ . '/classes/GeminiChat.php')) {
                     require_once __DIR__ . '/classes/GeminiChat.php';
                     
                     $gemini = new GeminiChat($db, $lineAccountId);
@@ -2261,11 +2275,15 @@ if (!$line) {
                                 'user_id' => $userId,
                                 'message' => mb_substr($messageToProcess, 0, 50)
                             ], null);
+                            // Sales mode แต่ GeminiChat return null → return null ไม่ fallthrough ไป PharmacyAI
+                            return null;
                         }
                     } else {
                         devLog($db, 'warning', 'AI_sales', 'GeminiChat not enabled', [
                             'line_account_id' => $lineAccountId
                         ], null);
+                        // Sales mode แต่ GeminiChat not enabled → return null ไม่ fallthrough ไป PharmacyAI
+                        return null;
                     }
                 }
                 
