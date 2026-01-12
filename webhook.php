@@ -1926,11 +1926,15 @@ if (!$line) {
                 }
                 
                 // ===== DEBUG: Log after command parsing =====
-                devLog($db, 'debug', 'AI_trace_1', 'After command parsing', [
-                    'commandMode' => $commandMode,
-                    'commandMessage' => mb_substr($commandMessage ?? '', 0, 30),
-                    'line' => __LINE__
-                ], null);
+                try {
+                    devLog($db, 'debug', 'AI_trace_1', 'After command parsing', [
+                        'commandMode' => $commandMode,
+                        'commandMessage' => mb_substr($commandMessage ?? '', 0, 30),
+                        'line' => __LINE__
+                    ], null);
+                } catch (Exception $e) {
+                    error_log("AI_trace_1 error: " . $e->getMessage());
+                }
                 
                 // ===== 0.5 ตรวจสอบ AI Mode ของ user =====
                 // ถ้า user เคยพิมพ์ /ai, /mims, /triage → จำโหมดไว้

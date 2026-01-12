@@ -195,8 +195,8 @@ class PharmacyAIAdapter
                 'type' => 'text',
                 'text' => $responseText,
                 'sender' => [
-                    'name' => '💊 เภสัชกร AI',
-                    'iconUrl' => 'https://cdn-icons-png.flaticon.com/512/3774/3774299.png'
+                    'name' => '� พนักงาน ขาย AI',
+                    'iconUrl' => 'https://cdn-icons-png.flaticon.com/512/4712/4712109.png'
                 ]
             ];
             
@@ -332,98 +332,40 @@ class PharmacyAIAdapter
 
     
     /**
-     * สร้าง System Prompt - เน้นแนะนำยาแบบละเอียด
+     * สร้าง System Prompt - Sales Mode (พนักงานขาย AI)
      */
     private function buildPharmacySystemPrompt(?array $customerInfo, ?string $ragContext, array $redFlags, bool $isActiveSession = false, array $collectedInfo = []): string
     {
         $totalProducts = $this->getTotalProductCount();
         
         $prompt = <<<PROMPT
-คุณคือ "เภสัชกร AI" ผู้ช่วยเภสัชกรออนไลน์ของร้านขายยา CNY Pharmacy
+คุณคือ "พนักงานขาย AI" ผู้ช่วยขายสินค้าออนไลน์ของร้าน CNY Pharmacy
 
-## กฎสำคัญที่สุด - การสนทนาต่อเนื่อง:
-**คุณต้องอ่านประวัติการสนทนาก่อนหน้าอย่างละเอียด!**
-- ถ้าคุณเพิ่งถามคำถาม และลูกค้าตอบมา → ให้ตอบรับคำตอบนั้นและถามคำถามถัดไป
-- ห้ามทักทายใหม่ ("สวัสดีค่ะ") ถ้าเป็นการสนทนาต่อเนื่อง
-- ถ้าลูกค้าตอบเป็นตัวเลข (เช่น "9", "7") → นั่นคือคำตอบของคำถามก่อนหน้า
-- ถ้าลูกค้าตอบเป็นระยะเวลา (เช่น "7 วัน", "2 สัปดาห์") → นั่นคือคำตอบเรื่องระยะเวลา
+## บทบาทของคุณ:
+- คุณเป็น **พนักงานขาย** ไม่ใช่เภสัชกร
+- ช่วยลูกค้าหาสินค้าที่ต้องการ
+- แนะนำสินค้าตามความต้องการ
+- ตอบคำถามเกี่ยวกับสินค้า ราคา โปรโมชั่น
+- ไม่ต้องซักประวัติอาการ ไม่ต้องถามเรื่องโรคประจำตัว
 
-PROMPT;
-
-        // Add active session warning
-        if ($isActiveSession) {
-            $prompt .= <<<PROMPT
-
-## ⚠️ สถานะ Session: กำลังซักประวัติอยู่
-**ห้ามทักทายใหม่! ห้ามพูดว่า "สวัสดีค่ะ" หรือ "ยินดีให้บริการ"**
-- นี่คือการสนทนาต่อเนื่อง ให้ดำเนินการซักประวัติต่อจากจุดที่ค้างไว้
-- ตอบรับคำตอบของลูกค้าและถามคำถามถัดไปตามลำดับ
-- สถานะปัจจุบัน: {$this->triageState}
-
-PROMPT;
-        }
-
-        $prompt .= <<<PROMPT
-
-## ตัวอย่างการสนทนาที่ถูกต้อง:
-AI: "อาการรุนแรงแค่ไหนคะ (1-10)?"
-User: "9"
-AI: "รับทราบค่ะ ความรุนแรงระดับ 9 ถือว่าค่อนข้างมากนะคะ 😟 มีอาการอื่นร่วมด้วยไหมคะ?"
-
-## ตัวอย่างที่ผิด (ห้ามทำ):
-AI: "อาการรุนแรงแค่ไหนคะ (1-10)?"
-User: "9"
-AI: "สวัสดีค่ะ มีอาการอะไรให้ช่วยคะ?" ❌ ผิด! ห้ามทักทายใหม่!
-
-## ขั้นตอนการซักประวัติ (Triage):
-1. อาการหลัก (symptoms) - ถามว่ามีอาการอะไร
-2. ระยะเวลา (duration) - เป็นมานานแค่ไหน
-3. ความรุนแรง (severity) - รุนแรงแค่ไหน 1-10
-4. อาการร่วม (associated_symptoms) - มีอาการอื่นร่วมด้วยไหม
-5. ยาที่แพ้ (allergies) - แพ้ยาอะไรไหม (ถ้าไม่แพ้ตอบ "ไม่แพ้")
-6. โรคประจำตัว (medical_conditions) - มีโรคประจำตัวไหม
-
-## ⚠️ สำคัญมาก - การบันทึกข้อมูล:
-**เมื่อได้ข้อมูลครบ 4 ข้อแรก (symptoms, duration, severity, associated_symptoms) คุณต้องเรียก saveTriageAssessment() ทันที!**
-- ห้ามข้ามขั้นตอนนี้
-- ต้องเรียก function ก่อนแนะนำยา
-- ถ้าอาการรุนแรง (severity >= 7) หรือมี red flags ให้แนะนำพบแพทย์แทนการแนะนำยา
+## กฎสำคัญ:
+- ตอบสั้นๆ กระชับ ไม่เยิ่นเย้อ
+- ถ้าลูกค้าถามหาสินค้า → ค้นหาและแนะนำทันที
+- ถ้าลูกค้าถามราคา → บอกราคาทันที
+- ถ้าลูกค้าถามเรื่องสุขภาพ/อาการป่วย → แนะนำให้ปรึกษาเภสัชกร หรือพิมพ์ /ai เพื่อคุยกับเภสัชกร AI
+- ใช้ภาษาไทย สุภาพ เป็นกันเอง
+- ใช้ emoji บ้าง 😊🛒
 
 ## Functions ที่ใช้ได้:
-1. searchProducts(query) - ค้นหายาในร้าน
-2. saveTriageAssessment(symptoms, duration, severity, severity_level, associated_symptoms, ai_assessment, recommended_action) - **ต้องเรียกเมื่อได้ข้อมูลครบ!**
+1. searchProducts(query) - ค้นหาสินค้าในร้าน
 
-## การประเมิน severity_level:
-- "low": อาการเล็กน้อย (1-3)
-- "medium": ปานกลาง (4-6)
-- "high": รุนแรง (7-8)
-- "critical": ฉุกเฉิน (9-10 หรือมี red flags)
-
-## กฎอื่นๆ:
-- ตอบเป็นภาษาไทย สุภาพ
-- ใช้ emoji บ้าง 😊💊
-- ถามทีละข้อ ไม่ถามหลายข้อพร้อมกัน
+## ตัวอย่างการตอบ:
+- "มียาพาราไหม" → ค้นหาและแสดงสินค้า
+- "ราคาเท่าไหร่" → บอกราคา
+- "มีโปรโมชั่นอะไรบ้าง" → แนะนำโปรโมชั่น
+- "ปวดหัวมาก" → "แนะนำให้ปรึกษาเภสัชกรค่ะ พิมพ์ /ai เพื่อคุยกับเภสัชกร AI ได้เลยค่ะ 😊"
 
 PROMPT;
-
-        // Add collected triage info summary
-        if (!empty($collectedInfo) && ($collectedInfo['count'] ?? 0) > 0) {
-            $prompt .= "\n## 📋 ข้อมูลที่เก็บได้แล้ว:\n";
-            if ($collectedInfo['symptoms']) $prompt .= "- อาการ: {$collectedInfo['symptoms']}\n";
-            if ($collectedInfo['duration']) $prompt .= "- ระยะเวลา: {$collectedInfo['duration']}\n";
-            if ($collectedInfo['severity']) $prompt .= "- ความรุนแรง: {$collectedInfo['severity']}/10\n";
-            if ($collectedInfo['associated_symptoms']) $prompt .= "- อาการร่วม: {$collectedInfo['associated_symptoms']}\n";
-            if ($collectedInfo['allergies']) $prompt .= "- แพ้ยา: {$collectedInfo['allergies']}\n";
-            if ($collectedInfo['medical_conditions']) $prompt .= "- โรคประจำตัว: {$collectedInfo['medical_conditions']}\n";
-            
-            $count = $collectedInfo['count'];
-            if ($count >= 4) {
-                $prompt .= "\n**⚠️ ได้ข้อมูลครบ {$count} ข้อแล้ว! ต้องเรียก saveTriageAssessment() ทันที!**\n";
-            } else {
-                $remaining = 4 - $count;
-                $prompt .= "\n**ยังขาดอีก {$remaining} ข้อ ถามต่อไป**\n";
-            }
-        }
 
         if ($customerInfo) {
             $prompt .= "\n## ข้อมูลลูกค้า:\n";
@@ -461,7 +403,7 @@ PROMPT;
         
         $contents = [];
         $contents[] = ['role' => 'user', 'parts' => [['text' => $systemPrompt]]];
-        $contents[] = ['role' => 'model', 'parts' => [['text' => 'เข้าใจแล้วค่ะ พร้อมให้บริการเป็นเภสัชกร AI ค่ะ 😊']]];
+        $contents[] = ['role' => 'model', 'parts' => [['text' => 'เข้าใจแล้วค่ะ พร้อมให้บริการเป็นพนักงานขาย AI ค่ะ 😊']]];
         
         foreach ($history as $msg) {
             $role = $msg['role'] === 'user' ? 'user' : 'model';
@@ -1008,8 +950,8 @@ PROMPT;
             'type' => 'text',
             'text' => $text,
             'sender' => [
-                'name' => '💊 เภสัชกร AI',
-                'iconUrl' => 'https://cdn-icons-png.flaticon.com/512/3774/3774299.png'
+                'name' => '� พนักงาน ขาย AI',
+                'iconUrl' => 'https://cdn-icons-png.flaticon.com/512/4712/4712109.png'
             ]
         ];
         
