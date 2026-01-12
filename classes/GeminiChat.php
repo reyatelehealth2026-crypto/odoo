@@ -94,42 +94,65 @@ class GeminiChat
      */
     public function generateResponse($userMessage, $userId = null, $conversationHistory = [])
     {
+        // Log to database for debugging
+        $this->devLog('GeminiChat', 'generateResponse called', [
+            'message' => mb_substr($userMessage, 0, 50),
+            'is_enabled' => $this->isEnabled() ? 'yes' : 'no'
+        ]);
+        
         if (!$this->isEnabled()) {
-            error_log("GeminiChat: Not enabled - is_enabled=" . ($this->settings['is_enabled'] ? 'true' : 'false') . ", apiKey=" . (empty($this->apiKey) ? 'empty' : 'set'));
+            $this->devLog('GeminiChat', 'Not enabled', [
+                'is_enabled_setting' => $this->settings['is_enabled'] ? 'true' : 'false',
+                'has_api_key' => empty($this->apiKey) ? 'no' : 'yes'
+            ]);
             return null;
         }
         
         try {
             $startTime = microtime(true);
-            error_log("GeminiChat: Starting generateResponse for message: " . mb_substr($userMessage, 0, 50));
             
             // สร้าง Full Prompt ตามโหมด
             $prompt = $this->buildPrompt($userMessage, $userId, $conversationHistory);
-            error_log("GeminiChat: Prompt built, length: " . strlen($prompt));
+            $this->devLog('GeminiChat', 'Prompt built', ['length' => strlen($prompt)]);
             
             // ส่งประวัติการคุยเพื่อให้ AI ทราบบริบทต่อเนื่อง
             $fullHistory = $conversationHistory;
             $fullHistory[] = ['role' => 'user', 'content' => $userMessage];
             
-            error_log("GeminiChat: Calling Gemini API...");
+            $this->devLog('GeminiChat', 'Calling Gemini API', ['history_count' => count($fullHistory)]);
             $response = $this->callGeminiAPI($prompt, $fullHistory);
-            error_log("GeminiChat: API returned - success: " . ($response['success'] ? 'yes' : 'no'));
             
             $responseTimeMs = round((microtime(true) - $startTime) * 1000);
-            error_log("GeminiChat: Response time: {$responseTimeMs}ms");
+            $this->devLog('GeminiChat', 'API returned', [
+                'success' => $response['success'] ? 'yes' : 'no',
+                'elapsed_ms' => $responseTimeMs,
+                'response_length' => isset($response['text']) ? mb_strlen($response['text']) : 0
+            ]);
             
             if ($response['success']) {
                 $this->logResponse($userId, $userMessage, $response['text'], $responseTimeMs);
-                error_log("GeminiChat: Returning response, length: " . mb_strlen($response['text']));
                 return $response['text'];
             } else {
-                error_log("GeminiChat: API failed, returning fallback");
+                $this->devLog('GeminiChat', 'API failed, returning fallback', []);
                 return $this->settings['fallback_message'];
             }
             
         } catch (Exception $e) {
-            error_log("GeminiChat Error: " . $e->getMessage());
+            $this->devLog('GeminiChat', 'Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return $this->settings['fallback_message'];
+        }
+    }
+    
+    /**
+     * Log to dev_logs table
+     */
+    private function devLog($source, $message, $data = [])
+    {
+        try {
+            $stmt = $this->db->prepare("INSERT INTO dev_logs (level, source, message, data) VALUES ('debug', ?, ?, ?)");
+            $stmt->execute([$source, $message, json_encode($data, JSON_UNESCAPED_UNICODE)]);
+        } catch (Exception $e) {
+            error_log("devLog error: " . $e->getMessage());
         }
     }
     
