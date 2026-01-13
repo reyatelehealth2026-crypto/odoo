@@ -35,7 +35,7 @@
     - **Property 1: Drug Margin Calculation Correctness**
     - **Validates: Requirements 3.1**
 
-  - [ ]* 3.3 Write property test for max discount preserves margin
+  - [x] 3.3 Write property test for max discount preserves margin
     - **Property 2: Maximum Discount Preserves Minimum Margin**
     - **Validates: Requirements 3.2**
 
@@ -65,7 +65,7 @@
     - Implement `checkUrgency()` method
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
 
-  - [ ]* 6.2 Write property test for urgent symptom detection
+  - [x] 6.2 Write property test for urgent symptom detection
     - **Property 13: Urgent Symptom Detection**
     - **Validates: Requirements 1.5**
 
@@ -80,15 +80,15 @@
     - Implement `getSafeAlternatives()` method
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-  - [ ]* 7.2 Write property test for allergy check before recommendation
+  - [x] 7.2 Write property test for allergy check before recommendation
     - **Property 8: Allergy Check Before Recommendation**
     - **Validates: Requirements 2.6, 7.2**
 
-  - [ ]* 7.3 Write property test for drug interaction detection
+  - [x] 7.3 Write property test for drug interaction detection
     - **Property 9: Drug Interaction Detection**
     - **Validates: Requirements 1.4, 7.2**
 
-  - [ ]* 7.4 Write property test for out-of-stock exclusion
+  - [x] 7.4 Write property test for out-of-stock exclusion
     - **Property 10: Recommendations Exclude Out-of-Stock Drugs**
     - **Validates: Requirements 10.2**
 

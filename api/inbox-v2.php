@@ -1160,8 +1160,15 @@ try {
                 sendError('User ID is required');
             }
             
+            // Message is optional - return empty widgets if no message
             if (empty($message)) {
-                sendError('Message is required');
+                sendResponse([
+                    'success' => true,
+                    'data' => [
+                        'widgets' => [],
+                        'count' => 0
+                    ]
+                ]);
             }
             
             $consultationAnalyzer = loadService('ConsultationAnalyzerService', $db, $lineAccountId);
