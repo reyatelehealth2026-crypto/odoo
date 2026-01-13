@@ -982,6 +982,102 @@ function formatThaiDateTime($datetime) {
 /* Pulse Animation */
 .pulse-dot { animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+/* Chat Area Layout - Prevent overlap with HUD */
+#chatArea {
+    margin-right: 320px; /* HUD width */
+    transition: margin-right 0.3s ease;
+}
+#chatArea.hud-hidden {
+    margin-right: 0;
+}
+
+/* Message Input Improvements */
+#messageInput {
+    min-height: 40px;
+    max-height: 150px;
+    line-height: 1.5;
+    resize: none;
+    overflow-y: auto;
+}
+#messageInput:focus {
+    outline: none;
+}
+
+/* Quick Actions Bar - Purchase Stage */
+.purchase-actions-bar {
+    background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
+    border: 1px solid #6EE7B7;
+    border-radius: 12px;
+    padding: 12px;
+    margin-bottom: 8px;
+}
+.purchase-actions-bar .action-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #047857;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.purchase-action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+}
+.purchase-action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+.purchase-action-btn.create-order {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+}
+.purchase-action-btn.payment-link {
+    background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%);
+    color: white;
+}
+.purchase-action-btn.schedule-delivery {
+    background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+    color: white;
+}
+.purchase-action-btn.use-points {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    color: white;
+}
+.purchase-action-btn.send-menu {
+    background: linear-gradient(135deg, #EC4899 0%, #DB2777 100%);
+    color: white;
+}
+
+/* Resizable textarea handle */
+.message-input-container {
+    position: relative;
+}
+.resize-handle {
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 4px;
+    background: #D1D5DB;
+    border-radius: 2px;
+    cursor: ns-resize;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+.message-input-container:hover .resize-handle {
+    opacity: 1;
+}
 </style>
 
 
@@ -1203,6 +1299,37 @@ function formatThaiDateTime($datetime) {
 
         <!-- Quick Actions Bar - Requirements: 9.1, 9.2, 9.3, 9.4, 9.5 -->
         <div id="quickActionsBar" class="px-3 py-2 bg-gradient-to-r from-slate-50 to-gray-50 border-t border-gray-100">
+            <!-- Purchase Stage Actions - Always visible for quick access -->
+            <div class="purchase-actions-bar mb-2">
+                <div class="action-title">
+                    <i class="fas fa-shopping-cart"></i>
+                    <span>ตัดสินใจซื้อ</span>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button onclick="openCreateOrderModal()" class="purchase-action-btn create-order">
+                        <i class="fas fa-cart-plus"></i>
+                        <span>สร้างออเดอร์</span>
+                    </button>
+                    <button onclick="sendPaymentLink()" class="purchase-action-btn payment-link">
+                        <i class="fas fa-credit-card"></i>
+                        <span>ส่งลิงก์ชำระเงิน</span>
+                    </button>
+                    <button onclick="openScheduleDeliveryModal()" class="purchase-action-btn schedule-delivery">
+                        <i class="fas fa-truck"></i>
+                        <span>นัดส่งสินค้า</span>
+                    </button>
+                    <button onclick="openUsePointsModal()" class="purchase-action-btn use-points">
+                        <i class="fas fa-star"></i>
+                        <span>ใช้แต้มสะสม</span>
+                    </button>
+                    <button onclick="sendRichMenu()" class="purchase-action-btn send-menu">
+                        <i class="fas fa-th-large"></i>
+                        <span>ส่งเมนู</span>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Dynamic Quick Actions based on consultation stage -->
             <div class="flex items-center gap-2 mb-2">
                 <span class="text-xs font-medium text-gray-500 flex items-center gap-1">
                     <i class="fas fa-bolt text-yellow-500"></i>
@@ -2086,9 +2213,20 @@ const hudState = {
  */
 function toggleHUD() {
     const hud = document.getElementById('hudDashboard');
+    const chatArea = document.getElementById('chatArea');
+    
     if (hud) {
         hud.classList.toggle('collapsed');
         hudState.isVisible = !hud.classList.contains('collapsed');
+        
+        // Adjust chat area margin
+        if (chatArea) {
+            if (hud.classList.contains('collapsed')) {
+                chatArea.classList.add('hud-hidden');
+            } else {
+                chatArea.classList.remove('hud-hidden');
+            }
+        }
         
         // On mobile, toggle mobile-visible class
         if (window.innerWidth <= 768) {
@@ -3568,6 +3706,344 @@ async function loadRefillSuggestions() {
         showNotification('ไม่สามารถโหลดข้อมูลได้', 'error');
     }
 }
+
+// ============================================
+// PURCHASE STAGE ACTIONS - ตัดสินใจซื้อ
+// ============================================
+
+/**
+ * Open Create Order Modal
+ */
+function openCreateOrderModal() {
+    if (!ghostDraftState.userId) {
+        showNotification('กรุณาเลือกลูกค้าก่อน', 'warning');
+        return;
+    }
+    
+    // Create modal HTML
+    const modalHtml = `
+        <div id="createOrderModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('createOrderModal')">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
+                <div class="bg-gradient-to-r from-green-500 to-emerald-600 p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-lg flex items-center gap-2">
+                            <i class="fas fa-cart-plus"></i>
+                            สร้างออเดอร์
+                        </h3>
+                        <button onclick="closeModal('createOrderModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4 overflow-y-auto max-h-[60vh]">
+                    <div id="orderItemsList" class="space-y-2 mb-4">
+                        <p class="text-gray-500 text-sm text-center py-4">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            เลือกยาจาก HUD Dashboard แล้วกด "เพิ่มในออเดอร์"
+                        </p>
+                    </div>
+                    <div class="border-t pt-4">
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-600">รวมสินค้า:</span>
+                            <span id="orderSubtotal" class="font-medium">฿0</span>
+                        </div>
+                        <div class="flex justify-between text-sm mb-2">
+                            <span class="text-gray-600">ส่วนลด:</span>
+                            <span id="orderDiscount" class="font-medium text-red-500">-฿0</span>
+                        </div>
+                        <div class="flex justify-between text-lg font-bold border-t pt-2">
+                            <span>รวมทั้งหมด:</span>
+                            <span id="orderTotal" class="text-green-600">฿0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 bg-gray-50 border-t flex gap-2">
+                    <button onclick="closeModal('createOrderModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                        ยกเลิก
+                    </button>
+                    <button onclick="confirmCreateOrder()" class="flex-1 py-2 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium">
+                        <i class="fas fa-check mr-1"></i>สร้างออเดอร์
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    showNotification('เลือกยาจาก HUD แล้วเพิ่มในออเดอร์', 'info');
+}
+
+/**
+ * Send Payment Link
+ */
+async function sendPaymentLink() {
+    if (!ghostDraftState.userId) {
+        showNotification('กรุณาเลือกลูกค้าก่อน', 'warning');
+        return;
+    }
+    
+    const messageInput = document.getElementById('messageInput');
+    
+    // Generate LIFF checkout URL
+    const checkoutUrl = `${window.location.origin}/liff-checkout.php?user_id=${ghostDraftState.userId}`;
+    
+    if (messageInput) {
+        messageInput.value = `💳 ลิงก์ชำระเงิน\n\n${checkoutUrl}\n\n✅ กดลิงก์ด้านบนเพื่อดูรายการสินค้าและชำระเงินค่ะ\n📦 หลังชำระเงินจะจัดส่งให้ภายใน 1-3 วันทำการค่ะ`;
+        autoResize(messageInput);
+        messageInput.focus();
+        showNotification('ลิงก์ชำระเงินพร้อมส่ง', 'success');
+    }
+}
+
+/**
+ * Open Schedule Delivery Modal
+ */
+function openScheduleDeliveryModal() {
+    if (!ghostDraftState.userId) {
+        showNotification('กรุณาเลือกลูกค้าก่อน', 'warning');
+        return;
+    }
+    
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const minDate = tomorrow.toISOString().split('T')[0];
+    
+    const modalHtml = `
+        <div id="scheduleDeliveryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('scheduleDeliveryModal')">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                <div class="bg-gradient-to-r from-blue-500 to-indigo-600 p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-lg flex items-center gap-2">
+                            <i class="fas fa-truck"></i>
+                            นัดส่งสินค้า
+                        </h3>
+                        <button onclick="closeModal('scheduleDeliveryModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">วันที่ส่ง</label>
+                        <input type="date" id="deliveryDate" min="${minDate}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ช่วงเวลา</label>
+                        <select id="deliveryTime" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="09:00-12:00">เช้า (09:00-12:00)</option>
+                            <option value="13:00-17:00">บ่าย (13:00-17:00)</option>
+                            <option value="17:00-20:00">เย็น (17:00-20:00)</option>
+                        </select>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                        <textarea id="deliveryNote" rows="2" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="เช่น โทรก่อนส่ง, ฝากไว้ที่รปภ."></textarea>
+                    </div>
+                </div>
+                <div class="p-4 bg-gray-50 border-t flex gap-2">
+                    <button onclick="closeModal('scheduleDeliveryModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                        ยกเลิก
+                    </button>
+                    <button onclick="confirmScheduleDelivery()" class="flex-1 py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium">
+                        <i class="fas fa-check mr-1"></i>ยืนยัน
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+/**
+ * Confirm Schedule Delivery
+ */
+function confirmScheduleDelivery() {
+    const date = document.getElementById('deliveryDate')?.value;
+    const time = document.getElementById('deliveryTime')?.value;
+    const note = document.getElementById('deliveryNote')?.value || '';
+    
+    if (!date) {
+        showNotification('กรุณาเลือกวันที่ส่ง', 'warning');
+        return;
+    }
+    
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        const thaiDate = new Date(date).toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        messageInput.value = `🚚 นัดส่งสินค้า\n\n📅 วันที่: ${thaiDate}\n⏰ เวลา: ${time}\n${note ? '📝 หมายเหตุ: ' + note + '\n' : ''}\n✅ ยืนยันการนัดส่งค่ะ`;
+        autoResize(messageInput);
+        messageInput.focus();
+    }
+    
+    closeModal('scheduleDeliveryModal');
+    showNotification('ข้อความนัดส่งพร้อมส่ง', 'success');
+}
+
+/**
+ * Open Use Points Modal
+ */
+async function openUsePointsModal() {
+    if (!ghostDraftState.userId) {
+        showNotification('กรุณาเลือกลูกค้าก่อน', 'warning');
+        return;
+    }
+    
+    // Fetch user points
+    let points = 0;
+    try {
+        const response = await fetch(`api/inbox-v2.php?action=customer_loyalty&user_id=${ghostDraftState.userId}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            points = result.data.points || result.data.totalPoints || 0;
+        }
+    } catch (e) {
+        console.error('Fetch points error:', e);
+    }
+    
+    const modalHtml = `
+        <div id="usePointsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('usePointsModal')">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 text-white">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-lg flex items-center gap-2">
+                            <i class="fas fa-star"></i>
+                            ใช้แต้มสะสม
+                        </h3>
+                        <button onclick="closeModal('usePointsModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-4">
+                    <div class="text-center mb-4">
+                        <div class="text-4xl font-bold text-yellow-500">${points.toLocaleString()}</div>
+                        <div class="text-sm text-gray-500">แต้มสะสมปัจจุบัน</div>
+                    </div>
+                    <div class="bg-yellow-50 rounded-lg p-3 mb-4">
+                        <div class="text-sm text-yellow-800">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            อัตราแลก: 100 แต้ม = ส่วนลด ฿10
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนแต้มที่ต้องการใช้</label>
+                        <input type="number" id="pointsToUse" min="0" max="${points}" step="100" value="0" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-500">
+                    </div>
+                    <div class="text-center">
+                        <span class="text-sm text-gray-600">ส่วนลดที่ได้รับ: </span>
+                        <span id="pointsDiscount" class="text-lg font-bold text-green-600">฿0</span>
+                    </div>
+                </div>
+                <div class="p-4 bg-gray-50 border-t flex gap-2">
+                    <button onclick="closeModal('usePointsModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                        ยกเลิก
+                    </button>
+                    <button onclick="confirmUsePoints()" class="flex-1 py-2 px-4 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium">
+                        <i class="fas fa-check mr-1"></i>ใช้แต้ม
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // Add event listener for points input
+    document.getElementById('pointsToUse')?.addEventListener('input', function() {
+        const points = parseInt(this.value) || 0;
+        const discount = Math.floor(points / 100) * 10;
+        document.getElementById('pointsDiscount').textContent = '฿' + discount.toLocaleString();
+    });
+}
+
+/**
+ * Confirm Use Points
+ */
+function confirmUsePoints() {
+    const points = parseInt(document.getElementById('pointsToUse')?.value) || 0;
+    const discount = Math.floor(points / 100) * 10;
+    
+    if (points <= 0) {
+        showNotification('กรุณาระบุจำนวนแต้ม', 'warning');
+        return;
+    }
+    
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.value = `⭐ ใช้แต้มสะสม\n\n🎁 ใช้แต้ม: ${points.toLocaleString()} แต้ม\n💰 ส่วนลด: ฿${discount.toLocaleString()}\n\n✅ ระบบบันทึกการใช้แต้มเรียบร้อยค่ะ`;
+        autoResize(messageInput);
+        messageInput.focus();
+    }
+    
+    closeModal('usePointsModal');
+    showNotification('ข้อความใช้แต้มพร้อมส่ง', 'success');
+}
+
+/**
+ * Send Rich Menu to customer
+ */
+async function sendRichMenu() {
+    if (!ghostDraftState.userId) {
+        showNotification('กรุณาเลือกลูกค้าก่อน', 'warning');
+        return;
+    }
+    
+    const messageInput = document.getElementById('messageInput');
+    const shopUrl = `${window.location.origin}/liff-shop.php`;
+    
+    if (messageInput) {
+        messageInput.value = `📋 เมนูบริการ\n\n🛒 สั่งซื้อสินค้า: ${shopUrl}\n💊 ปรึกษาเภสัชกร: ${window.location.origin}/liff-pharmacy-consult.php\n📦 ติดตามออเดอร์: ${window.location.origin}/liff-my-orders.php\n⭐ แต้มสะสม: ${window.location.origin}/liff-points-history.php\n\n✨ กดลิงก์เพื่อใช้บริการได้เลยค่ะ`;
+        autoResize(messageInput);
+        messageInput.focus();
+        showNotification('เมนูพร้อมส่ง', 'success');
+    }
+}
+
+/**
+ * Confirm Create Order
+ */
+function confirmCreateOrder() {
+    // For now, redirect to shop order page
+    const userId = ghostDraftState.userId;
+    if (userId) {
+        window.open(`shop/create-order.php?user_id=${userId}`, '_blank');
+    }
+    closeModal('createOrderModal');
+    showNotification('เปิดหน้าสร้างออเดอร์แล้ว', 'success');
+}
+
+/**
+ * Close Modal
+ */
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * Toggle HUD visibility and adjust chat area
+ */
+function toggleHUDLayout() {
+    const chatArea = document.getElementById('chatArea');
+    const hud = document.getElementById('hudDashboard');
+    
+    if (hud && chatArea) {
+        if (hud.classList.contains('collapsed')) {
+            chatArea.classList.add('hud-hidden');
+        } else {
+            chatArea.classList.remove('hud-hidden');
+        }
+    }
+}
+
+// Call on page load
+document.addEventListener('DOMContentLoaded', function() {
+    toggleHUDLayout();
+});
 
 /**
  * Auto-refresh quick actions when conversation context changes
