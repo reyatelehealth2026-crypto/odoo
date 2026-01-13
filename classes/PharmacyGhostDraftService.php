@@ -20,8 +20,8 @@ class PharmacyGhostDraftService
     const DEFAULT_MODEL = 'gemini-2.0-flash';
     const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models/';
     
-    // Draft generation timeout (seconds)
-    const DRAFT_TIMEOUT = 2;
+    // Draft generation timeout (seconds) - increased for slower API responses
+    const DRAFT_TIMEOUT = 15;
     
     // Prescription drug keywords for disclaimer detection
     private $prescriptionKeywords = [
