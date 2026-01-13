@@ -47,15 +47,15 @@ if (file_exists($classFile)) {
     echo "❌ DrugPricingEngineService.php not found\n";
 }
 
-// Test 2: Get sample drugs from business_items
+// Test 2: Get sample drugs from business_items (without cost_price)
 echo "\n=== Test 2: Get Sample Drugs ===\n";
 try {
-    $stmt = $db->query("SELECT id, name, price, sale_price, cost_price, stock FROM business_items WHERE is_active = 1 LIMIT 5");
+    $stmt = $db->query("SELECT id, name, price, sale_price, stock FROM business_items WHERE is_active = 1 LIMIT 5");
     $drugs = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     echo "Found " . count($drugs) . " drugs:\n";
     foreach ($drugs as $drug) {
-        echo "  - ID: {$drug['id']}, Name: {$drug['name']}, Price: {$drug['price']}, Cost: {$drug['cost_price']}\n";
+        echo "  - ID: {$drug['id']}, Name: {$drug['name']}, Price: {$drug['price']}\n";
     }
     
     if (!empty($drugs)) {
@@ -69,9 +69,25 @@ try {
     $testDrugId = null;
 }
 
-// Test 3: Test calculateMargin directly
+// Test 3: Check if cost_price column exists
+echo "\n=== Test 3: Check cost_price Column ===\n";
+try {
+    $stmt = $db->query("SHOW COLUMNS FROM business_items LIKE 'cost_price'");
+    $column = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($column) {
+        echo "✅ cost_price column exists\n";
+    } else {
+        echo "⚠️ cost_price column does NOT exist - will use estimated cost\n";
+        echo "   Run install/run_cost_price_migration.php to add this column\n";
+    }
+} catch (PDOException $e) {
+    echo "❌ Error checking column: " . $e->getMessage() . "\n";
+}
+
+// Test 4: Test calculateMargin directly
 if ($testDrugId && isset($pricingEngine)) {
-    echo "\n=== Test 3: Test calculateMargin for drug ID {$testDrugId} ===\n";
+    echo "\n=== Test 4: Test calculateMargin for drug ID {$testDrugId} ===\n";
     try {
         $result = $pricingEngine->calculateMargin($testDrugId);
         echo "✅ calculateMargin result:\n";
@@ -82,48 +98,14 @@ if ($testDrugId && isset($pricingEngine)) {
     }
 }
 
-// Test 4: Test API endpoint directly
-echo "\n=== Test 4: Test API Endpoint ===\n";
-if ($testDrugId) {
-    // Simulate API call
-    $_GET['action'] = 'drug_pricing';
-    $_GET['id'] = $testDrugId;
-    $_SERVER['REQUEST_METHOD'] = 'GET';
-    
-    echo "Testing with drug ID: {$testDrugId}\n";
-    
-    // Direct database query as fallback
-    try {
-        $stmt = $db->prepare("SELECT id, name, price, sale_price, cost_price FROM business_items WHERE id = ?");
-        $stmt->execute([$testDrugId]);
-        $drug = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($drug) {
-            $cost = (float)($drug['cost_price'] ?? 0);
-            $price = (float)($drug['sale_price'] ?? $drug['price'] ?? 0);
-            $margin = $price - $cost;
-            $marginPercent = $price > 0 ? (($price - $cost) / $price) * 100 : 0;
-            
-            echo "✅ Direct query result:\n";
-            echo "  Drug: {$drug['name']}\n";
-            echo "  Cost: {$cost}\n";
-            echo "  Price: {$price}\n";
-            echo "  Margin: {$margin}\n";
-            echo "  Margin %: " . round($marginPercent, 2) . "%\n";
-        }
-    } catch (PDOException $e) {
-        echo "❌ Direct query error: " . $e->getMessage() . "\n";
-    }
-}
-
-// Test 5: Check for specific drug IDs from error logs
+// Test 5: Test specific drug IDs from error logs
 echo "\n=== Test 5: Test Specific Drug IDs from Errors ===\n";
 $errorDrugIds = [2474, 2413, 477, 1236, 478];
 
 foreach ($errorDrugIds as $drugId) {
     echo "\nTesting drug ID: {$drugId}\n";
     try {
-        $stmt = $db->prepare("SELECT id, name, price, sale_price, cost_price FROM business_items WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, name, price, sale_price FROM business_items WHERE id = ?");
         $stmt->execute([$drugId]);
         $drug = $stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -160,7 +142,7 @@ if (file_exists($analyzerFile)) {
             $analyzer = new ConsultationAnalyzerService($db, $lineAccountId);
             echo "✅ ConsultationAnalyzerService instantiated\n";
             
-            // Test getContextWidgets with a sample message
+            // Test searchDrugsFromMessage with sample messages
             $testMessages = [
                 'ปวดหัว',
                 'พาราเซตามอล',
@@ -171,13 +153,10 @@ if (file_exists($analyzerFile)) {
             foreach ($testMessages as $msg) {
                 echo "\nTesting message: '{$msg}'\n";
                 try {
-                    $widgets = $analyzer->getContextWidgets($msg, 1);
-                    echo "  Found " . count($widgets) . " widgets\n";
-                    foreach ($widgets as $widget) {
-                        echo "    - Type: {$widget['type']}, Title: " . ($widget['title'] ?? 'N/A') . "\n";
-                        if (isset($widget['recommendations'])) {
-                            echo "      Recommendations: " . count($widget['recommendations']) . " items\n";
-                        }
+                    $drugs = $analyzer->searchDrugsFromMessage($msg);
+                    echo "  Found " . count($drugs) . " drugs\n";
+                    foreach ($drugs as $drug) {
+                        echo "    - {$drug['name']} (฿{$drug['price']})\n";
                     }
                 } catch (Exception $e) {
                     echo "  ❌ Error: " . $e->getMessage() . "\n";
@@ -192,4 +171,5 @@ if (file_exists($analyzerFile)) {
 }
 
 echo "\n</pre>";
+echo "<p><a href='run_cost_price_migration.php'>Run cost_price Migration</a></p>";
 echo "<p><a href='../inbox-v2.php'>Back to Inbox</a></p>";

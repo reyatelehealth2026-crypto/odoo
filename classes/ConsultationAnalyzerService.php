@@ -991,32 +991,75 @@ class ConsultationAnalyzerService
                 $params[] = $termPattern;
             }
             
-            $sql = "
-                SELECT bi.id, bi.name, bi.sku, bi.price, bi.sale_price, 
-                       bi.stock, bi.description, bi.image_url, bi.cost_price,
-                       ic.name as category
-                FROM business_items bi
-                LEFT JOIN item_categories ic ON bi.category_id = ic.id
-                WHERE bi.is_active = 1 
-                AND bi.stock > 0
-                AND (" . implode(' OR ', $conditions) . ")
-            ";
-            
-            if ($this->lineAccountId) {
-                $sql .= " AND (bi.line_account_id = ? OR bi.line_account_id IS NULL)";
-                $params[] = $this->lineAccountId;
+            // Try with cost_price first, fallback without it
+            $hasCostPrice = true;
+            try {
+                $sql = "
+                    SELECT bi.id, bi.name, bi.sku, bi.price, bi.sale_price, 
+                           bi.stock, bi.description, bi.image_url, bi.cost_price,
+                           ic.name as category
+                    FROM business_items bi
+                    LEFT JOIN item_categories ic ON bi.category_id = ic.id
+                    WHERE bi.is_active = 1 
+                    AND bi.stock > 0
+                    AND (" . implode(' OR ', $conditions) . ")
+                ";
+                
+                if ($this->lineAccountId) {
+                    $sql .= " AND (bi.line_account_id = ? OR bi.line_account_id IS NULL)";
+                    $params[] = $this->lineAccountId;
+                }
+                
+                $sql .= " ORDER BY bi.stock DESC, bi.name ASC LIMIT 5";
+                
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute($params);
+                $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            } catch (PDOException $e) {
+                // cost_price column might not exist
+                $hasCostPrice = false;
+                $params = [];
+                
+                foreach ($searchTerms as $term) {
+                    $termPattern = '%' . mb_strtolower($term) . '%';
+                    $params[] = $termPattern;
+                    $params[] = $termPattern;
+                    $params[] = $termPattern;
+                }
+                
+                $sql = "
+                    SELECT bi.id, bi.name, bi.sku, bi.price, bi.sale_price, 
+                           bi.stock, bi.description, bi.image_url,
+                           ic.name as category
+                    FROM business_items bi
+                    LEFT JOIN item_categories ic ON bi.category_id = ic.id
+                    WHERE bi.is_active = 1 
+                    AND bi.stock > 0
+                    AND (" . implode(' OR ', $conditions) . ")
+                ";
+                
+                if ($this->lineAccountId) {
+                    $sql .= " AND (bi.line_account_id = ? OR bi.line_account_id IS NULL)";
+                    $params[] = $this->lineAccountId;
+                }
+                
+                $sql .= " ORDER BY bi.stock DESC, bi.name ASC LIMIT 5";
+                
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute($params);
+                $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
-            
-            $sql .= " ORDER BY bi.stock DESC, bi.name ASC LIMIT 5";
-            
-            $stmt = $this->db->prepare($sql);
-            $stmt->execute($params);
-            $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             foreach ($results as $drug) {
                 $price = (float)($drug['sale_price'] ?? $drug['price'] ?? 0);
                 $cost = (float)($drug['cost_price'] ?? 0);
-                $margin = $cost > 0 ? round((($price - $cost) / $price) * 100, 1) : null;
+                
+                // Estimate cost if not available
+                if ($cost <= 0 && $price > 0) {
+                    $cost = $price * 0.7;
+                }
+                
+                $margin = $price > 0 ? round((($price - $cost) / $price) * 100, 1) : null;
                 
                 $drugs[] = [
                     'id' => (int)$drug['id'],

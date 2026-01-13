@@ -516,16 +516,30 @@ try {
             
             // Helper function to get pricing directly from database
             $getDirectPricing = function($drugId) use ($db) {
-                $stmt = $db->prepare("SELECT id, name, price, sale_price, cost_price FROM business_items WHERE id = ?");
-                $stmt->execute([$drugId]);
-                $drug = $stmt->fetch(PDO::FETCH_ASSOC);
+                // Try with cost_price first
+                try {
+                    $stmt = $db->prepare("SELECT id, name, price, sale_price, cost_price FROM business_items WHERE id = ?");
+                    $stmt->execute([$drugId]);
+                    $drug = $stmt->fetch(PDO::FETCH_ASSOC);
+                } catch (PDOException $e) {
+                    // cost_price column might not exist
+                    $stmt = $db->prepare("SELECT id, name, price, sale_price FROM business_items WHERE id = ?");
+                    $stmt->execute([$drugId]);
+                    $drug = $stmt->fetch(PDO::FETCH_ASSOC);
+                }
                 
                 if (!$drug) {
                     return null;
                 }
                 
+                // Get cost - use cost_price if available, otherwise estimate as 70% of price
                 $cost = (float)($drug['cost_price'] ?? 0);
                 $price = (float)($drug['sale_price'] ?? $drug['price'] ?? 0);
+                
+                if ($cost <= 0 && $price > 0) {
+                    $cost = $price * 0.7; // Estimate 30% margin
+                }
+                
                 $margin = $price - $cost;
                 $marginPercent = $price > 0 ? (($price - $cost) / $price) * 100 : 0;
                 
@@ -535,7 +549,8 @@ try {
                     'cost' => round($cost, 2),
                     'price' => round($price, 2),
                     'margin' => round($margin, 2),
-                    'marginPercent' => round($marginPercent, 2)
+                    'marginPercent' => round($marginPercent, 2),
+                    'estimated' => ($drug['cost_price'] ?? 0) <= 0
                 ];
             };
             

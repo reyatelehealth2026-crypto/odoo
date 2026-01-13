@@ -44,14 +44,25 @@ class DrugPricingEngineService
      */
     public function calculateMargin(int $drugId, ?float $customPrice = null): array
     {
-        // Get drug data from business_items
-        $stmt = $this->db->prepare("
-            SELECT id, name, price, sale_price, cost_price 
-            FROM business_items 
-            WHERE id = ?
-        ");
-        $stmt->execute([$drugId]);
-        $drug = $stmt->fetch(PDO::FETCH_ASSOC);
+        // Get drug data from business_items - try with cost_price first, fallback to without
+        try {
+            $stmt = $this->db->prepare("
+                SELECT id, name, price, sale_price, cost_price 
+                FROM business_items 
+                WHERE id = ?
+            ");
+            $stmt->execute([$drugId]);
+            $drug = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // cost_price column might not exist, try without it
+            $stmt = $this->db->prepare("
+                SELECT id, name, price, sale_price 
+                FROM business_items 
+                WHERE id = ?
+            ");
+            $stmt->execute([$drugId]);
+            $drug = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
         
         if (!$drug) {
             return [
@@ -63,7 +74,13 @@ class DrugPricingEngineService
             ];
         }
         
+        // Get cost - try cost_price first, then estimate from price (assume 30% margin)
         $cost = (float)($drug['cost_price'] ?? 0);
+        if ($cost <= 0) {
+            // Estimate cost as 70% of price if not available
+            $basePrice = (float)($drug['sale_price'] ?? $drug['price'] ?? 0);
+            $cost = $basePrice * 0.7;
+        }
         
         // Use custom price if provided, otherwise use sale_price or regular price
         if ($customPrice !== null) {
