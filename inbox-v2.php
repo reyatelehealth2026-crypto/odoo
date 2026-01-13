@@ -1061,9 +1061,10 @@ function formatThaiDateTime($datetime) {
                    data-name="<?= strtolower($user['display_name']) ?>">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
-                            <img src="<?= $user['picture_url'] ?: 'https://via.placeholder.com/40' ?>" 
+                            <img src="<?= $user['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" 
                                  class="w-10 h-10 rounded-full object-cover border-2 border-white shadow"
-                                 loading="lazy">
+                                 loading="lazy"
+                                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E'">
                             <?php if ($user['unread'] > 0): ?>
                             <div class="unread-badge absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold">
                                 <?= $user['unread'] > 9 ? '9+' : $user['unread'] ?>
@@ -1100,7 +1101,7 @@ function formatThaiDateTime($datetime) {
                 <button id="mobileBackBtn" onclick="showChatList()" class="hidden w-8 h-8 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 mr-1">
                     <i class="fas fa-arrow-left"></i>
                 </button>
-                <img src="<?= $selectedUser['picture_url'] ?: 'https://via.placeholder.com/40' ?>" class="w-10 h-10 rounded-full border-2 border-purple-500">
+                <img src="<?= $selectedUser['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" class="w-10 h-10 rounded-full border-2 border-purple-500" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E'">
                 <div>
                     <div class="flex items-center gap-2">
                         <h3 class="font-bold text-gray-800"><?= htmlspecialchars($selectedUser['display_name']) ?></h3>
@@ -1143,7 +1144,7 @@ function formatThaiDateTime($datetime) {
             ?>
             <div class="message-item flex <?= $isMe ? 'justify-end' : 'justify-start' ?> group" data-msg-id="<?= $msg['id'] ?>">
                 <?php if (!$isMe): ?>
-                <img src="<?= $selectedUser['picture_url'] ?: 'https://via.placeholder.com/28' ?>" class="w-7 h-7 rounded-full self-end mr-2">
+                <img src="<?= $selectedUser['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 28 28%22%3E%3Ccircle cx=%2214%22 cy=%2214%22 r=%2214%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M14 15.4c2.3 0 4.2-1.9 4.2-4.2s-1.9-4.2-4.2-4.2-4.2 1.9-4.2 4.2 1.9 4.2 4.2 4.2zm0 2.1c-2.8 0-8.4 1.4-8.4 4.2v2.1h16.8v-2.1c0-2.8-5.6-4.2-8.4-4.2z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" class="w-7 h-7 rounded-full self-end mr-2" onerror="this.style.display='none'">
                 <?php endif; ?>
                 <div class="flex flex-col <?= $isMe ? 'items-end' : 'items-start' ?>" style="max-width:70%">
                     <?php if ($type === 'text'): ?>
@@ -1191,7 +1192,7 @@ function formatThaiDateTime($datetime) {
             
             <!-- Typing Indicator -->
             <div id="typingIndicator" class="hidden flex justify-start">
-                <img src="<?= $selectedUser['picture_url'] ?: 'https://via.placeholder.com/28' ?>" class="w-7 h-7 rounded-full self-end mr-2">
+                <img src="<?= $selectedUser['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 28 28%22%3E%3Ccircle cx=%2214%22 cy=%2214%22 r=%2214%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M14 15.4c2.3 0 4.2-1.9 4.2-4.2s-1.9-4.2-4.2-4.2-4.2 1.9-4.2 4.2 1.9 4.2 4.2 4.2zm0 2.1c-2.8 0-8.4 1.4-8.4 4.2v2.1h16.8v-2.1c0-2.8-5.6-4.2-8.4-4.2z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" class="w-7 h-7 rounded-full self-end mr-2" onerror="this.style.display='none'">
                 <div class="typing-indicator bg-white rounded-xl px-4 py-2">
                     <span class="w-2 h-2 bg-gray-400 rounded-full inline-block animate-bounce"></span>
                     <span class="w-2 h-2 bg-gray-400 rounded-full inline-block animate-bounce" style="animation-delay: 0.1s"></span>
