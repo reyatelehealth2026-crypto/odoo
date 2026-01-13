@@ -2439,6 +2439,7 @@ async function updateWidgetByType(widget) {
 
 /**
  * Update Symptom Widget - Requirements: 4.1
+ * Enhanced: Show summary of customer needs, match status, and search box
  * @param {Object} data Widget data
  */
 function updateSymptomWidget(data) {
@@ -2451,24 +2452,48 @@ function updateSymptomWidget(data) {
     
     setTimeout(() => {
         if (data.recommendations && data.recommendations.length > 0) {
+            // Count available vs unavailable
+            const available = data.recommendations.filter(d => d.stock > 0);
+            const unavailable = data.recommendations.filter(d => d.stock <= 0);
+            
             let html = `
                 <div class="mb-2">
-                    <span class="symptom-tag">${escapeHtml(data.keyword || data.category || 'อาการ')}</span>
+                    <span class="symptom-tag">${escapeHtml(data.keyword || data.category || 'ค้นหา')}</span>
+                    <span class="ml-2 text-[10px] text-gray-500">
+                        ✅ มี ${available.length} | ❌ ไม่มี ${unavailable.length}
+                    </span>
                 </div>
-                <div class="space-y-2">
             `;
             
-            data.recommendations.slice(0, 3).forEach(drug => {
-                const stockClass = drug.stock > 10 ? 'in-stock' : (drug.stock > 0 ? 'low-stock' : 'out-of-stock');
-                const stockText = drug.stock > 10 ? 'มีสินค้า' : (drug.stock > 0 ? `เหลือ ${drug.stock}` : 'หมด');
+            // Summary section
+            if (available.length > 0) {
+                html += `<div class="text-[10px] text-emerald-600 mb-2 bg-emerald-50 px-2 py-1 rounded">
+                    ✅ พบสินค้าที่มี: ${available.slice(0, 3).map(d => d.name).join(', ')}
+                </div>`;
+            }
+            if (unavailable.length > 0) {
+                html += `<div class="text-[10px] text-red-500 mb-2 bg-red-50 px-2 py-1 rounded">
+                    ❌ ไม่พบ/หมด: ${unavailable.slice(0, 2).map(d => d.name).join(', ')}
+                </div>`;
+            }
+            
+            html += '<div class="space-y-2">';
+            
+            // Show available items first
+            available.slice(0, 3).forEach(drug => {
+                const stockClass = drug.stock > 10 ? 'in-stock' : 'low-stock';
+                const stockText = drug.stock > 10 ? 'มีสินค้า' : `เหลือ ${drug.stock}`;
                 const drugId = drug.id || drug.drugId || 0;
                 const drugNameSafe = escapeAttr(drug.name || '');
+                const nameEn = drug.nameEn ? `<div class="text-[9px] text-gray-400">${escapeHtml(drug.nameEn)}</div>` : '';
+                const genericName = drug.genericName ? `<div class="text-[9px] text-blue-400">${escapeHtml(drug.genericName)}</div>` : '';
                 
                 html += `
                     <div class="recommended-drug" onclick="selectDrugForInfo(${drugId}, '${drugNameSafe}')">
-                        <div>
+                        <div class="flex-1">
                             <div class="text-xs font-medium text-gray-800">${escapeHtml(drug.name || 'ยา')}</div>
-                            <div class="text-[10px] text-gray-500">${escapeHtml(drug.dosage || '')}</div>
+                            ${nameEn}${genericName}
+                            <div class="text-[10px] text-gray-500">${escapeHtml(drug.dosage || drug.unit || '')}</div>
                         </div>
                         <div class="text-right">
                             <div class="text-xs font-bold text-emerald-600">฿${(drug.price || 0).toLocaleString()}</div>
@@ -2479,12 +2504,39 @@ function updateSymptomWidget(data) {
             });
             
             html += '</div>';
+            
+            // Add search box for admin to search more
+            html += `
+                <div class="mt-3 pt-2 border-t border-gray-100">
+                    <div class="flex gap-1">
+                        <input type="text" id="drugSearchInput" placeholder="🔍 ค้นหายาเพิ่มเติม..." 
+                            class="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-emerald-400"
+                            onkeypress="if(event.key==='Enter') searchDrugManual()">
+                        <button onclick="searchDrugManual()" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs rounded-lg">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div id="manualSearchResults" class="mt-2 hidden"></div>
+                </div>
+            `;
+            
             content.innerHTML = html;
         } else {
             content.innerHTML = `
-                <div class="text-center text-gray-400 text-xs py-4">
+                <div class="text-center text-gray-400 text-xs py-2">
                     <i class="fas fa-comment-medical mb-2"></i>
                     <p>รอวิเคราะห์อาการจากการสนทนา</p>
+                </div>
+                <div class="mt-3 pt-2 border-t border-gray-100">
+                    <div class="flex gap-1">
+                        <input type="text" id="drugSearchInput" placeholder="🔍 ค้นหายา..." 
+                            class="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded-lg focus:outline-none focus:border-emerald-400"
+                            onkeypress="if(event.key==='Enter') searchDrugManual()">
+                        <button onclick="searchDrugManual()" class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs rounded-lg">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                    <div id="manualSearchResults" class="mt-2 hidden"></div>
                 </div>
             `;
         }
@@ -2492,6 +2544,60 @@ function updateSymptomWidget(data) {
         // Fade in animation - Requirements: 4.6
         content.style.opacity = '1';
     }, 150);
+}
+
+/**
+ * Manual drug search by admin
+ */
+async function searchDrugManual() {
+    const input = document.getElementById('drugSearchInput');
+    const resultsDiv = document.getElementById('manualSearchResults');
+    if (!input || !resultsDiv) return;
+    
+    const query = input.value.trim();
+    if (!query || query.length < 2) {
+        showToast('กรุณาพิมพ์อย่างน้อย 2 ตัวอักษร', 'warning');
+        return;
+    }
+    
+    resultsDiv.innerHTML = '<div class="text-center text-gray-400 text-xs py-2"><i class="fas fa-spinner fa-spin"></i> กำลังค้นหา...</div>';
+    resultsDiv.classList.remove('hidden');
+    
+    try {
+        const response = await fetch(`api/inbox-v2.php?action=search_drugs&query=${encodeURIComponent(query)}&line_account_id=<?= $lineAccountId ?>`);
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+            let html = '<div class="space-y-1">';
+            result.data.slice(0, 5).forEach(drug => {
+                const stockClass = drug.stock > 0 ? 'in-stock' : 'out-of-stock';
+                const stockText = drug.stock > 0 ? `มี ${drug.stock}` : 'หมด';
+                const drugId = drug.id || 0;
+                const drugNameSafe = escapeAttr(drug.name || '');
+                
+                html += `
+                    <div class="flex items-center justify-between p-1.5 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer" 
+                         onclick="selectDrugForInfo(${drugId}, '${drugNameSafe}')">
+                        <div class="flex-1">
+                            <div class="text-[11px] font-medium">${escapeHtml(drug.name)}</div>
+                            ${drug.name_en ? `<div class="text-[9px] text-gray-400">${escapeHtml(drug.name_en)}</div>` : ''}
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] font-bold text-emerald-600">฿${(drug.price || 0).toLocaleString()}</div>
+                            <span class="text-[9px] ${drug.stock > 0 ? 'text-emerald-500' : 'text-red-500'}">${stockText}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            resultsDiv.innerHTML = html;
+        } else {
+            resultsDiv.innerHTML = '<div class="text-center text-gray-400 text-xs py-2">❌ ไม่พบสินค้า</div>';
+        }
+    } catch (error) {
+        console.error('Search error:', error);
+        resultsDiv.innerHTML = '<div class="text-center text-red-400 text-xs py-2">เกิดข้อผิดพลาด</div>';
+    }
 }
 
 /**

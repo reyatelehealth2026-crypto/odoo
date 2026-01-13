@@ -510,6 +510,84 @@ try {
             break;
 
         // ============================================
+        // GET /search_drugs - Search drugs by name/sku/generic
+        // ============================================
+        case 'search_drugs':
+        case 'search-drugs':
+            if ($method !== 'GET') {
+                sendError('Method not allowed', 405);
+            }
+            
+            $query = trim($_GET['query'] ?? '');
+            if (mb_strlen($query) < 2) {
+                sendError('Query must be at least 2 characters');
+            }
+            
+            try {
+                // Check available columns
+                $columnsStmt = $db->query("SHOW COLUMNS FROM business_items");
+                $columns = $columnsStmt->fetchAll(PDO::FETCH_COLUMN);
+                $hasGenericName = in_array('generic_name', $columns);
+                $hasNameEn = in_array('name_en', $columns);
+                
+                $selectCols = "id, name, sku, price, sale_price, stock, description";
+                if ($hasGenericName) $selectCols .= ", generic_name";
+                if ($hasNameEn) $selectCols .= ", name_en";
+                
+                // Build search query
+                $searchConditions = ["name LIKE ?", "sku LIKE ?"];
+                $params = ["%{$query}%", "%{$query}%"];
+                
+                if ($hasGenericName) {
+                    $searchConditions[] = "generic_name LIKE ?";
+                    $params[] = "%{$query}%";
+                }
+                if ($hasNameEn) {
+                    $searchConditions[] = "name_en LIKE ?";
+                    $params[] = "%{$query}%";
+                }
+                
+                $sql = "SELECT {$selectCols} FROM business_items 
+                        WHERE is_active = 1 
+                        AND (" . implode(' OR ', $searchConditions) . ")";
+                
+                if ($lineAccountId) {
+                    $sql .= " AND (line_account_id = ? OR line_account_id IS NULL)";
+                    $params[] = $lineAccountId;
+                }
+                
+                $sql .= " ORDER BY stock DESC, name ASC LIMIT 10";
+                
+                $stmt = $db->prepare($sql);
+                $stmt->execute($params);
+                $drugs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                $results = [];
+                foreach ($drugs as $drug) {
+                    $results[] = [
+                        'id' => (int)$drug['id'],
+                        'name' => $drug['name'],
+                        'name_en' => $drug['name_en'] ?? '',
+                        'generic_name' => $drug['generic_name'] ?? '',
+                        'sku' => $drug['sku'],
+                        'price' => (float)($drug['sale_price'] ?? $drug['price'] ?? 0),
+                        'stock' => (int)($drug['stock'] ?? 0)
+                    ];
+                }
+                
+                sendResponse([
+                    'success' => true,
+                    'data' => $results,
+                    'count' => count($results),
+                    'query' => $query
+                ]);
+                
+            } catch (PDOException $e) {
+                sendError('Database error: ' . $e->getMessage(), 500);
+            }
+            break;
+
+        // ============================================
         // GET /drug-pricing - Get drug pricing and margin
         // Requirements: 3.1, 3.4
         // ============================================
