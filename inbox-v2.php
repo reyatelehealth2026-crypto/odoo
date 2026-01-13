@@ -1475,11 +1475,6 @@ function formatThaiDateTime($datetime) {
                         </div>
                     </div>
                     <?php endif; ?>
-                    <?php else: ?>
-                    <div class="text-center text-gray-400 text-xs py-2">
-                        <p>กำลังโหลดข้อมูล...</p>
-                    </div>
-                    <?php endif; ?>
                     <?php if (!empty($customerClassification['tips'])): ?>
                     <div class="bg-purple-50 rounded-lg p-2 text-xs">
                         <p class="font-medium text-purple-700 mb-1">💡 เคล็ดลับการสื่อสาร</p>
@@ -1488,9 +1483,13 @@ function formatThaiDateTime($datetime) {
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
+                    <?php else: ?>
+                    <div class="text-center text-gray-400 text-xs py-2">
+                        <p>กำลังโหลดข้อมูล...</p>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
-            <?php endif; ?>
         </div>
     </div>
     <?php endif; ?>
