@@ -1297,15 +1297,18 @@ function formatThaiDateTime($datetime) {
             </div>
         </div>
 
-        <!-- Quick Actions Bar - Dynamic based on consultation stage -->
+        <!-- Quick Actions Bar - Unified Menu -->
         <div id="quickActionsBar" class="px-3 py-2 bg-gradient-to-r from-slate-50 to-gray-50 border-t border-gray-100">
-            <!-- Purchase Actions - Always visible -->
-            <div class="purchase-actions-bar mb-2">
+            <div class="purchase-actions-bar">
                 <div class="action-title">
-                    <i class="fas fa-shopping-cart"></i>
-                    ตัดสินใจซื้อ
+                    <i class="fas fa-bolt text-yellow-500"></i>
+                    Quick Actions
+                    <button onclick="refreshQuickActions()" class="ml-2 text-xs text-gray-400 hover:text-gray-600" title="รีเฟรช">
+                        <i class="fas fa-sync-alt" id="quickActionsRefreshIcon"></i>
+                    </button>
                 </div>
                 <div class="flex flex-wrap gap-2">
+                    <!-- Purchase Actions -->
                     <button type="button" onclick="openCreateOrderModal()" class="purchase-action-btn create-order">
                         <i class="fas fa-cart-plus"></i>
                         สร้างออเดอร์
@@ -1326,22 +1329,23 @@ function formatThaiDateTime($datetime) {
                         <i class="fas fa-bars"></i>
                         ส่งเมนู
                     </button>
-                </div>
-            </div>
-            <!-- Dynamic Quick Actions based on consultation stage -->
-            <div class="flex items-center gap-2 mb-2">
-                <span class="text-xs font-medium text-gray-500 flex items-center gap-1">
-                    <i class="fas fa-bolt text-yellow-500"></i>
-                    <span id="quickActionsStageLabel">Quick Actions</span>
-                </span>
-                <button onclick="refreshQuickActions()" class="text-xs text-gray-400 hover:text-gray-600" title="รีเฟรช">
-                    <i class="fas fa-sync-alt" id="quickActionsRefreshIcon"></i>
-                </button>
-            </div>
-            <div id="quickActionsContainer" class="flex flex-wrap gap-2">
-                <!-- Quick action buttons will be loaded here dynamically -->
-                <div class="text-xs text-gray-400 py-1">
-                    <i class="fas fa-spinner fa-spin mr-1"></i>กำลังโหลด...
+                    <!-- Consultation Actions -->
+                    <button type="button" onclick="askFollowupSymptoms()" class="quick-action-btn">
+                        <span class="action-icon">❓</span>
+                        ถามอาการเพิ่มเติม
+                    </button>
+                    <button type="button" onclick="suggestOTC()" class="quick-action-btn">
+                        <span class="action-icon">💊</span>
+                        แนะนำยา OTC
+                    </button>
+                    <button type="button" onclick="viewCustomerHistory()" class="quick-action-btn">
+                        <span class="action-icon">📋</span>
+                        ดูประวัติ
+                    </button>
+                    <button type="button" onclick="toggleImageAnalysisMenu()" class="quick-action-btn">
+                        <span class="action-icon">📷</span>
+                        วิเคราะห์รูป
+                    </button>
                 </div>
             </div>
         </div>
@@ -4115,6 +4119,51 @@ async function sendRichMenu() {
         messageInput.focus();
         showNotification('เมนูพร้อมส่ง', 'success');
     }
+}
+
+/**
+ * Ask followup symptoms
+ */
+function askFollowupSymptoms() {
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.value = 'อาการเป็นมานานแค่ไหนแล้วคะ? มีอาการอื่นร่วมด้วยไหมคะ เช่น ไข้ ปวดหัว คลื่นไส้?';
+        autoResize(messageInput);
+        messageInput.focus();
+        showNotification('ข้อความพร้อมส่ง', 'info');
+    }
+}
+
+/**
+ * Suggest OTC drugs
+ */
+function suggestOTC() {
+    // Open HUD and focus on drug recommendations
+    const hud = document.getElementById('hudDashboard');
+    if (hud && hud.classList.contains('collapsed')) {
+        toggleHUD();
+    }
+    const drugWidget = document.getElementById('drugInfoWidget');
+    if (drugWidget && drugWidget.classList.contains('collapsed')) {
+        toggleWidget('drugInfoWidget');
+    }
+    showNotification('เลือกยาจาก HUD Dashboard', 'info');
+}
+
+/**
+ * View customer history
+ */
+function viewCustomerHistory() {
+    // Open HUD and focus on medical history
+    const hud = document.getElementById('hudDashboard');
+    if (hud && hud.classList.contains('collapsed')) {
+        toggleHUD();
+    }
+    const medicalWidget = document.getElementById('medicalWidget');
+    if (medicalWidget && medicalWidget.classList.contains('collapsed')) {
+        toggleWidget('medicalWidget');
+    }
+    showNotification('ดูประวัติสุขภาพใน HUD Dashboard', 'info');
 }
 
 /**

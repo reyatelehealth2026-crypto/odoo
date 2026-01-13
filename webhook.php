@@ -3101,9 +3101,9 @@ if (!$line) {
             try {
                 $stateData = json_decode($userState['state_data'] ?? '{}', true);
                 $items = $stateData['items'] ?? [];
-                $total = $stateData['total'] ?? 0;
-                $subtotal = $stateData['subtotal'] ?? $total;
-                $discount = $stateData['discount'] ?? 0;
+                $total = (float)($stateData['total'] ?? 0);
+                $subtotal = (float)($stateData['subtotal'] ?? $total);
+                $discount = (float)($stateData['discount'] ?? 0);
                 
                 if (empty($items)) {
                     devLog($db, 'error', 'createOrderFromPendingState', 'No items in pending order', ['user_id' => $dbUserId]);
@@ -3113,10 +3113,17 @@ if (!$line) {
                 // Generate order number
                 $orderNumber = 'ORD' . date('Ymd') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
                 
-                // Create transaction
+                devLog($db, 'debug', 'createOrderFromPendingState', 'Creating transaction', [
+                    'order_number' => $orderNumber,
+                    'user_id' => $dbUserId,
+                    'total' => $total,
+                    'items_count' => count($items)
+                ]);
+                
+                // Create transaction - use only columns that definitely exist
                 $stmt = $db->prepare("INSERT INTO transactions 
-                    (line_account_id, order_number, user_id, transaction_type, total_amount, subtotal, discount_amount, grand_total, status, payment_status, note, created_at) 
-                    VALUES (?, ?, ?, 'purchase', ?, ?, ?, ?, 'pending', 'pending', ?, NOW())");
+                    (line_account_id, order_number, user_id, total_amount, subtotal, discount, grand_total, status, payment_status, note) 
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'pending', ?)");
                 $stmt->execute([
                     $lineAccountId,
                     $orderNumber,
@@ -3130,20 +3137,22 @@ if (!$line) {
                 
                 $transactionId = $db->lastInsertId();
                 
+                devLog($db, 'debug', 'createOrderFromPendingState', 'Transaction created', [
+                    'transaction_id' => $transactionId
+                ]);
+                
                 // Insert transaction items
                 foreach ($items as $item) {
-                    $itemSubtotal = ($item['price'] ?? 0) * ($item['qty'] ?? 1);
+                    $itemSubtotal = (float)($item['price'] ?? 0) * (int)($item['qty'] ?? 1);
                     $stmt = $db->prepare("INSERT INTO transaction_items 
-                        (transaction_id, product_id, product_name, product_price, price, quantity, subtotal, total) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        (transaction_id, product_id, product_name, product_price, quantity, subtotal) 
+                        VALUES (?, ?, ?, ?, ?, ?)");
                     $stmt->execute([
                         $transactionId,
                         $item['id'] ?? null,
                         $item['name'] ?? 'Unknown',
                         $item['price'] ?? 0,
-                        $item['price'] ?? 0,
                         $item['qty'] ?? 1,
-                        $itemSubtotal,
                         $itemSubtotal
                     ]);
                 }
