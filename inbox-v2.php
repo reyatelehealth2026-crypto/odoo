@@ -1573,20 +1573,6 @@ function formatThaiDateTime($datetime) {
                 </div>
             </div>
             
-            <!-- Drug Recommendations Widget - Requirements: 7.1 -->
-            <div class="hud-widget" id="drugRecommendationsWidget" data-widget="drug-recommendations">
-                <div class="hud-widget-header" onclick="toggleWidget('drugRecommendationsWidget')">
-                    <h4><i class="fas fa-prescription-bottle-alt text-teal-500"></i> แนะนำยา</h4>
-                    <i class="fas fa-chevron-down text-gray-400 text-xs"></i>
-                </div>
-                <div class="hud-widget-body widget-content">
-                    <div class="text-center text-gray-400 text-xs py-4">
-                        <i class="fas fa-pills text-2xl mb-2"></i>
-                        <p>กำลังโหลดยาแนะนำ...</p>
-                    </div>
-                </div>
-            </div>
-            
             <!-- Customer Profile Widget -->
             <div class="hud-widget" id="customerProfileWidget" data-widget="health-profile">
                 <div class="hud-widget-header" onclick="toggleWidget('customerProfileWidget')">
@@ -2454,16 +2440,21 @@ function updateSymptomWidget(data) {
     setTimeout(() => {
         if (data.recommendations && data.recommendations.length > 0) {
             const recommendations = data.recommendations;
+            const dataType = data.type || 'unknown';
             const found = recommendations.filter(d => d.stock > 0);
             const notFound = recommendations.filter(d => d.stock <= 0);
             
-            // Helper function to get match badge based on score
+            // Helper function to get match badge based on score and type
             const getMatchBadge = (drug) => {
+                const matchType = drug.matchType || 'partial';
                 const score = drug.matchScore || 0;
-                if (score >= 100) {
+                
+                if (matchType === 'exact' || score >= 200) {
                     return `<span class="text-[9px] bg-green-500 text-white px-1 rounded font-medium">✓ ตรงเป๊ะ</span>`;
+                } else if (matchType === 'recent' || score >= 100) {
+                    return `<span class="text-[9px] bg-blue-500 text-white px-1 rounded">🕐 ล่าสุด</span>`;
                 } else if (score >= 50) {
-                    return `<span class="text-[9px] bg-blue-500 text-white px-1 rounded">ตรงกัน</span>`;
+                    return `<span class="text-[9px] bg-green-100 text-green-600 px-1 rounded">ตรงกัน</span>`;
                 } else if (score >= 20) {
                     return `<span class="text-[9px] bg-gray-100 text-gray-500 px-1 rounded">คล้าย</span>`;
                 }
@@ -2472,28 +2463,40 @@ function updateSymptomWidget(data) {
             
             // Get border class based on match score
             const getBorderClass = (drug) => {
+                const matchType = drug.matchType || 'partial';
                 const score = drug.matchScore || 0;
-                if (score >= 100) return 'border-l-4 border-green-500 bg-green-50';
-                if (score >= 50) return 'border-l-4 border-blue-400 bg-blue-50';
+                
+                if (matchType === 'exact' || score >= 200) return 'border-l-4 border-green-500 bg-green-50';
+                if (matchType === 'recent' || score >= 100) return 'border-l-4 border-blue-400 bg-blue-50';
+                if (score >= 50) return 'border-l-4 border-green-300 bg-green-50';
                 return 'border-l-4 border-gray-200 bg-gray-50';
+            };
+            
+            // Get source label
+            const getSourceLabel = () => {
+                if (dataType === 'chat_history') return '📝 จากประวัติแชท';
+                if (dataType === 'message_search') return '💬 จากข้อความ';
+                if (dataType === 'context') return '💬 จากข้อความล่าสุด';
+                return '📊 ยอดนิยม';
             };
             
             let html = `
                 <div class="text-[10px] text-gray-400 mb-2 flex items-center justify-between">
-                    <span>💬 จากข้อความล่าสุด</span>
-                    <span class="text-emerald-500 font-medium">${found.length} พบ</span>
+                    <span>${getSourceLabel()}</span>
+                    <span class="text-emerald-500 font-medium">${found.length} พบ${notFound.length > 0 ? ` / ${notFound.length} หมด` : ''}</span>
                 </div>
             `;
             
-            // Show found items in list format (like แนะนำยา widget)
+            // Show found items in list format
             if (found.length > 0) {
-                html += `<div class="space-y-1.5 max-h-48 overflow-y-auto">`;
-                found.forEach(drug => {
+                html += `<div class="space-y-1.5 max-h-64 overflow-y-auto">`;
+                found.slice(0, 10).forEach(drug => {
                     const drugId = drug.id || drug.drugId || 0;
                     const drugNameSafe = escapeAttr(drug.name || '');
                     const matchBadge = getMatchBadge(drug);
                     const borderClass = getBorderClass(drug);
                     const stockClass = drug.stock > 10 ? 'text-green-500' : 'text-yellow-500';
+                    const subText = drug.sku || drug.nameEn || drug.category || '';
                     
                     html += `
                         <div class="flex items-center justify-between p-2 rounded hover:bg-gray-100 cursor-pointer ${borderClass}"
@@ -2502,7 +2505,7 @@ function updateSymptomWidget(data) {
                                 <div class="text-xs font-medium text-gray-800 truncate flex items-center gap-1">
                                     ${escapeHtml(drug.name || '')} ${matchBadge}
                                 </div>
-                                <div class="text-[10px] text-gray-500 truncate">${escapeHtml(drug.sku || drug.nameEn || '')}</div>
+                                <div class="text-[10px] text-gray-500 truncate">${escapeHtml(subText)}</div>
                             </div>
                             <div class="text-right ml-2 flex-shrink-0">
                                 <div class="text-xs font-medium text-green-600">฿${(drug.price || 0).toLocaleString()}</div>
@@ -2514,6 +2517,9 @@ function updateSymptomWidget(data) {
                     `;
                 });
                 html += `</div>`;
+                if (found.length > 10) {
+                    html += `<div class="text-center text-[10px] text-gray-400 mt-1">แสดง 10 จาก ${found.length} รายการ</div>`;
+                }
             }
             
             // Show not found items
@@ -3062,7 +3068,8 @@ async function autoUpdateHUDWidgets(message) {
             const recsResult = await recsResponse.json();
             
             if (recsResult.success && recsResult.data && recsResult.data.recommendations && recsResult.data.recommendations.length > 0) {
-                updateDrugRecommendationsWidget(recsResult.data);
+                // Send recommendations to symptom widget (product detection)
+                updateSymptomWidget(recsResult.data);
             }
             
         } catch (error) {
@@ -3520,7 +3527,8 @@ async function initializeHUD(message = '') {
         const recsResult = await recsResponse.json();
         
         if (recsResult.success && recsResult.data && recsResult.data.recommendations) {
-            updateDrugRecommendationsWidget(recsResult.data);
+            // Send recommendations to symptom widget (product detection)
+            updateSymptomWidget(recsResult.data);
         }
         
     } catch (error) {
@@ -3570,99 +3578,6 @@ function updateHealthProfileWidget(data) {
             </div>
             ` : ''}
         </div>
-    `;
-}
-
-/**
- * Update drug recommendations widget in HUD
- */
-function updateDrugRecommendationsWidget(data) {
-    const container = document.querySelector('#hudDashboard [data-widget="drug-recommendations"]');
-    if (!container) return;
-    
-    const content = container.querySelector('.widget-content');
-    if (!content) return;
-    
-    const recommendations = data.recommendations || [];
-    const dataType = data.type || 'unknown';
-    
-    if (recommendations.length === 0) {
-        content.innerHTML = `
-            <div class="text-center text-gray-400 py-2">
-                <i class="fas fa-pills text-2xl mb-1"></i>
-                <p class="text-xs">ยังไม่มีคำแนะนำยา</p>
-            </div>
-        `;
-        return;
-    }
-    
-    // Helper function to get match badge based on type
-    const getMatchBadge = (drug) => {
-        if (!drug.matchScore && !drug.matchType) return '';
-        
-        const matchType = drug.matchType || 'partial';
-        const score = drug.matchScore || 0;
-        
-        if (matchType === 'exact' || score >= 200) {
-            return `<span class="text-[9px] bg-green-500 text-white px-1 rounded font-medium">✓ ตรงเป๊ะ</span>`;
-        } else if (matchType === 'recent' || score >= 100) {
-            return `<span class="text-[9px] bg-blue-500 text-white px-1 rounded">🕐 ล่าสุด</span>`;
-        } else if (score >= 50) {
-            return `<span class="text-[9px] bg-green-100 text-green-600 px-1 rounded">ตรงกัน</span>`;
-        } else {
-            return `<span class="text-[9px] bg-gray-100 text-gray-500 px-1 rounded">คล้าย</span>`;
-        }
-    };
-    
-    // Get border color based on match quality
-    const getBorderClass = (drug, index) => {
-        const matchType = drug.matchType || 'partial';
-        const score = drug.matchScore || 0;
-        
-        if (matchType === 'exact' || score >= 200) {
-            return 'border-green-500 bg-green-50';
-        } else if (matchType === 'recent' || score >= 100) {
-            return 'border-blue-400 bg-blue-50';
-        } else if (index < 3 && score >= 50) {
-            return 'border-green-300';
-        }
-        return 'border-transparent';
-    };
-    
-    content.innerHTML = `
-        <div class="text-[10px] text-gray-400 mb-2 flex items-center justify-between">
-            <span>${dataType === 'chat_history' ? '📝 จากประวัติแชท' : dataType === 'message_search' ? '💬 จากข้อความ' : '📊 ยอดนิยม'}</span>
-            <span>${recommendations.length} รายการ</span>
-        </div>
-        <div class="space-y-2 max-h-80 overflow-y-auto">
-            ${recommendations.slice(0, 10).map((drug, index) => {
-                const drugId = drug.id || drug.drugId || 0;
-                const drugNameSafe = escapeAttr(drug.name || '');
-                const matchBadge = getMatchBadge(drug);
-                const borderClass = getBorderClass(drug, index);
-                const reasons = drug.matchReasons || [];
-                const reasonText = reasons.length > 0 ? reasons.slice(0, 2).map(r => r.split(':')[1] || r).join(', ') : '';
-                
-                return `
-                <div class="flex items-center justify-between p-2 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer border-l-3 ${borderClass}"
-                     onclick="selectDrugForInfo(${drugId}, '${drugNameSafe}')"
-                     title="${reasonText ? 'ตรงกับ: ' + reasonText : ''}">
-                    <div class="flex-1 min-w-0">
-                        <div class="text-xs font-medium text-gray-800 truncate flex items-center gap-1">
-                            ${escapeHtml(drug.name || '')} ${matchBadge}
-                        </div>
-                        <div class="text-[10px] text-gray-500 truncate">${escapeHtml(drug.sku || drug.category || '')}</div>
-                    </div>
-                    <div class="text-right ml-2 flex-shrink-0">
-                        <div class="text-xs font-medium text-green-600">฿${(drug.price || 0).toLocaleString()}</div>
-                        <div class="text-[10px] ${drug.stock > 10 ? 'text-green-500' : drug.stock > 0 ? 'text-yellow-500' : 'text-red-500'}">
-                            ${drug.stock > 10 ? 'มีสินค้า' : drug.stock > 0 ? 'เหลือ ' + drug.stock : 'หมด'}
-                        </div>
-                    </div>
-                </div>
-            `}).join('')}
-        </div>
-        ${recommendations.length > 10 ? `<div class="text-center text-[10px] text-gray-400 mt-2">แสดง 10 จาก ${recommendations.length} รายการ</div>` : ''}
     `;
 }
 
