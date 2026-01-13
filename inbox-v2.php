@@ -1297,8 +1297,37 @@ function formatThaiDateTime($datetime) {
             </div>
         </div>
 
-        <!-- Quick Actions Bar - Requirements: 9.1, 9.2, 9.3, 9.4, 9.5 -->
+        <!-- Quick Actions Bar - Dynamic based on consultation stage -->
         <div id="quickActionsBar" class="px-3 py-2 bg-gradient-to-r from-slate-50 to-gray-50 border-t border-gray-100">
+            <!-- Purchase Actions - Always visible -->
+            <div class="purchase-actions-bar mb-2">
+                <div class="action-title">
+                    <i class="fas fa-shopping-cart"></i>
+                    ตัดสินใจซื้อ
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" onclick="openCreateOrderModal()" class="purchase-action-btn create-order">
+                        <i class="fas fa-cart-plus"></i>
+                        สร้างออเดอร์
+                    </button>
+                    <button type="button" onclick="sendPaymentLink()" class="purchase-action-btn payment-link">
+                        <i class="fas fa-credit-card"></i>
+                        ส่งลิงก์ชำระเงิน
+                    </button>
+                    <button type="button" onclick="openScheduleDeliveryModal()" class="purchase-action-btn schedule-delivery">
+                        <i class="fas fa-truck"></i>
+                        นัดส่งสินค้า
+                    </button>
+                    <button type="button" onclick="openUsePointsModal()" class="purchase-action-btn use-points">
+                        <i class="fas fa-star"></i>
+                        ใช้แต้มสะสม
+                    </button>
+                    <button type="button" onclick="sendRichMenu()" class="purchase-action-btn send-menu">
+                        <i class="fas fa-bars"></i>
+                        ส่งเมนู
+                    </button>
+                </div>
+            </div>
             <!-- Dynamic Quick Actions based on consultation stage -->
             <div class="flex items-center gap-2 mb-2">
                 <span class="text-xs font-medium text-gray-500 flex items-center gap-1">
@@ -3686,23 +3715,25 @@ async function executeQuickAction(actionType, actionData) {
             break;
             
         case 'create_order':
-            // Navigate to order creation or open modal
-            showNotification('กำลังเปิดหน้าสร้างออเดอร์...', 'info');
-            // Could redirect: window.location.href = `shop/create-order.php?user_id=${ghostDraftState.userId}`;
+            // Open create order modal
+            openCreateOrderModal();
             break;
             
         case 'send_payment_link':
             // Generate and send payment link
-            showNotification('กำลังสร้างลิงก์ชำระเงิน...', 'info');
-            await generatePaymentLink();
+            sendPaymentLink();
             break;
             
         case 'schedule_delivery':
-            showNotification('กำลังเปิดหน้านัดส่งสินค้า...', 'info');
+            openScheduleDeliveryModal();
             break;
             
         case 'apply_points':
-            showNotification('กำลังตรวจสอบแต้มสะสม...', 'info');
+            openUsePointsModal();
+            break;
+            
+        case 'send_menu':
+            sendRichMenu();
             break;
             
         case 'suggest_refill':
