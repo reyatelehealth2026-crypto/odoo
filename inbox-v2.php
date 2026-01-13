@@ -1794,8 +1794,8 @@ function getLastCustomerMessage() {
     const chatBox = document.getElementById('chatBox');
     if (!chatBox) return null;
     
-    // Find all incoming messages (from customer)
-    const incomingMessages = chatBox.querySelectorAll('.message-item .justify-start .chat-incoming');
+    // Find all incoming messages (from customer) - fixed selector
+    const incomingMessages = chatBox.querySelectorAll('.message-item.justify-start .chat-incoming');
     
     if (incomingMessages.length > 0) {
         const lastMsg = incomingMessages[incomingMessages.length - 1];
