@@ -3132,17 +3132,16 @@ if (!$line) {
                     'items_count' => count($items)
                 ]);
                 
-                // Create transaction - use only columns that definitely exist
+                // Create transaction - use only basic columns that definitely exist
                 try {
                     $stmt = $db->prepare("INSERT INTO transactions 
-                        (line_account_id, order_number, user_id, total_amount, discount, grand_total, status, payment_status, note) 
-                        VALUES (?, ?, ?, ?, ?, ?, 'pending', 'pending', ?)");
+                        (line_account_id, order_number, user_id, total_amount, grand_total, status, payment_status, note) 
+                        VALUES (?, ?, ?, ?, ?, 'pending', 'pending', ?)");
                     $stmt->execute([
                         $lineAccountId,
                         $orderNumber,
                         $dbUserId,
                         $total,
-                        $discount,
                         $total,
                         'สร้างจากแชท - ลูกค้ายืนยัน'
                     ]);
