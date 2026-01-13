@@ -110,11 +110,15 @@ foreach ($v2Tables as $table => $name) {
 
 // 7. LINE API Check
 try {
+    require_once __DIR__ . '/classes/LineAPI.php';
     require_once __DIR__ . '/classes/LineAccountManager.php';
     $lineManager = new LineAccountManager($db);
     $lineAPI = $lineManager->getLineAPI($currentBotId);
     $checks['line_api'] = ['status' => 'ok', 'message' => 'LINE API พร้อมใช้งาน'];
 } catch (Exception $e) {
+    $checks['line_api'] = ['status' => 'warning', 'message' => 'LINE API: ' . $e->getMessage()];
+    if ($overallStatus === 'healthy') $overallStatus = 'degraded';
+} catch (Error $e) {
     $checks['line_api'] = ['status' => 'warning', 'message' => 'LINE API: ' . $e->getMessage()];
     if ($overallStatus === 'healthy') $overallStatus = 'degraded';
 }
