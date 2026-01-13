@@ -1070,7 +1070,10 @@ if (!$line) {
             }
             
             // ===== AI ตอบเฉพาะเมื่อใช้ / หรือ @ command =====
-            // ===== AI SIMPLE MODE: ลูกค้าพิมพ์อะไรก็ตอบเลย =====
+            // ===== AI SIMPLE MODE: DISABLED - ให้แอดมินตอบเอง =====
+            // ปิดการตอบอัตโนมัติของ AI ผ่าน webhook แล้ว
+            // ใช้ Ghost Draft ใน Inbox V2 แทน
+            /*
             if (isset($user['id'])) {
                 try {
                     require_once __DIR__ . '/classes/GeminiChat.php';
@@ -1126,6 +1129,7 @@ if (!$line) {
                     devLog($db, 'error', 'webhook', 'AI error: ' . $e->getMessage(), [], $userId);
                 }
             }
+            */
             
             // ===== ถ้า AI ไม่ตอบ ให้ทำงานตามปกติ =====
             
