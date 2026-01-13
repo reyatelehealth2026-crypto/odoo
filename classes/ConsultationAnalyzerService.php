@@ -1830,4 +1830,49 @@ class ConsultationAnalyzerService
             return false;
         }
     }
+    
+    /**
+     * Extract search terms from customer message for display
+     * @param string $message Customer message
+     * @return array Array of search terms
+     */
+    public function extractSearchTerms(string $message): array
+    {
+        $terms = [];
+        $messageLower = mb_strtolower(trim($message));
+        
+        // Remove common Thai particles and question words
+        $cleanMessage = preg_replace('/(มั้ย|ไหม|บ้าง|ครับ|ค่ะ|นะ|จ้า|หรือเปล่า|หน่อย|ด้วย|ขอ|เอา|ต้องการ|อยาก|อยากได้|สั่ง|ซื้อ)\s*/u', '', $messageLower);
+        
+        // Check for "มี" pattern - indicates asking about product availability
+        if (preg_match('/มี\s*(.+)/u', $cleanMessage, $match)) {
+            $terms[] = trim($match[1]);
+        }
+        
+        // Check for quantity patterns like "10 กล่อง", "5 ขวด"
+        if (preg_match_all('/(\d+)\s*(กล่อง|ขวด|แผง|ซอง|ชิ้น|หลอด|ตัว|ถุง|แพ็ค)/u', $cleanMessage, $matches, PREG_SET_ORDER)) {
+            foreach ($matches as $match) {
+                $terms[] = $match[0];
+            }
+        }
+        
+        // Extract product names - words that are likely product names (3+ chars, not common words)
+        $commonWords = ['และ', 'หรือ', 'กับ', 'ที่', 'ของ', 'ให้', 'ได้', 'จะ', 'แล้ว', 'ก็', 'คือ', 'เป็น', 'มา', 'ไป', 'อยู่', 'ยัง', 'แต่', 'ถ้า', 'เมื่อ', 'ตอน', 'วัน', 'นี้', 'นั้น', 'นั่น', 'โน่น'];
+        
+        // Split by common delimiters
+        $parts = preg_split('/[\s,\/\-\+]+/u', $cleanMessage);
+        foreach ($parts as $part) {
+            $part = trim($part);
+            // Keep words that are 3+ chars and not common words
+            if (mb_strlen($part) >= 3 && !in_array($part, $commonWords) && !is_numeric($part)) {
+                // Check if it looks like a product name (contains letters)
+                if (preg_match('/[ก-๙a-zA-Z]/u', $part)) {
+                    $terms[] = $part;
+                }
+            }
+        }
+        
+        // Remove duplicates and return
+        return array_values(array_unique($terms));
+    }
 }

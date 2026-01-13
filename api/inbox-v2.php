@@ -1132,6 +1132,9 @@ try {
                 try {
                     $matchedDrugs = $consultationAnalyzer->searchDrugsFromMessage($message);
                     
+                    // Extract search terms from message for customer request summary
+                    $searchTerms = $consultationAnalyzer->extractSearchTerms($message);
+                    
                     if (!empty($matchedDrugs)) {
                         sendResponse([
                             'success' => true,
@@ -1139,7 +1142,9 @@ try {
                                 'recommendations' => $matchedDrugs,
                                 'type' => 'message_search',
                                 'userId' => $userId,
-                                'message' => $message
+                                'message' => $message,
+                                'searchTerms' => $searchTerms,
+                                'originalMessage' => $message
                             ]
                         ]);
                         break;

@@ -422,6 +422,100 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['HTTP_X_REQUESTED_WI
                     throw new Exception("Failed to send image via LINE");
                 }
                 break;
+            
+            case 'send_pdf':
+                $userId = intval($_POST['user_id'] ?? 0);
+                if (!$userId) throw new Exception("User ID required");
+                if (!isset($_FILES['pdf']) || $_FILES['pdf']['error'] !== UPLOAD_ERR_OK) {
+                    throw new Exception("No PDF uploaded");
+                }
+                
+                $fileType = $_FILES['pdf']['type'];
+                if ($fileType !== 'application/pdf') {
+                    throw new Exception("Invalid file type. Only PDF allowed");
+                }
+                
+                if ($_FILES['pdf']['size'] > 10 * 1024 * 1024) {
+                    throw new Exception("PDF too large. Max 10MB");
+                }
+                
+                $stmt = $db->prepare("SELECT line_user_id, line_account_id FROM users WHERE id = ?");
+                $stmt->execute([$userId]);
+                $user = $stmt->fetch(PDO::FETCH_ASSOC);
+                if (!$user) throw new Exception("User not found");
+                
+                $uploadDir = __DIR__ . '/uploads/chat_files/';
+                if (!is_dir($uploadDir)) {
+                    mkdir($uploadDir, 0755, true);
+                }
+                
+                $originalName = pathinfo($_FILES['pdf']['name'], PATHINFO_FILENAME);
+                $filename = 'pdf_' . time() . '_' . uniqid() . '.pdf';
+                $filepath = $uploadDir . $filename;
+                
+                if (!move_uploaded_file($_FILES['pdf']['tmp_name'], $filepath)) {
+                    throw new Exception("Failed to save PDF");
+                }
+                
+                $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https://' : 'http://';
+                $host = $_SERVER['HTTP_HOST'];
+                $fileUrl = $protocol . $host . '/uploads/chat_files/' . $filename;
+                
+                // LINE doesn't support PDF directly, send as text with link
+                $lineManager = new LineAccountManager($db);
+                $line = $lineManager->getLineAPI($user['line_account_id']);
+                
+                $pdfMessage = "📄 ไฟล์ PDF: " . $_FILES['pdf']['name'] . "\n🔗 " . $fileUrl;
+                $result = $line->pushMessage($user['line_user_id'], [[
+                    'type' => 'text',
+                    'text' => $pdfMessage
+                ]]);
+                
+                if ($result['code'] === 200) {
+                    $adminUser = $_SESSION['admin_user'] ?? null;
+                    $adminName = 'Admin';
+                    if (is_array($adminUser)) {
+                        $adminName = $adminUser['username'] ?? $adminUser['display_name'] ?? 'Admin';
+                    }
+                    
+                    $hasSentBy = false;
+                    try {
+                        $checkCol = $db->query("SHOW COLUMNS FROM messages LIKE 'sent_by'");
+                        $hasSentBy = $checkCol->rowCount() > 0;
+                    } catch (Exception $e) {}
+                    
+                    // Store as file type with URL
+                    $content = json_encode(['url' => $fileUrl, 'name' => $_FILES['pdf']['name']], JSON_UNESCAPED_UNICODE);
+                    
+                    if ($hasSentBy) {
+                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, sent_by, created_at, is_read) VALUES (?, ?, 'outgoing', 'file', ?, ?, NOW(), 0)");
+                        $stmt->execute([$user['line_account_id'], $userId, $content, 'admin:' . $adminName]);
+                    } else {
+                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, created_at, is_read) VALUES (?, ?, 'outgoing', 'file', ?, NOW(), 0)");
+                        $stmt->execute([$user['line_account_id'], $userId, $content]);
+                    }
+                    $msgId = $db->lastInsertId();
+                    
+                    $activityLogger->logMessage(ActivityLogger::ACTION_SEND, 'ส่งไฟล์ PDF ถึงลูกค้า', [
+                        'user_id' => $userId,
+                        'entity_type' => 'message',
+                        'entity_id' => $msgId,
+                        'line_account_id' => $user['line_account_id']
+                    ]);
+                    
+                    echo json_encode([
+                        'success' => true,
+                        'message_id' => $msgId,
+                        'file_url' => $fileUrl,
+                        'file_name' => $_FILES['pdf']['name'],
+                        'time' => date('H:i'),
+                        'sent_by' => 'admin:' . $adminName
+                    ]);
+                } else {
+                    @unlink($filepath);
+                    throw new Exception("Failed to send PDF via LINE");
+                }
+                break;
                 
             default:
                 throw new Exception("Invalid action");
@@ -1370,6 +1464,8 @@ function formatThaiDateTime($datetime) {
                 <input type="file" id="symptomImageInput" accept="image/*" class="hidden" onchange="handleSymptomImageSelect(this)">
                 <input type="file" id="drugImageInput" accept="image/*" class="hidden" onchange="handleDrugImageSelect(this)">
                 <input type="file" id="prescriptionImageInput" accept="image/*" class="hidden" onchange="handlePrescriptionImageSelect(this)">
+                <!-- PDF File Input -->
+                <input type="file" id="pdfInput" accept=".pdf,application/pdf" class="hidden" onchange="handlePdfSelect(this)">
                 
                 <!-- Image Analysis Dropdown Button - Requirements: 1.1, 1.2, 1.3 -->
                 <div class="relative" id="imageAnalysisDropdown">
@@ -1416,6 +1512,15 @@ function formatThaiDateTime($datetime) {
                                 <div>
                                     <div class="font-medium">ส่งรูปธรรมดา</div>
                                     <div class="text-[10px] text-gray-400">ไม่วิเคราะห์ AI</div>
+                                </div>
+                            </button>
+                            <button type="button" onclick="document.getElementById('pdfInput').click(); closeImageAnalysisMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-gray-500">
+                                <span class="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-400">
+                                    <i class="fas fa-file-pdf"></i>
+                                </span>
+                                <div>
+                                    <div class="font-medium">ส่งไฟล์ PDF</div>
+                                    <div class="text-[10px] text-gray-400">เอกสาร, ใบเสนอราคา</div>
                                 </div>
                             </button>
                         </div>
@@ -2525,14 +2630,29 @@ function updateSymptomWidget(data) {
                 return '📊 ยอดนิยม';
             };
             
-            let html = `
+            // Extract customer request keywords from message
+            const customerRequest = data.customerRequest || data.searchTerms || [];
+            
+            let html = '';
+            
+            // Show customer request summary if available
+            if (customerRequest.length > 0 || data.originalMessage) {
+                html += `
+                    <div class="mb-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
+                        <div class="text-[10px] text-blue-600 font-medium mb-1">📋 ลูกค้าต้องการ:</div>
+                        <div class="text-xs text-blue-800">${customerRequest.length > 0 ? customerRequest.join(', ') : (data.originalMessage || '-')}</div>
+                    </div>
+                `;
+            }
+            
+            html += `
                 <div class="text-[10px] text-gray-400 mb-2 flex items-center justify-between">
                     <span>${getSourceLabel()}</span>
                     <span class="text-emerald-500 font-medium">${found.length} พบ${notFound.length > 0 ? ` / ${notFound.length} หมด` : ''}</span>
                 </div>
             `;
             
-            // Show found items with checkboxes
+            // Show found items with checkboxes (default unchecked)
             if (found.length > 0) {
                 html += `<div class="space-y-1.5 max-h-64 overflow-y-auto" id="detectedProductsList">`;
                 found.slice(0, 10).forEach((drug, index) => {
@@ -2548,11 +2668,10 @@ function updateSymptomWidget(data) {
                         <div class="flex items-center p-2 rounded hover:bg-gray-100 ${borderClass}">
                             <input type="checkbox" 
                                    id="drug_check_${drugId}" 
-                                   class="detected-drug-checkbox w-4 h-4 mr-2 accent-emerald-500 cursor-pointer"
+                                   class="detected-drug-checkbox"
                                    data-drug-id="${drugId}"
                                    data-drug-name="${drugNameSafe}"
                                    data-drug-price="${drugPriceSafe}"
-                                   checked
                                    onchange="updateSelectedTotal()">
                             <div class="flex-1 min-w-0 cursor-pointer" onclick="selectDrugForInfo(${drugId}, '${drugNameSafe}')">
                                 <div class="text-xs font-medium text-gray-800 truncate flex items-center gap-1">
@@ -2590,10 +2709,10 @@ function updateSymptomWidget(data) {
                     <div class="mt-2 p-2 bg-gray-50 rounded-lg">
                         <div class="flex justify-between items-center mb-2">
                             <label class="flex items-center text-[10px] text-gray-600 cursor-pointer">
-                                <input type="checkbox" id="selectAllProducts" class="mr-1 accent-emerald-500" checked onchange="toggleSelectAll(this)">
+                                <input type="checkbox" id="selectAllProducts" class="mr-1 accent-emerald-500" onchange="toggleSelectAll(this)">
                                 เลือกทั้งหมด
                             </label>
-                            <span id="selectedTotal" class="text-[10px] font-medium text-emerald-600">${found.length} รายการ | ฿${found.reduce((sum, d) => sum + (d.price || 0), 0).toLocaleString()}</span>
+                            <span id="selectedTotal" class="text-[10px] font-medium text-emerald-600">0 รายการ | ฿0</span>
                         </div>
                         <button onclick="addSelectedToOrder()" class="w-full text-[11px] px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-medium">
                             <i class="fas fa-cart-plus mr-1"></i>เพิ่มที่เลือกในออเดอร์
@@ -2601,7 +2720,6 @@ function updateSymptomWidget(data) {
                     </div>
                 `;
                 // Store detected drugs for adding to order
-                window.detectedDrugs = found;
                 window.detectedDrugs = found;
             }
             
@@ -3529,6 +3647,138 @@ function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// PDF handling functions
+let selectedPdfFile = null;
+
+function handlePdfSelect(input) {
+    if (input.files && input.files[0]) {
+        selectedPdfFile = input.files[0];
+        
+        // Validate file type
+        if (!selectedPdfFile.type.includes('pdf')) {
+            showNotification('กรุณาเลือกไฟล์ PDF เท่านั้น', 'error');
+            input.value = '';
+            return;
+        }
+        
+        // Validate file size (max 10MB)
+        if (selectedPdfFile.size > 10 * 1024 * 1024) {
+            showNotification('ไฟล์ PDF ต้องมีขนาดไม่เกิน 10MB', 'error');
+            input.value = '';
+            return;
+        }
+        
+        // Show PDF preview
+        showPdfPreview(selectedPdfFile);
+    }
+}
+
+function showPdfPreview(file) {
+    const preview = document.getElementById('imagePreview');
+    const previewImg = document.getElementById('previewImg');
+    const previewName = document.getElementById('previewName');
+    const previewSize = document.getElementById('previewSize');
+    
+    if (preview && previewImg) {
+        // Show PDF icon instead of image
+        previewImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNEQzI2MjYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTQgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjhsLTYtNnoiLz48cG9seWxpbmUgcG9pbnRzPSIxNCAyIDE0IDggMjAgOCIvPjxwYXRoIGQ9Ik05IDEzaDZ2NUg5eiIvPjxwYXRoIGQ9Ik05IDEzdi0yYTIgMiAwIDAgMSAyLTJoMmEyIDIgMCAwIDEgMiAydjIiLz48L3N2Zz4=';
+        previewName.textContent = file.name;
+        previewSize.textContent = formatFileSize(file.size);
+        preview.classList.remove('hidden');
+        
+        // Change send button to send PDF
+        const sendBtn = preview.querySelector('button[onclick="sendImage()"]');
+        if (sendBtn) {
+            sendBtn.setAttribute('onclick', 'sendPdf()');
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>ส่ง PDF';
+        }
+    }
+}
+
+async function sendPdf() {
+    if (!selectedPdfFile || !ghostDraftState.userId) return;
+    
+    const formData = new FormData();
+    formData.append('action', 'send_pdf');
+    formData.append('user_id', ghostDraftState.userId);
+    formData.append('pdf', selectedPdfFile);
+    
+    try {
+        showNotification('กำลังอัพโหลด PDF...', 'info');
+        
+        const response = await fetch('inbox-v2.php', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Add PDF to chat
+            appendPdfMessage(result.file_url, result.file_name, result.time, result.sent_by);
+            cancelPdfUpload();
+            scrollToBottom();
+            showNotification('ส่งไฟล์ PDF สำเร็จ', 'success');
+        } else {
+            throw new Error(result.error || 'ส่งไฟล์ PDF ไม่สำเร็จ');
+        }
+    } catch (error) {
+        console.error('Send PDF error:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+function cancelPdfUpload() {
+    selectedPdfFile = null;
+    const preview = document.getElementById('imagePreview');
+    const input = document.getElementById('pdfInput');
+    
+    if (preview) preview.classList.add('hidden');
+    if (input) input.value = '';
+    
+    // Reset send button back to image
+    const sendBtn = preview?.querySelector('button[onclick="sendPdf()"]');
+    if (sendBtn) {
+        sendBtn.setAttribute('onclick', 'sendImage()');
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>ส่งรูป';
+    }
+}
+
+function appendPdfMessage(fileUrl, fileName, time, sentBy) {
+    const chatBox = document.getElementById('chatBox');
+    if (!chatBox) return;
+    
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message-item flex justify-end group';
+    
+    let senderBadge = '';
+    if (sentBy && sentBy.startsWith('admin:')) {
+        const name = sentBy.substring(6);
+        senderBadge = `<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ${escapeHtml(name)}</span>`;
+    }
+    
+    msgDiv.innerHTML = `
+        <div class="flex flex-col items-end" style="max-width:70%">
+            <a href="${escapeHtml(fileUrl)}" target="_blank" class="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors">
+                <i class="fas fa-file-pdf text-2xl text-red-500"></i>
+                <div class="text-left">
+                    <div class="text-sm font-medium text-gray-800 truncate max-w-[150px]">${escapeHtml(fileName)}</div>
+                    <div class="text-[10px] text-gray-500">คลิกเพื่อเปิด PDF</div>
+                </div>
+            </a>
+            <div class="msg-meta flex items-center gap-1 text-[10px] text-gray-500 mt-1">
+                <span>${time || new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})} น.</span>
+                ${senderBadge}
+            </div>
+        </div>
+    `;
+    
+    chatBox.appendChild(msgDiv);
 }
 
 // Search and filter functions
