@@ -3879,7 +3879,13 @@ function openCreateOrderModal() {
     `;
     
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    showNotification('เลือกยาจาก HUD แล้วเพิ่มในออเดอร์', 'info');
+    
+    // Update order items list to show existing items
+    updateOrderItemsList();
+    
+    if (orderState.items.length === 0) {
+        showNotification('เลือกยาจาก HUD แล้วเพิ่มในออเดอร์', 'info');
+    }
 }
 
 /**
