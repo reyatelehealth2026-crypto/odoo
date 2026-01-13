@@ -933,7 +933,7 @@ class ConsultationAnalyzerService
      * @param string $message Customer message
      * @return array Matched drugs with full data
      */
-    private function searchDrugsFromMessage(string $message): array
+    public function searchDrugsFromMessage(string $message): array
     {
         $drugs = [];
         $messageLower = mb_strtolower($message);

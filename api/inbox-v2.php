@@ -14,9 +14,17 @@
  * Requirements: 1.1-1.6, 2.1-2.6, 3.1-3.5, 4.1-4.6, 6.1-6.6, 7.1-7.6, 8.1-8.5, 9.1-9.5
  */
 
-// Error handling
+// Error handling - only throw for errors, not warnings/notices
 set_error_handler(function($severity, $message, $file, $line) {
-    throw new ErrorException($message, 0, $severity, $file, $line);
+    // Only throw for actual errors (E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR)
+    if ($severity & (E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR | E_USER_ERROR)) {
+        throw new ErrorException($message, 0, $severity, $file, $line);
+    }
+    // Log warnings but don't throw
+    if ($severity & (E_WARNING | E_USER_WARNING)) {
+        error_log("API Warning: $message in $file:$line");
+    }
+    return true; // Don't execute PHP's internal error handler
 });
 
 header('Content-Type: application/json; charset=utf-8');
@@ -506,49 +514,87 @@ try {
                 sendError('Drug ID is required');
             }
             
-            try {
-                $pricingEngine = loadService('DrugPricingEngineService', $db, $lineAccountId);
+            // Helper function to get pricing directly from database
+            $getDirectPricing = function($drugId) use ($db) {
+                $stmt = $db->prepare("SELECT id, name, price, sale_price, cost_price FROM business_items WHERE id = ?");
+                $stmt->execute([$drugId]);
+                $drug = $stmt->fetch(PDO::FETCH_ASSOC);
                 
-                if (!$pricingEngine) {
-                    // Fallback: get pricing directly from business_items
-                    $stmt = $db->prepare("SELECT id, name, price, sale_price, cost_price FROM business_items WHERE id = ?");
-                    $stmt->execute([$drugId]);
-                    $drug = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
-                    if (!$drug) {
-                        sendError('Drug not found', 404);
-                    }
-                    
-                    $cost = (float)($drug['cost_price'] ?? 0);
-                    $price = (float)($drug['sale_price'] ?? $drug['price'] ?? 0);
-                    $margin = $price - $cost;
-                    $marginPercent = $price > 0 ? (($price - $cost) / $price) * 100 : 0;
-                    
-                    sendResponse([
-                        'success' => true,
-                        'data' => [
-                            'drugId' => $drugId,
-                            'drugName' => $drug['name'],
-                            'cost' => round($cost, 2),
-                            'price' => round($price, 2),
-                            'margin' => round($margin, 2),
-                            'marginPercent' => round($marginPercent, 2)
-                        ]
-                    ]);
-                    break;
+                if (!$drug) {
+                    return null;
                 }
                 
-                if ($customPrice !== null) {
-                    $result = $pricingEngine->calculateMarginImpact($drugId, $customPrice);
-                } else {
-                    $result = $pricingEngine->calculateMargin($drugId);
+                $cost = (float)($drug['cost_price'] ?? 0);
+                $price = (float)($drug['sale_price'] ?? $drug['price'] ?? 0);
+                $margin = $price - $cost;
+                $marginPercent = $price > 0 ? (($price - $cost) / $price) * 100 : 0;
+                
+                return [
+                    'drugId' => (int)$drug['id'],
+                    'drugName' => $drug['name'],
+                    'cost' => round($cost, 2),
+                    'price' => round($price, 2),
+                    'margin' => round($margin, 2),
+                    'marginPercent' => round($marginPercent, 2)
+                ];
+            };
+            
+            try {
+                // Try to use DrugPricingEngineService first
+                $pricingEngine = null;
+                try {
+                    $pricingEngine = loadService('DrugPricingEngineService', $db, $lineAccountId);
+                } catch (Throwable $e) {
+                    // Service loading failed, will use fallback
+                    error_log("DrugPricingEngineService load error: " . $e->getMessage());
+                }
+                
+                if ($pricingEngine) {
+                    try {
+                        if ($customPrice !== null) {
+                            $result = $pricingEngine->calculateMarginImpact($drugId, $customPrice);
+                        } else {
+                            $result = $pricingEngine->calculateMargin($drugId);
+                        }
+                        
+                        if (!isset($result['error'])) {
+                            sendResponse([
+                                'success' => true,
+                                'data' => $result
+                            ]);
+                            break;
+                        }
+                    } catch (Throwable $e) {
+                        // Service method failed, will use fallback
+                        error_log("DrugPricingEngineService method error: " . $e->getMessage());
+                    }
+                }
+                
+                // Fallback: get pricing directly from business_items
+                $directPricing = $getDirectPricing($drugId);
+                
+                if (!$directPricing) {
+                    sendError('Drug not found', 404);
                 }
                 
                 sendResponse([
-                    'success' => !isset($result['error']),
-                    'data' => $result
+                    'success' => true,
+                    'data' => $directPricing
                 ]);
-            } catch (Exception $e) {
+                
+            } catch (Throwable $e) {
+                // Last resort fallback
+                try {
+                    $directPricing = $getDirectPricing($drugId);
+                    if ($directPricing) {
+                        sendResponse([
+                            'success' => true,
+                            'data' => $directPricing
+                        ]);
+                    }
+                } catch (Throwable $e2) {
+                    // Ignore
+                }
                 sendError('Pricing calculation error: ' . $e->getMessage(), 500);
             }
             break;
@@ -992,10 +1038,38 @@ try {
             $userId = (int)($_GET['user_id'] ?? 0);
             $symptoms = $_GET['symptoms'] ?? '';
             $type = $_GET['type'] ?? '';
+            $message = $_GET['message'] ?? '';
             $limit = (int)($_GET['limit'] ?? 5);
             
             if (!$userId) {
                 sendError('User ID is required');
+            }
+            
+            // If message is provided, search for drugs based on message content
+            if (!empty($message)) {
+                try {
+                    $consultationAnalyzer = loadService('ConsultationAnalyzerService', $db, $lineAccountId);
+                    
+                    if ($consultationAnalyzer) {
+                        $matchedDrugs = $consultationAnalyzer->searchDrugsFromMessage($message);
+                        
+                        if (!empty($matchedDrugs)) {
+                            sendResponse([
+                                'success' => true,
+                                'data' => [
+                                    'recommendations' => $matchedDrugs,
+                                    'type' => 'message_search',
+                                    'userId' => $userId,
+                                    'message' => $message
+                                ]
+                            ]);
+                            break;
+                        }
+                    }
+                } catch (Throwable $e) {
+                    error_log("Message search error: " . $e->getMessage());
+                    // Fall through to context/popular search
+                }
             }
             
             // If type=context, get popular/recent drugs from business_items instead of requiring symptoms

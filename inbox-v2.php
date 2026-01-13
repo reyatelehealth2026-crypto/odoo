@@ -2600,6 +2600,7 @@ async function autoUpdateHUDWidgets(message) {
         }
         
         try {
+            // Fetch context widgets
             const params = new URLSearchParams({
                 action: 'context_widgets',
                 user_id: ghostDraftState.userId,
@@ -2617,6 +2618,22 @@ async function autoUpdateHUDWidgets(message) {
                     await updateHUDWidgets(result.data.widgets);
                 }
             }
+            
+            // Also fetch drug recommendations based on message
+            const recsParams = new URLSearchParams({
+                action: 'recommendations',
+                user_id: ghostDraftState.userId,
+                type: 'context',
+                message: message
+            });
+            
+            const recsResponse = await fetch(`api/inbox-v2.php?${recsParams.toString()}`);
+            const recsResult = await recsResponse.json();
+            
+            if (recsResult.success && recsResult.data && recsResult.data.recommendations && recsResult.data.recommendations.length > 0) {
+                updateDrugRecommendationsWidget(recsResult.data);
+            }
+            
         } catch (error) {
             console.error('Auto-update HUD error:', error);
         }
@@ -3030,6 +3047,12 @@ async function initializeHUD(message = '') {
             user_id: ghostDraftState.userId,
             type: 'context'
         });
+        
+        // Add message if available for better drug matching
+        if (message) {
+            recsParams.append('message', message);
+        }
+        
         const recsResponse = await fetch(`api/inbox-v2.php?${recsParams.toString()}`);
         const recsResult = await recsResponse.json();
         
