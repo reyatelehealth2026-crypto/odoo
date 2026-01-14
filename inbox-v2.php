@@ -696,24 +696,32 @@ function formatThaiDateTime($datetime) {
 .chat-scroll::-webkit-scrollbar { width: 5px; }
 .chat-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
 
-/* Chat Bubbles - LINE style, fit content */
+/* Chat Bubbles - LINE OA style */
 .chat-bubble { 
     white-space: pre-wrap; 
     word-wrap: break-word; 
-    line-height: 1.5; 
-    display: inline-block;
-    max-width: 100%;
+    line-height: 1.45;
+    font-size: 14px;
+    max-width: fit-content;
 }
 .chat-incoming { 
-    background: white; 
-    color: #1F2937; 
-    border-radius: 4px 18px 18px 18px; 
-    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+    background: #FFFFFF; 
+    color: #333333; 
+    border-radius: 0 18px 18px 18px;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.08);
 }
 .chat-outgoing { 
     background: #06C755; 
-    color: white; 
-    border-radius: 18px 4px 18px 18px; 
+    color: #FFFFFF; 
+    border-radius: 18px 0 18px 18px;
+}
+
+/* Message container - fit content */
+.message-item .flex-col {
+    max-width: 65%;
+}
+.message-item .chat-bubble {
+    padding: 10px 14px;
 }
 
 /* User list */
@@ -722,9 +730,18 @@ function formatThaiDateTime($datetime) {
 .user-item.sla-warning { border-left: 3px solid #F97316; background: #FFF7ED; }
 .tag-badge { font-size: 0.6rem; padding: 2px 6px; border-radius: 9999px; font-weight: 500; }
 
-/* Chat area background - clean gray like LINE */
-#chatBox { background: #8B9DC3; }
-.chat-area-wrapper { background: #8B9DC3; }
+/* Chat area background - LINE OA teal/blue-green */
+#chatBox { background: #7494A8; }
+.chat-area-wrapper { background: #7494A8; }
+
+/* Message meta - time and sender */
+.msg-meta { 
+    font-size: 11px !important; 
+    margin-top: 4px;
+    opacity: 0.7;
+}
+.message-item.justify-end .msg-meta { color: #666; }
+.message-item.justify-start .msg-meta { color: #666; }
 
 /* V2 Vibe Selling OS Styles */
 .vibe-header { background: #06C755; }
@@ -1406,11 +1423,11 @@ function formatThaiDateTime($datetime) {
             ?>
             <div class="message-item flex <?= $isMe ? 'justify-end' : 'justify-start' ?> group" data-msg-id="<?= $msg['id'] ?>">
                 <?php if (!$isMe): ?>
-                <img src="<?= $selectedUser['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 28 28%22%3E%3Ccircle cx=%2214%22 cy=%2214%22 r=%2214%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M14 15.4c2.3 0 4.2-1.9 4.2-4.2s-1.9-4.2-4.2-4.2-4.2 1.9-4.2 4.2 1.9 4.2 4.2 4.2zm0 2.1c-2.8 0-8.4 1.4-8.4 4.2v2.1h16.8v-2.1c0-2.8-5.6-4.2-8.4-4.2z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" class="w-7 h-7 rounded-full self-end mr-2" onerror="this.style.display='none'">
+                <img src="<?= $selectedUser['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 28 28%22%3E%3Ccircle cx=%2214%22 cy=%2214%22 r=%2214%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M14 15.4c2.3 0 4.2-1.9 4.2-4.2s-1.9-4.2-4.2-4.2-4.2 1.9-4.2 4.2 1.9 4.2 4.2 4.2zm0 2.1c-2.8 0-8.4 1.4-8.4 4.2v2.1h16.8v-2.1c0-2.8-5.6-4.2-8.4-4.2z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" class="w-8 h-8 rounded-full self-end mr-2 flex-shrink-0" onerror="this.style.display='none'">
                 <?php endif; ?>
-                <div class="flex flex-col <?= $isMe ? 'items-end' : 'items-start' ?>" style="max-width:70%">
+                <div class="flex flex-col <?= $isMe ? 'items-end' : 'items-start' ?>">
                     <?php if ($type === 'text'): ?>
-                        <div class="chat-bubble px-4 py-2.5 text-sm shadow-sm <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>">
+                        <div class="chat-bubble <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>">
                             <?= nl2br(htmlspecialchars($content ?? '')) ?>
                         </div>
                     <?php elseif ($type === 'image'): ?>
@@ -1442,8 +1459,8 @@ function formatThaiDateTime($datetime) {
                         <div class="bg-white rounded-lg border p-3 text-xs text-gray-500"><i class="fas fa-file-alt mr-1"></i><?= ucfirst($type) ?></div>
                     <?php endif; ?>
                     
-                    <div class="msg-meta flex items-center gap-1 text-[10px] <?= $isMe ? 'text-white/70' : 'text-gray-500' ?> mt-1">
-                        <span><?= date('H:i น.', strtotime($msg['created_at'])) ?></span>
+                    <div class="msg-meta flex items-center gap-1 mt-1">
+                        <span><?= date('H:i', strtotime($msg['created_at'])) ?></span>
                         <?php if ($isMe): ?>
                             <?= getSenderBadge($sentBy, 'outgoing') ?>
                         <?php endif; ?>
@@ -2857,12 +2874,12 @@ function appendMessage(content, isOutgoing, time, sentBy) {
     }
     
     msgDiv.innerHTML = `
-        <div class="flex flex-col ${isOutgoing ? 'items-end' : 'items-start'}" style="max-width:70%">
-            <div class="chat-bubble px-4 py-2.5 text-sm shadow-sm ${isOutgoing ? 'chat-outgoing' : 'chat-incoming'}">
+        <div class="flex flex-col ${isOutgoing ? 'items-end' : 'items-start'}">
+            <div class="chat-bubble ${isOutgoing ? 'chat-outgoing' : 'chat-incoming'}">
                 ${escapeHtml(content).replace(/\n/g, '<br>')}
             </div>
-            <div class="msg-meta flex items-center gap-1 text-[10px] ${isOutgoing ? 'text-white/70' : 'text-gray-500'} mt-1">
-                <span>${time || new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})} น.</span>
+            <div class="msg-meta flex items-center gap-1 mt-1">
+                <span>${time || new Date().toLocaleTimeString('th-TH', {hour: '2-digit', minute: '2-digit'})}</span>
                 ${senderBadge}
             </div>
         </div>
