@@ -18,15 +18,23 @@ try {
     
     if (!$exists) {
         // Add chat_status column
-        $db->exec("ALTER TABLE users ADD COLUMN chat_status VARCHAR(50) DEFAULT NULL COMMENT 'สถานะแชท: pending, completed, shipping, tracking, billing'");
-        echo "✅ Added chat_status column to users table\n";
+        try {
+            $db->exec("ALTER TABLE users ADD COLUMN chat_status VARCHAR(50) DEFAULT NULL");
+            echo "✅ Added chat_status column to users table\n";
+        } catch (PDOException $e) {
+            if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+                echo "ℹ️ chat_status column already exists\n";
+            } else {
+                throw $e;
+            }
+        }
         
         // Add index
         try {
             $db->exec("CREATE INDEX idx_users_chat_status ON users(chat_status)");
             echo "✅ Created index idx_users_chat_status\n";
         } catch (PDOException $e) {
-            echo "⚠️ Index may already exist: " . $e->getMessage() . "\n";
+            echo "⚠️ Index may already exist\n";
         }
     } else {
         echo "ℹ️ chat_status column already exists\n";
@@ -38,8 +46,8 @@ try {
         user_id INT NOT NULL,
         line_account_id INT NOT NULL,
         old_status VARCHAR(50) DEFAULT NULL,
-        new_status VARCHAR(50) NOT NULL,
-        changed_by INT DEFAULT NULL COMMENT 'admin_user_id who changed',
+        new_status VARCHAR(50) DEFAULT NULL,
+        changed_by INT DEFAULT NULL,
         changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         note TEXT DEFAULT NULL,
         INDEX idx_user_status (user_id, line_account_id),
