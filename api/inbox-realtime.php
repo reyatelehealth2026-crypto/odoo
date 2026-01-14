@@ -49,16 +49,18 @@ try {
             $lastCheck = $_GET['last_check'] ?? date('Y-m-d H:i:s', strtotime('-30 seconds'));
             $currentUserId = (int)($_GET['current_user'] ?? 0);
             
-            // Get count of new incoming messages since last check
+            // Get count of UNREAD incoming messages (not just new since last check)
+            // This ensures count is accurate after mark_all_read
             $stmt = $db->prepare("
                 SELECT COUNT(*) as new_count 
                 FROM messages m
                 JOIN users u ON m.user_id = u.id
                 WHERE u.line_account_id = ?
+                AND m.line_account_id = ?
                 AND m.direction = 'incoming'
-                AND m.created_at > ?
+                AND m.is_read = 0
             ");
-            $stmt->execute([$lineAccountId, $lastCheck]);
+            $stmt->execute([$lineAccountId, $lineAccountId]);
             $newCount = (int)$stmt->fetch(PDO::FETCH_ASSOC)['new_count'];
             
             // Get updated conversation list (sorted by latest message)
@@ -202,10 +204,11 @@ try {
                 FROM messages m
                 JOIN users u ON m.user_id = u.id
                 WHERE u.line_account_id = ?
+                AND m.line_account_id = ?
                 AND m.direction = 'incoming'
                 AND m.is_read = 0
             ");
-            $stmt->execute([$lineAccountId]);
+            $stmt->execute([$lineAccountId, $lineAccountId]);
             $total = (int)$stmt->fetch(PDO::FETCH_ASSOC)['total'];
             
             sendJson([

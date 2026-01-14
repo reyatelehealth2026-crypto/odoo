@@ -2228,21 +2228,54 @@ try {
             }
             
             try {
-                // Check if assignment table exists, create if not
-                $db->exec("
-                    CREATE TABLE IF NOT EXISTS conversation_assignments (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        user_id INT NOT NULL,
-                        line_account_id INT NOT NULL,
-                        assigned_to INT NOT NULL,
-                        assigned_by INT NULL,
-                        assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        status ENUM('active', 'completed', 'transferred') DEFAULT 'active',
-                        UNIQUE KEY unique_user_account (user_id, line_account_id),
-                        INDEX idx_assigned_to (assigned_to),
-                        INDEX idx_status (status)
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                ");
+                // Check if table exists
+                $tableExists = false;
+                $hasLineAccountId = false;
+                
+                try {
+                    $checkTable = $db->query("SHOW TABLES LIKE 'conversation_assignments'");
+                    $tableExists = $checkTable->rowCount() > 0;
+                    
+                    if ($tableExists) {
+                        // Check if line_account_id column exists
+                        $checkCol = $db->query("SHOW COLUMNS FROM conversation_assignments LIKE 'line_account_id'");
+                        $hasLineAccountId = $checkCol->rowCount() > 0;
+                    }
+                } catch (Exception $e) {
+                    // Ignore
+                }
+                
+                if (!$tableExists) {
+                    // Create table with all columns
+                    $db->exec("
+                        CREATE TABLE conversation_assignments (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            user_id INT NOT NULL,
+                            line_account_id INT NOT NULL DEFAULT 1,
+                            assigned_to INT NOT NULL,
+                            assigned_by INT NULL,
+                            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            status ENUM('active', 'completed', 'transferred') DEFAULT 'active',
+                            UNIQUE KEY unique_user_account (user_id, line_account_id),
+                            INDEX idx_assigned_to (assigned_to),
+                            INDEX idx_status (status)
+                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    ");
+                } elseif (!$hasLineAccountId) {
+                    // Table exists but missing line_account_id column - add it
+                    $db->exec("ALTER TABLE conversation_assignments ADD COLUMN line_account_id INT NOT NULL DEFAULT 1 AFTER user_id");
+                    // Drop old unique key if exists and create new one
+                    try {
+                        $db->exec("ALTER TABLE conversation_assignments DROP INDEX unique_user_account");
+                    } catch (Exception $e) {
+                        // Index might not exist
+                    }
+                    try {
+                        $db->exec("ALTER TABLE conversation_assignments ADD UNIQUE KEY unique_user_account (user_id, line_account_id)");
+                    } catch (Exception $e) {
+                        // Index might already exist
+                    }
+                }
                 
                 // Upsert assignment
                 $stmt = $db->prepare("
