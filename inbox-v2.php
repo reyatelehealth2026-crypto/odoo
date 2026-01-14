@@ -1852,9 +1852,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Callback when conversation list updates
         onConversationUpdate: function(conversations) {
             console.log('[Inbox] onConversationUpdate called with', conversations.length, 'conversations');
-            // TEMPORARILY DISABLED - testing if this is the cause
-            // updateConversationListUI(conversations);
-            console.log('[Inbox] updateConversationListUI DISABLED for testing');
+            updateConversationListUI(conversations);
         },
         
         // Error callback
@@ -2806,7 +2804,8 @@ async function refreshHUD() {
         const params = new URLSearchParams({
             action: 'context_widgets',
             user_id: ghostDraftState.userId,
-            message: lastMessage
+            message: lastMessage,
+            line_account_id: <?= $currentBotId ?>
         });
         
         const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
@@ -3588,7 +3587,8 @@ async function autoUpdateHUDWidgets(message) {
             const params = new URLSearchParams({
                 action: 'context_widgets',
                 user_id: ghostDraftState.userId,
-                message: message
+                message: message,
+                line_account_id: <?= $currentBotId ?>
             });
             
             const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
@@ -3608,6 +3608,7 @@ async function autoUpdateHUDWidgets(message) {
                 action: 'recommendations',
                 user_id: ghostDraftState.userId,
                 type: 'context',
+                line_account_id: <?= $currentBotId ?>,
                 message: message
             });
             
@@ -3637,7 +3638,8 @@ async function selectDrugForInfo(drugId, drugName) {
         const params = new URLSearchParams({
             action: 'drug_info',
             id: drugId || '',
-            name: drugName || ''
+            name: drugName || '',
+            line_account_id: <?= $currentBotId ?>
         });
         
         const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
@@ -3679,7 +3681,8 @@ async function loadDrugPricing(drugId) {
     try {
         const params = new URLSearchParams({
             action: 'drug_pricing',
-            id: drugId
+            id: drugId,
+            line_account_id: <?= $currentBotId ?>
         });
         
         const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
@@ -3703,7 +3706,8 @@ async function insertDrugToMessage(drugId) {
     try {
         const params = new URLSearchParams({
             action: 'drug_info',
-            id: drugId
+            id: drugId,
+            line_account_id: <?= $currentBotId ?>
         });
         
         const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
@@ -3780,7 +3784,8 @@ async function checkDrugInteractions(drugId) {
         // Get drug name first
         const infoParams = new URLSearchParams({
             action: 'drug_info',
-            id: drugId
+            id: drugId,
+            line_account_id: <?= $currentBotId ?>
         });
         
         const infoResponse = await fetch(`api/inbox-v2.php?${infoParams.toString()}`);
@@ -4176,7 +4181,8 @@ async function initializeHUD(message = '') {
         // Load health profile
         const healthParams = new URLSearchParams({
             action: 'customer_health',
-            user_id: ghostDraftState.userId
+            user_id: ghostDraftState.userId,
+            line_account_id: <?= $currentBotId ?>
         });
         const healthResponse = await fetch(`api/inbox-v2.php?${healthParams.toString()}`);
         const healthResult = await healthResponse.json();
@@ -4194,7 +4200,8 @@ async function initializeHUD(message = '') {
         const recsParams = new URLSearchParams({
             action: 'recommendations',
             user_id: ghostDraftState.userId,
-            type: 'context'
+            type: 'context',
+            line_account_id: <?= $currentBotId ?>
         });
         
         // Add message if available for better drug matching
@@ -4425,7 +4432,8 @@ async function loadQuickActions() {
     try {
         const params = new URLSearchParams({
             action: 'quick_actions',
-            user_id: ghostDraftState.userId
+            user_id: ghostDraftState.userId,
+            line_account_id: <?= $currentBotId ?>
         });
         
         // Add stage if we already know it
@@ -4703,7 +4711,7 @@ async function loadRefillSuggestions() {
     if (!ghostDraftState.userId) return;
     
     try {
-        const response = await fetch(`api/inbox-v2.php?action=recommendations&user_id=${ghostDraftState.userId}&type=refill`);
+        const response = await fetch(`api/inbox-v2.php?action=recommendations&user_id=${ghostDraftState.userId}&type=refill&line_account_id=<?= $currentBotId ?>`);
         const result = await response.json();
         
         if (result.success && result.data && result.data.length > 0) {
@@ -4916,7 +4924,7 @@ async function openUsePointsModal() {
     // Fetch user points
     let points = 0;
     try {
-        const response = await fetch(`api/inbox-v2.php?action=customer_loyalty&user_id=${ghostDraftState.userId}`);
+        const response = await fetch(`api/inbox-v2.php?action=customer_loyalty&user_id=${ghostDraftState.userId}&line_account_id=<?= $currentBotId ?>`);
         const result = await response.json();
         if (result.success && result.data) {
             points = result.data.points || result.data.totalPoints || 0;
@@ -6387,7 +6395,7 @@ async function loadAnalyticsData() {
     document.getElementById('noDataState').classList.add('hidden');
     
     try {
-        const response = await fetch(`api/inbox-v2.php?action=analytics&start_date=${startDate}&end_date=${endDate}`);
+        const response = await fetch(`api/inbox-v2.php?action=analytics&start_date=${startDate}&end_date=${endDate}&line_account_id=<?= $currentBotId ?>`);
         const result = await response.json();
         
         if (result.success && result.data) {
