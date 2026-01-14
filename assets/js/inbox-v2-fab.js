@@ -180,6 +180,11 @@ const HUDMode = {
         // Customer info
         if (data.user) {
             this.renderCustomerInfo(data.user);
+            // Update chat status dropdown
+            const chatStatusSelect = document.getElementById('crmChatStatus');
+            if (chatStatusSelect) {
+                chatStatusSelect.value = data.user.chat_status || '';
+            }
         }
         
         // Tags
@@ -518,6 +523,39 @@ const HUDMode = {
     openUserDetail() {
         const userId = window.ghostDraftState?.userId;
         if (userId) window.open(`user-detail.php?id=${userId}`, '_blank');
+    },
+    
+    async updateChatStatus(status) {
+        const userId = window.ghostDraftState?.userId;
+        if (!userId) {
+            showNotification && showNotification('❌ ไม่พบข้อมูลลูกค้า', 'error');
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('action', 'update_chat_status');
+            formData.append('user_id', userId);
+            formData.append('status', status);
+            formData.append('line_account_id', window.currentBotId || 1);
+            
+            const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification && showNotification('✓ อัปเดตสถานะสำเร็จ', 'success');
+                // Update the user-item data attribute in sidebar
+                const userItem = document.querySelector(`a[data-user-id="${userId}"]`);
+                if (userItem) {
+                    userItem.dataset.chatStatus = status;
+                }
+            } else {
+                showNotification && showNotification('❌ ' + (result.error || 'เกิดข้อผิดพลาด'), 'error');
+            }
+        } catch (error) {
+            console.error('Update chat status error:', error);
+            showNotification && showNotification('❌ เกิดข้อผิดพลาด', 'error');
+        }
     }
 };
 

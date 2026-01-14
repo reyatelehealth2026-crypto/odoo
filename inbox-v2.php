@@ -576,6 +576,7 @@ require_once 'includes/header.php';
 
 // Get Users List - use subqueries for accurate latest message (v2.1 - fixed 2026-01-15)
 $sql = "SELECT u.*, 
+        u.chat_status,
         (SELECT content FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_msg,
         (SELECT message_type FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_type,
         (SELECT created_at FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_time,
@@ -1321,6 +1322,16 @@ function formatThaiDateTime($datetime) {
                     <?php endforeach; ?>
                 </select>
             </div>
+            <div class="flex gap-2">
+                <select id="filterChatStatus" onchange="applyFilters()" class="flex-1 px-2 py-1.5 bg-white border rounded-lg text-xs focus:ring-2 focus:ring-teal-500 outline-none">
+                    <option value="">ทุกสถานะงาน</option>
+                    <option value="pending">🔴 ต้องดำเนินการ</option>
+                    <option value="completed">🟢 ดำเนินการแล้ว</option>
+                    <option value="shipping">📦 รอจัดส่ง</option>
+                    <option value="tracking">🚚 ติดตามสถานะ</option>
+                    <option value="billing">💰 ติดตามบิล</option>
+                </select>
+            </div>
         </div>
         
         <!-- Conversation List -->
@@ -1344,7 +1355,9 @@ function formatThaiDateTime($datetime) {
                 <a href="?user=<?= $user['id'] ?>" 
                    class="user-item block p-3 border-b border-gray-50 <?= ($selectedUser && $selectedUser['id'] == $user['id']) ? 'active' : '' ?> <?= $hasSlaWarning ? 'sla-warning' : '' ?>" 
                    data-user-id="<?= $user['id'] ?>"
-                   data-name="<?= strtolower($user['display_name']) ?>">
+                   data-name="<?= strtolower($user['display_name']) ?>"
+                   data-chat-status="<?= htmlspecialchars($user['chat_status'] ?? '') ?>"
+                   data-assigned="<?= ($assignment && $assignment['status'] === 'active') ? '1' : '0' ?>">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
                             <img src="<?= $user['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" 
@@ -1943,6 +1956,26 @@ function formatThaiDateTime($datetime) {
                                 <i class="fas fa-pen"></i>
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Status (Collapsible) -->
+            <div class="crm-section" id="crmChatStatusSection">
+                <div class="crm-section-header" onclick="HUDMode.toggleSection('crmChatStatusSection')">
+                    <div class="crm-section-title"><i class="fas fa-tasks"></i> สถานะงาน</div>
+                    <i class="fas fa-chevron-down crm-section-toggle"></i>
+                </div>
+                <div class="crm-section-body">
+                    <div class="chat-status-selector">
+                        <select id="crmChatStatus" onchange="HUDMode.updateChatStatus(this.value)" class="chat-status-select">
+                            <option value="">-- ไม่ระบุ --</option>
+                            <option value="pending" <?= ($selectedUser['chat_status'] ?? '') === 'pending' ? 'selected' : '' ?>>🔴 ต้องดำเนินการ</option>
+                            <option value="completed" <?= ($selectedUser['chat_status'] ?? '') === 'completed' ? 'selected' : '' ?>>🟢 ดำเนินการแล้ว</option>
+                            <option value="shipping" <?= ($selectedUser['chat_status'] ?? '') === 'shipping' ? 'selected' : '' ?>>📦 รอจัดส่ง</option>
+                            <option value="tracking" <?= ($selectedUser['chat_status'] ?? '') === 'tracking' ? 'selected' : '' ?>>🚚 ติดตามสถานะ</option>
+                            <option value="billing" <?= ($selectedUser['chat_status'] ?? '') === 'billing' ? 'selected' : '' ?>>💰 ติดตามบิล</option>
+                        </select>
                     </div>
                 </div>
             </div>
@@ -4364,16 +4397,27 @@ function filterUsers(query) {
 function applyFilters() {
     const status = document.getElementById('filterStatus')?.value || '';
     const tag = document.getElementById('filterTag')?.value || '';
+    const chatStatus = document.getElementById('filterChatStatus')?.value || '';
     
-    // Apply filters - simplified version
+    // Apply filters
     const userItems = document.querySelectorAll('#userList .user-item');
     
     userItems.forEach(item => {
         let show = true;
         
+        // Filter by read/assigned status
         if (status === 'unread') {
             const unreadBadge = item.querySelector('.unread-badge');
             show = show && unreadBadge !== null;
+        } else if (status === 'assigned') {
+            const isAssigned = item.dataset.assigned === '1';
+            show = show && isAssigned;
+        }
+        
+        // Filter by chat status (work status)
+        if (chatStatus) {
+            const itemChatStatus = item.dataset.chatStatus || '';
+            show = show && (itemChatStatus === chatStatus);
         }
         
         item.style.display = show ? '' : 'none';

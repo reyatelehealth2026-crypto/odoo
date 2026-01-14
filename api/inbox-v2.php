@@ -2110,6 +2110,56 @@ try {
             break;
 
         // ============================================
+        // POST /update_chat_status - Update chat status
+        // ============================================
+        case 'update_chat_status':
+            if ($method !== 'POST') {
+                sendError('Method not allowed', 405);
+            }
+            
+            $userId = (int)($_POST['user_id'] ?? 0);
+            $status = trim($_POST['status'] ?? '');
+            
+            // Whitelist allowed statuses
+            $allowedStatuses = ['', 'pending', 'completed', 'shipping', 'tracking', 'billing'];
+            
+            if (!$userId) {
+                sendError('User ID is required');
+            }
+            
+            if (!in_array($status, $allowedStatuses)) {
+                sendError('Invalid status');
+            }
+            
+            try {
+                // Get old status for history
+                $stmt = $db->prepare("SELECT chat_status FROM users WHERE id = ?");
+                $stmt->execute([$userId]);
+                $oldStatus = $stmt->fetchColumn();
+                
+                // Update status
+                $stmt = $db->prepare("UPDATE users SET chat_status = ? WHERE id = ?");
+                $stmt->execute([$status ?: null, $userId]);
+                
+                // Log to history
+                try {
+                    $adminId = $_SESSION['admin_user']['id'] ?? null;
+                    $stmt = $db->prepare("INSERT INTO chat_status_history (user_id, line_account_id, old_status, new_status, changed_by) VALUES (?, ?, ?, ?, ?)");
+                    $stmt->execute([$userId, $lineAccountId, $oldStatus, $status ?: null, $adminId]);
+                } catch (Exception $e) {
+                    // History table might not exist yet, ignore
+                }
+                
+                sendResponse([
+                    'success' => true,
+                    'message' => 'Chat status updated successfully'
+                ]);
+            } catch (Exception $e) {
+                sendError('Failed to update chat status: ' . $e->getMessage());
+            }
+            break;
+
+        // ============================================
         // Default - Unknown action
         // ============================================
         default:
