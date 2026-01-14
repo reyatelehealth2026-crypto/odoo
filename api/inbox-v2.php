@@ -2194,7 +2194,7 @@ try {
                     SELECT id, username, display_name, role 
                     FROM admin_users 
                     WHERE (line_account_id = ? OR line_account_id IS NULL)
-                    AND status = 'active'
+                    AND is_active = 1
                     ORDER BY display_name ASC
                 ");
                 $stmt->execute([$lineAccountId]);

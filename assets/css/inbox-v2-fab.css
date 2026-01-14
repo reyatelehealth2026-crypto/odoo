@@ -9,13 +9,14 @@
 
 .fab-container {
     position: fixed;
-    bottom: 100px;
-    right: 340px;
+    bottom: 20px;
+    left: 340px;
     z-index: 100;
 }
 
 @media (max-width: 1024px) {
     .fab-container {
+        left: auto;
         right: 20px;
         bottom: 80px;
     }
