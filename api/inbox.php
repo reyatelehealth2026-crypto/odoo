@@ -211,7 +211,7 @@ try {
                 throw new Exception('Template name and content are required');
             }
             
-            $templateId = $templateService->createTemplate($name, $content, $category, $adminId, $quickReply);
+            $templateId = $templateService->createTemplate($name, $content, $category, $adminId ?? 1, $quickReply);
             
             echo json_encode([
                 'success' => true,
