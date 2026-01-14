@@ -1831,6 +1831,28 @@ document.addEventListener('DOMContentLoaded', function() {
     // Only initialize for inbox tab
     <?php if ($currentTab === 'inbox'): ?>
     
+    // DEBUG: Add MutationObserver to track what's changing .last-msg for user 15
+    const jameItem = document.querySelector('a[href*="user=15"]');
+    if (jameItem) {
+        const lastMsgEl = jameItem.querySelector('.last-msg');
+        if (lastMsgEl) {
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'characterData' || mutation.type === 'childList') {
+                        console.log('[MutationObserver] jame.ver .last-msg changed to:', lastMsgEl.textContent);
+                        console.trace('[MutationObserver] Stack trace:');
+                    }
+                });
+            });
+            observer.observe(lastMsgEl, { 
+                characterData: true, 
+                childList: true, 
+                subtree: true 
+            });
+            console.log('[MutationObserver] Watching jame.ver .last-msg, initial value:', lastMsgEl.textContent);
+        }
+    }
+    
     InboxRealtime.init({
         userId: <?= $selectedUser ? $selectedUser['id'] : 'null' ?>,
         lineAccountId: <?= $currentBotId ?>,
