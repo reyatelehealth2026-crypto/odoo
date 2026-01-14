@@ -22,7 +22,7 @@ class TemplateService {
      * @return array Templates with usage stats
      */
     public function getTemplates(string $search = ''): array {
-        $sql = "SELECT id, line_account_id, name, content, category, 
+        $sql = "SELECT id, line_account_id, name, content, category, quick_reply,
                        usage_count, last_used_at, created_by, created_at, updated_at
                 FROM quick_reply_templates 
                 WHERE line_account_id = ?";
