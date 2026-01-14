@@ -4973,7 +4973,7 @@ document.addEventListener('click', function(e) {
 function triggerSymptomAnalysis() {
     closeImageAnalysisMenu();
     imageAnalysisState.currentType = 'symptom';
-    document.getElementById('symptomImageInput').click();
+    showCustomerImagePicker('symptom');
 }
 
 /**
@@ -4982,7 +4982,7 @@ function triggerSymptomAnalysis() {
 function triggerDrugAnalysis() {
     closeImageAnalysisMenu();
     imageAnalysisState.currentType = 'drug';
-    document.getElementById('drugImageInput').click();
+    showCustomerImagePicker('drug');
 }
 
 /**
@@ -4991,7 +4991,145 @@ function triggerDrugAnalysis() {
 function triggerPrescriptionAnalysis() {
     closeImageAnalysisMenu();
     imageAnalysisState.currentType = 'prescription';
-    document.getElementById('prescriptionImageInput').click();
+    showCustomerImagePicker('prescription');
+}
+
+/**
+ * Show modal to pick customer images from chat
+ * @param {string} type Analysis type
+ */
+function showCustomerImagePicker(type) {
+    // Get all images from chat that customer sent (incoming)
+    const chatBox = document.getElementById('chatBox');
+    const messageItems = chatBox.querySelectorAll('.message-item');
+    const customerImages = [];
+    
+    messageItems.forEach(item => {
+        // Check if it's incoming (customer) message
+        if (item.classList.contains('justify-start')) {
+            const img = item.querySelector('img.rounded-xl');
+            if (img && img.src) {
+                customerImages.push({
+                    src: img.src,
+                    msgId: item.dataset.msgId
+                });
+            }
+        }
+    });
+    
+    if (customerImages.length === 0) {
+        showNotification('ไม่พบรูปภาพจากลูกค้าในแชท', 'warning');
+        return;
+    }
+    
+    const typeLabels = {
+        'symptom': 'วิเคราะห์อาการ',
+        'drug': 'ระบุยาจากรูป',
+        'prescription': 'อ่านใบสั่งยา'
+    };
+    
+    // Create modal
+    let modal = document.getElementById('customerImagePickerModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'customerImagePickerModal';
+        modal.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center hidden';
+        modal.onclick = (e) => {
+            if (e.target === modal) closeCustomerImagePicker();
+        };
+        document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h3 class="font-semibold text-gray-800">เลือกรูปภาพเพื่อ${typeLabels[type]}</h3>
+                    <p class="text-xs text-gray-500 mt-1">คลิกที่รูปภาพที่ลูกค้าส่งมา</p>
+                </div>
+                <button onclick="closeCustomerImagePicker()" class="text-gray-400 hover:text-gray-600 p-2">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto max-h-[60vh]">
+                <div class="grid grid-cols-3 gap-3">
+                    ${customerImages.map((img, idx) => `
+                        <div class="relative group cursor-pointer" onclick="selectCustomerImage('${img.src}', '${type}')">
+                            <img src="${img.src}" class="w-full h-24 object-cover rounded-lg border-2 border-transparent group-hover:border-purple-500 transition-all">
+                            <div class="absolute inset-0 bg-purple-500/0 group-hover:bg-purple-500/20 rounded-lg transition-all flex items-center justify-center">
+                                <i class="fas fa-search-plus text-white opacity-0 group-hover:opacity-100 text-xl"></i>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-100 bg-gray-50">
+                <p class="text-xs text-gray-500 text-center">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    หรือ <button onclick="closeCustomerImagePicker(); document.getElementById('${type}ImageInput').click();" class="text-purple-600 hover:underline">อัพโหลดรูปใหม่</button>
+                </p>
+            </div>
+        </div>
+    `;
+    
+    modal.classList.remove('hidden');
+}
+
+/**
+ * Close customer image picker modal
+ */
+function closeCustomerImagePicker() {
+    const modal = document.getElementById('customerImagePickerModal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+/**
+ * Select customer image for analysis
+ * @param {string} imageUrl Image URL
+ * @param {string} type Analysis type
+ */
+async function selectCustomerImage(imageUrl, type) {
+    closeCustomerImagePicker();
+    
+    if (!ghostDraftState.userId) {
+        showNotification('กรุณาเลือกลูกค้าก่อน', 'warning');
+        return;
+    }
+    
+    imageAnalysisState.isAnalyzing = true;
+    showNotification('กำลังวิเคราะห์รูปภาพ...', 'info');
+    
+    try {
+        let result;
+        switch (type) {
+            case 'symptom':
+                result = await analyzeSymptomImage(imageUrl);
+                break;
+            case 'drug':
+                result = await analyzeDrugImage(imageUrl);
+                break;
+            case 'prescription':
+                result = await analyzePrescriptionImage(imageUrl);
+                break;
+            default:
+                throw new Error('Unknown analysis type');
+        }
+        
+        imageAnalysisState.lastResult = result;
+        
+        // Display results in HUD widget (don't send image to chat)
+        displayAnalysisResults(type, result);
+        
+        showNotification('วิเคราะห์รูปภาพสำเร็จ', 'success');
+        
+    } catch (error) {
+        console.error('Image analysis error:', error);
+        showNotification(error.message || 'เกิดข้อผิดพลาดในการวิเคราะห์', 'error');
+    } finally {
+        imageAnalysisState.isAnalyzing = false;
+    }
 }
 
 /**
@@ -5165,14 +5303,13 @@ async function analyzeImage(type) {
         
         imageAnalysisState.lastResult = result;
         
-        // Display results in HUD widget
+        // Display results in HUD widget (don't send image to chat)
         displayAnalysisResults(type, result);
-        
-        // Also send the image to chat
-        await sendAnalyzedImage(imageUrl, type, result);
         
         // Clear the preview
         cancelImageUpload();
+        
+        showNotification('วิเคราะห์รูปภาพสำเร็จ', 'success');
         
     } catch (error) {
         console.error('Image analysis error:', error);
