@@ -571,21 +571,16 @@ $pageTitle = 'Inbox V2 - Vibe Selling OS';
 $hideAiChatWidget = true;
 require_once 'includes/header.php';
 
-// Get Users List
+// Get Users List - use subqueries for accurate latest message
 $sql = "SELECT u.*, 
-        m_last.content as last_msg,
-        m_last.message_type as last_type,
-        m_last.created_at as last_time,
+        (SELECT content FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_msg,
+        (SELECT message_type FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_type,
+        (SELECT created_at FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_time,
         (SELECT COUNT(*) FROM messages WHERE user_id = u.id AND direction = 'incoming' AND is_read = 0) as unread
         FROM users u 
-        INNER JOIN (
-            SELECT user_id, MAX(id) as max_id
-            FROM messages
-            GROUP BY user_id
-        ) m_max ON u.id = m_max.user_id
-        INNER JOIN messages m_last ON m_max.max_id = m_last.id
-        WHERE u.line_account_id = ? 
-        ORDER BY m_last.created_at DESC";
+        WHERE u.line_account_id = ?
+        AND EXISTS (SELECT 1 FROM messages WHERE user_id = u.id)
+        ORDER BY last_time DESC";
 $stmt = $db->prepare($sql);
 $stmt->execute([$currentBotId]);
 $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
