@@ -724,6 +724,33 @@ class LineAPI {
     }
 
     /**
+     * Download Rich Menu Image (return raw binary data)
+     */
+    public function downloadRichMenuImage($richMenuId) {
+        if (empty($richMenuId)) return null;
+        
+        $url = 'https://api-data.line.me/v2/bot/richmenu/' . $richMenuId . '/content';
+        $headers = ['Authorization: Bearer ' . $this->channelAccessToken];
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode === 200 && $response && strlen($response) > 100) {
+            return $response;
+        }
+        
+        return null;
+    }
+
+    /**
      * Get all Rich Menus from LINE
      */
     public function getRichMenuList() {

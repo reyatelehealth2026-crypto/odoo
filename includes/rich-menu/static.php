@@ -178,27 +178,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['tab'] ?? 'static') === 'sta
             }
         }
     } elseif ($action === 'set_default') {
-        $stmt = $db->prepare("SELECT line_rich_menu_id FROM rich_menus WHERE id = ?");
+        $stmt = $db->prepare("SELECT line_rich_menu_id, name FROM rich_menus WHERE id = ?");
         $stmt->execute([$_POST['id']]);
         $menu = $stmt->fetch();
         
         if ($menu) {
-            $result = $line->setDefaultRichMenu($menu['line_rich_menu_id']);
-            
-            if ($result['code'] === 200) {
-                $db->query("UPDATE rich_menus SET is_default = 0");
-                $stmt = $db->prepare("UPDATE rich_menus SET is_default = 1 WHERE id = ?");
-                $stmt->execute([$_POST['id']]);
-                $_SESSION['rich_menu_success'] = 'ตั้ง Default Rich Menu สำเร็จ';
+            // ตรวจสอบว่า Rich Menu มีรูปภาพหรือยัง
+            $imageCheck = $line->getRichMenuImage($menu['line_rich_menu_id']);
+            if (empty($imageCheck)) {
+                $errorMessage = 'Rich Menu "' . htmlspecialchars($menu['name']) . '" ยังไม่มีรูปภาพ กรุณากดแก้ไขและ upload รูปก่อนตั้งเป็น Default';
             } else {
-                $errorMessage = 'ไม่สามารถตั้ง Default Rich Menu ได้: ' . json_encode($result['body'] ?? $result);
-                error_log("setDefaultRichMenu failed: " . json_encode($result));
+                $result = $line->setDefaultRichMenu($menu['line_rich_menu_id']);
+                
+                if ($result['code'] === 200) {
+                    $db->query("UPDATE rich_menus SET is_default = 0");
+                    $stmt = $db->prepare("UPDATE rich_menus SET is_default = 1 WHERE id = ?");
+                    $stmt->execute([$_POST['id']]);
+                    $_SESSION['rich_menu_success'] = 'ตั้ง Default Rich Menu สำเร็จ';
+                } else {
+                    // แปลง error message ให้เข้าใจง่าย
+                    $apiError = $result['body']['message'] ?? json_encode($result['body'] ?? $result);
+                    if (strpos($apiError, 'must upload richmenu image') !== false) {
+                        $errorMessage = 'Rich Menu "' . htmlspecialchars($menu['name']) . '" ยังไม่มีรูปภาพ กรุณากดแก้ไขและ upload รูปก่อนตั้งเป็น Default';
+                    } else {
+                        $errorMessage = 'ไม่สามารถตั้ง Default Rich Menu ได้: ' . $apiError;
+                    }
+                    error_log("setDefaultRichMenu failed: " . json_encode($result));
+                }
+            }
+        } else {
+            $errorMessage = 'ไม่พบ Rich Menu ที่เลือก';
+        }
+    } elseif ($action === 'upload_image') {
+        // Upload รูปให้ Rich Menu ที่มีอยู่แล้ว
+        $menuId = (int)$_POST['id'];
+        
+        $stmt = $db->prepare("SELECT line_rich_menu_id, name, size_height FROM rich_menus WHERE id = ?");
+        $stmt->execute([$menuId]);
+        $menu = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($menu) {
+            if (empty($_FILES['image']['tmp_name']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
+                $errorMessage = "กรุณาเลือกรูปภาพ";
+            } else {
+                $imagePath = $_FILES['image']['tmp_name'];
+                $targetHeight = (int)($menu['size_height'] ?? 1686);
+                $imageInfo = getimagesize($imagePath);
+                
+                if ($imageInfo) {
+                    $srcWidth = $imageInfo[0];
+                    $srcHeight = $imageInfo[1];
+                    
+                    // Resize ถ้าจำเป็น
+                    if ($srcWidth !== 2500 || $srcHeight !== $targetHeight) {
+                        $resizedPath = resizeRichMenuImage($imagePath, 2500, $targetHeight);
+                        if ($resizedPath) {
+                            $imagePath = $resizedPath;
+                        }
+                    }
+                }
+                
+                $uploadResult = $line->uploadRichMenuImage($menu['line_rich_menu_id'], $imagePath);
+                
+                // Clean up temp file
+                if (isset($resizedPath) && file_exists($resizedPath)) {
+                    unlink($resizedPath);
+                }
+                
+                if ($uploadResult['code'] === 200) {
+                    $_SESSION['rich_menu_success'] = 'Upload รูป Rich Menu "' . htmlspecialchars($menu['name']) . '" สำเร็จ';
+                } else {
+                    $errorMessage = "Upload รูปไม่สำเร็จ: " . ($uploadResult['body']['message'] ?? json_encode($uploadResult));
+                    error_log("Upload Rich Menu Image failed: " . json_encode($uploadResult));
+                }
             }
         } else {
             $errorMessage = 'ไม่พบ Rich Menu ที่เลือก';
         }
     } elseif ($action === 'update') {
-        // อัพเดท Rich Menu (เฉพาะ areas ใน DB เพราะ LINE ไม่รองรับแก้ไข)
+        // อัพเดท Rich Menu
         $menuId = (int)$_POST['menu_id'];
         $areas = $_POST['areas'];
         
@@ -241,38 +299,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['tab'] ?? 'static') === 'sta
             
             if ($result['code'] === 200 && isset($result['body']['richMenuId'])) {
                 $newRichMenuId = $result['body']['richMenuId'];
+                $imageUploaded = false;
                 
-                // Copy image from old menu to new menu
-                $oldImage = $line->getRichMenuImage($oldMenu['line_rich_menu_id']);
-                if ($oldImage) {
-                    // Download and re-upload
-                    $imageData = file_get_contents($oldImage);
-                    if ($imageData) {
+                // ตรวจสอบว่ามีรูปใหม่ upload มาหรือไม่
+                if (!empty($_FILES['image']['tmp_name']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+                    // ใช้รูปใหม่
+                    $imagePath = $_FILES['image']['tmp_name'];
+                    $imageInfo = getimagesize($imagePath);
+                    
+                    if ($imageInfo) {
+                        $srcWidth = $imageInfo[0];
+                        $srcHeight = $imageInfo[1];
+                        
+                        // Resize ถ้าจำเป็น
+                        if ($srcWidth !== 2500 || $srcHeight !== $targetHeight) {
+                            $resizedPath = resizeRichMenuImage($imagePath, 2500, $targetHeight);
+                            if ($resizedPath) {
+                                $imagePath = $resizedPath;
+                            }
+                        }
+                    }
+                    
+                    $uploadResult = $line->uploadRichMenuImage($newRichMenuId, $imagePath);
+                    
+                    // Clean up temp file
+                    if (isset($resizedPath) && file_exists($resizedPath)) {
+                        unlink($resizedPath);
+                    }
+                    
+                    if ($uploadResult['code'] === 200) {
+                        $imageUploaded = true;
+                    } else {
+                        $errorMessage = "Upload รูปใหม่ไม่สำเร็จ: " . ($uploadResult['body']['message'] ?? json_encode($uploadResult));
+                        error_log("Rich Menu Update - Upload new image failed: " . json_encode($uploadResult));
+                    }
+                } else {
+                    // ไม่มีรูปใหม่ - พยายาม copy จาก menu เก่า
+                    $oldImageData = $line->downloadRichMenuImage($oldMenu['line_rich_menu_id']);
+                    if ($oldImageData) {
                         $tempFile = sys_get_temp_dir() . '/richmenu_copy_' . uniqid() . '.png';
-                        // Extract base64 data
-                        if (preg_match('/^data:image\/\w+;base64,(.+)$/', $oldImage, $matches)) {
-                            file_put_contents($tempFile, base64_decode($matches[1]));
-                            $line->uploadRichMenuImage($newRichMenuId, $tempFile);
-                            unlink($tempFile);
+                        file_put_contents($tempFile, $oldImageData);
+                        $uploadResult = $line->uploadRichMenuImage($newRichMenuId, $tempFile);
+                        unlink($tempFile);
+                        
+                        if ($uploadResult['code'] === 200) {
+                            $imageUploaded = true;
                         }
                     }
                 }
                 
-                // ลบ Rich Menu เก่าจาก LINE
-                $line->deleteRichMenu($oldMenu['line_rich_menu_id']);
-                
-                // อัพเดท DB
-                $stmt = $db->prepare("UPDATE rich_menus SET line_rich_menu_id = ?, name = ?, chat_bar_text = ?, size_height = ?, areas = ? WHERE id = ?");
-                $stmt->execute([
-                    $newRichMenuId,
-                    $_POST['name'] ?? $oldMenu['name'],
-                    $_POST['chat_bar_text'] ?? $oldMenu['chat_bar_text'],
-                    $targetHeight,
-                    $areas,
-                    $menuId
-                ]);
-                
-                $_SESSION['rich_menu_success'] = 'อัพเดท Rich Menu สำเร็จ';
+                if (empty($errorMessage)) {
+                    // ลบ Rich Menu เก่าจาก LINE
+                    $line->deleteRichMenu($oldMenu['line_rich_menu_id']);
+                    
+                    // อัพเดท DB
+                    $stmt = $db->prepare("UPDATE rich_menus SET line_rich_menu_id = ?, name = ?, chat_bar_text = ?, size_height = ?, areas = ? WHERE id = ?");
+                    $stmt->execute([
+                        $newRichMenuId,
+                        $_POST['name'] ?? $oldMenu['name'],
+                        $_POST['chat_bar_text'] ?? $oldMenu['chat_bar_text'],
+                        $targetHeight,
+                        $areas,
+                        $menuId
+                    ]);
+                    
+                    if ($imageUploaded) {
+                        $_SESSION['rich_menu_success'] = 'อัพเดท Rich Menu สำเร็จ';
+                    } else {
+                        $_SESSION['rich_menu_success'] = 'อัพเดท Rich Menu สำเร็จ (แต่ยังไม่มีรูป กรุณา upload รูปเพิ่ม)';
+                    }
+                }
             } else {
                 $errorMessage = 'ไม่สามารถสร้าง Rich Menu ใหม่ได้: ' . json_encode($result['body'] ?? []);
             }
@@ -290,43 +386,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_GET['tab'] ?? 'static') === 'sta
     } elseif ($action === 'sync_from_line') {
         // Sync Rich Menus from LINE
         $lineMenus = $line->getRichMenuList();
-        if ($lineMenus['code'] === 200 && !empty($lineMenus['body']['richmenus'])) {
+        if ($lineMenus['code'] === 200) {
+            $lineMenuIds = [];
             $synced = 0;
-            foreach ($lineMenus['body']['richmenus'] as $lineMenu) {
-                $richMenuId = $lineMenu['richMenuId'];
-                
-                // Check if already exists in DB
-                $stmt = $db->prepare("SELECT id FROM rich_menus WHERE line_rich_menu_id = ?");
-                $stmt->execute([$richMenuId]);
-                if (!$stmt->fetch()) {
-                    // Insert new
-                    try {
-                        $stmt = $db->query("SHOW COLUMNS FROM rich_menus LIKE 'line_account_id'");
-                        if ($stmt->rowCount() > 0) {
-                            $stmt = $db->prepare("INSERT INTO rich_menus (line_rich_menu_id, name, chat_bar_text, size_height, areas, line_account_id) VALUES (?, ?, ?, ?, ?, ?)");
-                            $stmt->execute([
-                                $richMenuId,
-                                $lineMenu['name'] ?? 'Synced Menu',
-                                $lineMenu['chatBarText'] ?? 'Menu',
-                                $lineMenu['size']['height'] ?? 1686,
-                                json_encode($lineMenu['areas'] ?? []),
-                                $currentBotId
-                            ]);
-                        } else {
-                            $stmt = $db->prepare("INSERT INTO rich_menus (line_rich_menu_id, name, chat_bar_text, size_height, areas) VALUES (?, ?, ?, ?, ?)");
-                            $stmt->execute([
-                                $richMenuId,
-                                $lineMenu['name'] ?? 'Synced Menu',
-                                $lineMenu['chatBarText'] ?? 'Menu',
-                                $lineMenu['size']['height'] ?? 1686,
-                                json_encode($lineMenu['areas'] ?? [])
-                            ]);
-                        }
-                        $synced++;
-                    } catch (Exception $e) {}
+            
+            // เก็บ list ของ menu ที่มีอยู่บน LINE
+            if (!empty($lineMenus['body']['richmenus'])) {
+                foreach ($lineMenus['body']['richmenus'] as $lineMenu) {
+                    $richMenuId = $lineMenu['richMenuId'];
+                    $lineMenuIds[] = $richMenuId;
+                    
+                    // Check if already exists in DB
+                    $stmt = $db->prepare("SELECT id FROM rich_menus WHERE line_rich_menu_id = ?");
+                    $stmt->execute([$richMenuId]);
+                    if (!$stmt->fetch()) {
+                        // Insert new
+                        try {
+                            $stmt = $db->query("SHOW COLUMNS FROM rich_menus LIKE 'line_account_id'");
+                            if ($stmt->rowCount() > 0) {
+                                $stmt = $db->prepare("INSERT INTO rich_menus (line_rich_menu_id, name, chat_bar_text, size_height, areas, line_account_id) VALUES (?, ?, ?, ?, ?, ?)");
+                                $stmt->execute([
+                                    $richMenuId,
+                                    $lineMenu['name'] ?? 'Synced Menu',
+                                    $lineMenu['chatBarText'] ?? 'Menu',
+                                    $lineMenu['size']['height'] ?? 1686,
+                                    json_encode($lineMenu['areas'] ?? []),
+                                    $currentBotId
+                                ]);
+                            } else {
+                                $stmt = $db->prepare("INSERT INTO rich_menus (line_rich_menu_id, name, chat_bar_text, size_height, areas) VALUES (?, ?, ?, ?, ?)");
+                                $stmt->execute([
+                                    $richMenuId,
+                                    $lineMenu['name'] ?? 'Synced Menu',
+                                    $lineMenu['chatBarText'] ?? 'Menu',
+                                    $lineMenu['size']['height'] ?? 1686,
+                                    json_encode($lineMenu['areas'] ?? [])
+                                ]);
+                            }
+                            $synced++;
+                        } catch (Exception $e) {}
+                    }
                 }
             }
-            $_SESSION['rich_menu_success'] = "Sync สำเร็จ! พบ " . count($lineMenus['body']['richmenus']) . " เมนู, เพิ่มใหม่ {$synced} เมนู";
+            
+            // ลบ menu ที่ไม่มีบน LINE แล้ว
+            $deleted = 0;
+            $stmt = $db->query("SELECT id, line_rich_menu_id, name FROM rich_menus");
+            $dbMenus = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($dbMenus as $dbMenu) {
+                if (!empty($dbMenu['line_rich_menu_id']) && !in_array($dbMenu['line_rich_menu_id'], $lineMenuIds)) {
+                    $stmt = $db->prepare("DELETE FROM rich_menus WHERE id = ?");
+                    $stmt->execute([$dbMenu['id']]);
+                    $deleted++;
+                }
+            }
+            
+            $totalOnLine = count($lineMenuIds);
+            $_SESSION['rich_menu_success'] = "Sync สำเร็จ! พบ {$totalOnLine} เมนูบน LINE, เพิ่มใหม่ {$synced} เมนู, ลบที่ไม่มีแล้ว {$deleted} เมนู";
         } else {
             $errorMessage = "ไม่สามารถดึงข้อมูลจาก LINE ได้: " . json_encode($lineMenus['body'] ?? []);
         }
@@ -430,15 +546,33 @@ try {
                 <h3 class="font-semibold"><?= htmlspecialchars($menu['name']) ?></h3>
                 <?php if ($menu['is_default']): ?>
                 <span class="px-2 py-1 text-xs bg-green-100 text-green-600 rounded">Default</span>
+                <?php elseif (!$imageData): ?>
+                <span class="px-2 py-1 text-xs bg-yellow-100 text-yellow-600 rounded">ไม่มีรูป</span>
                 <?php endif; ?>
             </div>
             <p class="text-sm text-gray-500 mb-3"><?= htmlspecialchars($menu['chat_bar_text']) ?></p>
+            
+            <?php if (!$imageData): ?>
+            <!-- Upload Image Form -->
+            <form method="POST" action="rich-menu.php?tab=static" enctype="multipart/form-data" class="mb-3 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                <input type="hidden" name="action" value="upload_image">
+                <input type="hidden" name="id" value="<?= $menu['id'] ?>">
+                <label class="block text-sm font-medium text-yellow-700 mb-2">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>ต้อง upload รูปก่อนใช้งาน
+                </label>
+                <input type="file" name="image" accept="image/png,image/jpeg" required class="w-full text-sm mb-2">
+                <button type="submit" class="w-full py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 text-sm">
+                    <i class="fas fa-upload mr-1"></i>Upload รูป
+                </button>
+            </form>
+            <?php endif; ?>
+            
             <div class="flex space-x-2">
                 <button type="button" onclick="editRichMenu(<?= $menu['id'] ?>, '<?= htmlspecialchars(addslashes($menu['name'])) ?>', '<?= htmlspecialchars(addslashes($menu['chat_bar_text'])) ?>', <?= $menu['size_height'] ?? 1686 ?>, '<?= htmlspecialchars(addslashes($menu['areas'] ?? '[]')) ?>')" 
                         class="px-4 py-2 border border-blue-500 text-blue-500 rounded-lg hover:bg-blue-50">
                     <i class="fas fa-edit"></i>
                 </button>
-                <?php if (!$menu['is_default']): ?>
+                <?php if (!$menu['is_default'] && $imageData): ?>
                 <form method="POST" action="rich-menu.php?tab=static" class="flex-1">
                     <input type="hidden" name="action" value="set_default">
                     <input type="hidden" name="id" value="<?= $menu['id'] ?>">
