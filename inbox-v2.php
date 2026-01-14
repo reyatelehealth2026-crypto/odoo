@@ -1979,14 +1979,25 @@ function formatThaiDateTime($datetime) {
     <source src="data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYNBrv2AAAAAAAAAAAAAAAAAAAAAP/7UMQAA8AAADSAAAAAAAAANIAAAAATEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+1DEAYPAAADSAAAAAAAAANIAAAAATEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU=" type="audio/mpeg">
 </audio>
 
+<!-- Set global variables BEFORE loading FAB/HUD scripts -->
+<script>
+// Set global variables for FAB/HUD
+window.currentBotId = <?= $currentBotId ?>;
+// Initialize ghostDraftState early so FAB/HUD can access it
+window.ghostDraftState = {
+    currentDraft: null,
+    originalDraft: null,
+    isGenerating: false,
+    userId: <?= $selectedUser ? $selectedUser['id'] : 'null' ?>,
+    lastCustomerMessage: '',
+    draftAccepted: false
+};
+</script>
+
 <!-- Real-time Updates Script -->
 <script src="assets/js/inbox-realtime.js?v=<?= time() ?>"></script>
 <!-- FAB & HUD Mode Switcher -->
 <script src="assets/js/inbox-v2-fab.js?v=<?= time() ?>"></script>
-<script>
-// Set global variables for FAB/HUD
-window.currentBotId = <?= $currentBotId ?>;
-</script>
 <script>
 /**
  * Real-time Inbox Updates - Auto-refresh conversations and messages
@@ -2295,18 +2306,8 @@ document.head.appendChild(realtimeStyles);
  * - 6.5: Learn from pharmacist edits
  */
 
-// Ghost Draft State
-const ghostDraftState = {
-    currentDraft: null,
-    originalDraft: null,
-    isGenerating: false,
-    userId: <?= $selectedUser ? $selectedUser['id'] : 'null' ?>,
-    lastCustomerMessage: '',
-    draftAccepted: false
-};
-
-// Expose ghostDraftState globally for FAB/HUD components
-window.ghostDraftState = ghostDraftState;
+// Use the globally defined ghostDraftState (defined before FAB/HUD scripts)
+const ghostDraftState = window.ghostDraftState;
 
 // Order State - for managing items to add to order
 const orderState = {
