@@ -10,7 +10,9 @@
 // Variables from parent: $db, $currentBotId, $line, $lineManager
 
 /**
- * Resize image for Rich Menu (must be exactly 2500xHeight)
+ * Resize and compress image for Rich Menu
+ * LINE API limit: 1MB max file size
+ * Must be exactly 2500xHeight pixels
  */
 function resizeRichMenuImage($sourcePath, $targetWidth, $targetHeight) {
     $imageInfo = getimagesize($sourcePath);
@@ -23,10 +25,14 @@ function resizeRichMenuImage($sourcePath, $targetWidth, $targetHeight) {
     // Create source image
     switch ($mime) {
         case 'image/jpeg':
+        case 'image/jpg':
             $srcImage = imagecreatefromjpeg($sourcePath);
             break;
         case 'image/png':
             $srcImage = imagecreatefrompng($sourcePath);
+            break;
+        case 'image/gif':
+            $srcImage = imagecreatefromgif($sourcePath);
             break;
         default:
             return false;
@@ -37,17 +43,9 @@ function resizeRichMenuImage($sourcePath, $targetWidth, $targetHeight) {
     // Create target image
     $dstImage = imagecreatetruecolor($targetWidth, $targetHeight);
     
-    // Preserve transparency for PNG
-    if ($mime === 'image/png') {
-        imagealphablending($dstImage, false);
-        imagesavealpha($dstImage, true);
-        $transparent = imagecolorallocatealpha($dstImage, 255, 255, 255, 127);
-        imagefilledrectangle($dstImage, 0, 0, $targetWidth, $targetHeight, $transparent);
-    } else {
-        // White background for JPEG
-        $white = imagecolorallocate($dstImage, 255, 255, 255);
-        imagefilledrectangle($dstImage, 0, 0, $targetWidth, $targetHeight, $white);
-    }
+    // White background (for JPEG output)
+    $white = imagecolorallocate($dstImage, 255, 255, 255);
+    imagefilledrectangle($dstImage, 0, 0, $targetWidth, $targetHeight, $white);
     
     // Calculate resize dimensions (cover mode)
     $srcRatio = $srcWidth / $srcHeight;
@@ -70,12 +68,22 @@ function resizeRichMenuImage($sourcePath, $targetWidth, $targetHeight) {
     // Resize
     imagecopyresampled($dstImage, $srcImage, 0, 0, $srcX, $srcY, $targetWidth, $targetHeight, (int)$newWidth, (int)$newHeight);
     
-    // Save to temp file
-    $tempPath = sys_get_temp_dir() . '/richmenu_' . uniqid() . '.png';
-    imagepng($dstImage, $tempPath, 9);
+    // Save as JPEG with compression (LINE API limit 1MB)
+    $tempPath = sys_get_temp_dir() . '/richmenu_' . uniqid() . '.jpg';
+    
+    // Try different quality levels to get under 1MB
+    $quality = 85;
+    do {
+        imagejpeg($dstImage, $tempPath, $quality);
+        $fileSize = filesize($tempPath);
+        $quality -= 10;
+    } while ($fileSize > 1000000 && $quality > 30); // 1MB limit
     
     imagedestroy($srcImage);
     imagedestroy($dstImage);
+    
+    // Log file size for debugging
+    error_log("Rich Menu image resized: " . round($fileSize / 1024) . "KB, quality: " . ($quality + 10));
     
     return $tempPath;
 }
