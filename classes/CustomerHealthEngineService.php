@@ -19,7 +19,7 @@ class CustomerHealthEngineService
     const TYPE_DETAILED = 'C';    // Wants detailed information
     
     // Minimum messages required for classification
-    const MIN_MESSAGES_FOR_CLASSIFICATION = 5;
+    const MIN_MESSAGES_FOR_CLASSIFICATION = 1;
     
     // Classification keywords for each type
     private $typeKeywords = [
@@ -411,20 +411,28 @@ class CustomerHealthEngineService
         // Get message count
         $messageCount = $this->getMessageCount($userId);
         
+        // Get recent messages for analysis
+        $messages = $this->getRecentMessages($userId, 50);
+        
+        // Detect emotion from latest message
+        $emotion = 'neutral';
+        if (!empty($messages)) {
+            $latestMessage = $messages[0]['content'] ?? '';
+            $emotion = $this->detectEmotion($latestMessage);
+        }
+        
         // If not enough messages, return default with low confidence
-        if ($messageCount < $minMessages) {
+        if ($messageCount < $minMessages || empty($messages)) {
             return [
                 'type' => self::TYPE_DIRECT, // Default type
                 'confidence' => 0.0,
                 'tips' => $this->getDefaultTips(self::TYPE_DIRECT),
                 'messageCount' => $messageCount,
                 'minRequired' => $minMessages,
-                'insufficientData' => true
+                'insufficientData' => true,
+                'emotion' => $emotion
             ];
         }
-        
-        // Get recent messages for analysis
-        $messages = $this->getRecentMessages($userId, 50);
         
         // Analyze messages to determine type
         $scores = $this->analyzeMessagePatterns($messages);
@@ -447,8 +455,58 @@ class CustomerHealthEngineService
             'tips' => $tips,
             'messageCount' => $messageCount,
             'scores' => $scores,
-            'insufficientData' => false
+            'insufficientData' => false,
+            'emotion' => $emotion
         ];
+    }
+    
+    /**
+     * Detect emotion from message text
+     * @param string $message Message text
+     * @return string Emotion type
+     */
+    private function detectEmotion(string $message): string
+    {
+        if (empty($message)) return 'neutral';
+        
+        $msg = mb_strtolower($message);
+        
+        // Angry keywords
+        if (preg_match('/โกรธ|โมโห|หัวร้อน|บ้า|เวร|ห่า|สัตว์|ไอ้|อี|แม่ง|เหี้ย|!{2,}/u', $msg)) {
+            return 'angry';
+        }
+        
+        // Frustrated keywords
+        if (preg_match('/หงุดหงิด|รำคาญ|เบื่อ|ช้า|นาน|รอ|ทำไม|ไม่ได้|ไม่ดี|แย่/u', $msg)) {
+            return 'frustrated';
+        }
+        
+        // Happy keywords
+        if (preg_match('/ขอบคุณ|ดีมาก|เยี่ยม|สุดยอด|ชอบ|รัก|ปลื้ม|ดีใจ/u', $msg)) {
+            return 'happy';
+        }
+        
+        // Satisfied keywords
+        if (preg_match('/โอเค|ได้|ดี|เข้าใจ|ตกลง|ok|okay/ui', $msg)) {
+            return 'satisfied';
+        }
+        
+        // Confused keywords
+        if (preg_match('/งง|ไม่เข้าใจ|อะไร|ยังไง|หมายความว่า|\?{2,}|สับสน/u', $msg)) {
+            return 'confused';
+        }
+        
+        // Worried keywords
+        if (preg_match('/กังวล|กลัว|เป็นห่วง|ไม่แน่ใจ|อันตราย|ผลข้างเคียง/u', $msg)) {
+            return 'worried';
+        }
+        
+        // Urgent keywords
+        if (preg_match('/ด่วน|เร่ง|รีบ|ตอนนี้|ทันที|asap|urgent/ui', $msg)) {
+            return 'urgent';
+        }
+        
+        return 'neutral';
     }
 
     
