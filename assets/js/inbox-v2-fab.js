@@ -102,14 +102,23 @@ const HUDMode = {
     
     async loadCRMData() {
         const userId = window.ghostDraftState?.userId;
-        if (!userId) return;
+        console.log('[HUDMode] loadCRMData called, userId:', userId, 'currentBotId:', window.currentBotId);
+        if (!userId) {
+            console.warn('[HUDMode] No userId available');
+            return;
+        }
         
         try {
-            const response = await fetch(`api/inbox-v2.php?action=customer_crm&user_id=${userId}&line_account_id=${window.currentBotId || 1}`);
+            const url = `api/inbox-v2.php?action=customer_crm&user_id=${userId}&line_account_id=${window.currentBotId || 1}`;
+            console.log('[HUDMode] Fetching CRM data from:', url);
+            const response = await fetch(url);
             const result = await response.json();
+            console.log('[HUDMode] CRM data result:', result);
             
             if (result.success && result.data) {
                 this.renderCRMData(result.data);
+            } else {
+                console.error('[HUDMode] CRM data error:', result.error);
             }
         } catch (error) {
             console.error('Load CRM data error:', error);
@@ -158,8 +167,20 @@ const HUDMode = {
         ];
         
         fields.forEach(f => {
-            const el = document.getElementById(f.id);
-            if (el) el.textContent = user[f.field] || '-';
+            const container = document.getElementById(`${f.id}_container`);
+            if (container && !container.classList.contains('editing')) {
+                const value = user[f.field] || '-';
+                const rawValue = user[f.field] || '';
+                container.innerHTML = `
+                    <div class="info-left">
+                        <div class="label">${f.label}</div>
+                        <div class="value" id="${f.id}">${escapeHtml(value)}</div>
+                    </div>
+                    <button class="edit-btn" onclick="HUDMode.editField('${f.field}', '${escapeHtml(rawValue).replace(/'/g, "\\'")}')">
+                        <i class="fas fa-pen"></i>
+                    </button>
+                `;
+            }
         });
     },
     
@@ -200,7 +221,13 @@ const HUDMode = {
         const input = document.getElementById(`edit_${field}`);
         const value = input?.value?.trim() || '';
         const userId = window.ghostDraftState?.userId;
-        if (!userId) return;
+        console.log('[HUDMode] saveField called:', { field, value, userId });
+        
+        if (!userId) {
+            console.error('[HUDMode] saveField: No userId available');
+            showNotification && showNotification('❌ ไม่พบข้อมูลลูกค้า', 'error');
+            return;
+        }
         
         try {
             const formData = new FormData();
@@ -210,8 +237,10 @@ const HUDMode = {
             formData.append('value', value);
             formData.append('line_account_id', window.currentBotId || 1);
             
+            console.log('[HUDMode] saveField sending:', { action: 'update_customer_info', user_id: userId, field, value });
             const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
             const result = await response.json();
+            console.log('[HUDMode] saveField result:', result);
             
             if (result.success) {
                 this.loadCRMData();
@@ -221,6 +250,7 @@ const HUDMode = {
             }
         } catch (error) {
             console.error('Save field error:', error);
+            showNotification && showNotification('❌ เกิดข้อผิดพลาด', 'error');
         }
     },
     
@@ -243,11 +273,16 @@ const HUDMode = {
     
     showTagSelector() {
         const container = document.getElementById('tagSelectorContainer');
-        if (!container) return;
+        console.log('[HUDMode] showTagSelector called, container:', container, 'allTags:', this.allTags, 'userTags:', this.userTags);
+        if (!container) {
+            console.error('[HUDMode] tagSelectorContainer not found');
+            return;
+        }
         
         // Filter out already assigned tags
         const userTagIds = this.userTags.map(t => t.id);
         const availableTags = this.allTags.filter(t => !userTagIds.includes(t.id));
+        console.log('[HUDMode] availableTags:', availableTags);
         
         let html = `<div class="tag-selector">`;
         
@@ -258,6 +293,8 @@ const HUDMode = {
                 html += `<span class="tag-selector-item" style="background-color: ${tag.color || '#6B7280'}; color: white;" onclick="HUDMode.addExistingTag(${tag.id})">${escapeHtml(tag.name)}</span>`;
             });
             html += `</div>`;
+        } else {
+            html += `<div class="tag-selector-title">ไม่มี Tag ที่สามารถเพิ่มได้</div>`;
         }
         
         html += `
@@ -268,6 +305,7 @@ const HUDMode = {
         </div>`;
         
         container.innerHTML = html;
+        console.log('[HUDMode] Tag selector rendered');
     },
     
     hideTagSelector() {

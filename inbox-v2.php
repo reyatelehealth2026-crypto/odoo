@@ -1912,6 +1912,7 @@ function formatThaiDateTime($datetime) {
                 <div class="crm-section-body">
                     <div class="tags-container" id="crmTagsContainer">
                         <button class="add-tag-btn" onclick="HUDMode.showTagSelector()">+ เพิ่ม Tag</button>
+                        <div id="tagSelectorContainer"></div>
                     </div>
                 </div>
             </div>
@@ -2303,6 +2304,9 @@ const ghostDraftState = {
     lastCustomerMessage: '',
     draftAccepted: false
 };
+
+// Expose ghostDraftState globally for FAB/HUD components
+window.ghostDraftState = ghostDraftState;
 
 // Order State - for managing items to add to order
 const orderState = {

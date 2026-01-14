@@ -1859,13 +1859,21 @@ try {
                     $allTags = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Exception $e) {}
                 
-                // Get notes
+                // Get notes - try customer_notes first, fallback to user_notes
                 $notes = [];
                 try {
-                    $stmt = $db->prepare("SELECT * FROM customer_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
+                    // Try customer_notes table first
+                    $stmt = $db->prepare("SELECT id, user_id, content, created_by, created_at FROM customer_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
                     $stmt->execute([$userId]);
                     $notes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                } catch (Exception $e) {}
+                } catch (Exception $e) {
+                    // Fallback to user_notes table
+                    try {
+                        $stmt = $db->prepare("SELECT id, user_id, note as content, created_by, created_at FROM user_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
+                        $stmt->execute([$userId]);
+                        $notes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    } catch (Exception $e2) {}
+                }
                 
                 // Get recent transactions
                 $transactions = [];
@@ -1909,8 +1917,15 @@ try {
             }
             
             try {
-                $stmt = $db->prepare("INSERT INTO customer_notes (user_id, content, created_by, created_at) VALUES (?, ?, ?, NOW())");
-                $stmt->execute([$userId, $content, $adminId ?? 'Admin']);
+                // Try customer_notes first, fallback to user_notes
+                try {
+                    $stmt = $db->prepare("INSERT INTO customer_notes (user_id, content, created_by, created_at) VALUES (?, ?, ?, NOW())");
+                    $stmt->execute([$userId, $content, $adminId ?? 'Admin']);
+                } catch (Exception $e) {
+                    // Fallback to user_notes table
+                    $stmt = $db->prepare("INSERT INTO user_notes (user_id, note, created_at) VALUES (?, ?, NOW())");
+                    $stmt->execute([$userId, $content]);
+                }
                 
                 sendResponse([
                     'success' => true,
@@ -2072,8 +2087,18 @@ try {
             }
             
             try {
-                $stmt = $db->prepare("DELETE FROM customer_notes WHERE id = ?");
-                $stmt->execute([$noteId]);
+                // Try customer_notes first, fallback to user_notes
+                try {
+                    $stmt = $db->prepare("DELETE FROM customer_notes WHERE id = ?");
+                    $stmt->execute([$noteId]);
+                    if ($stmt->rowCount() === 0) {
+                        throw new Exception('Not found in customer_notes');
+                    }
+                } catch (Exception $e) {
+                    // Fallback to user_notes table
+                    $stmt = $db->prepare("DELETE FROM user_notes WHERE id = ?");
+                    $stmt->execute([$noteId]);
+                }
                 
                 sendResponse([
                     'success' => true,
