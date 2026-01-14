@@ -1850,6 +1850,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Callback when conversation list updates
         onConversationUpdate: function(conversations) {
+            console.log('[Inbox] onConversationUpdate called with', conversations.length, 'conversations');
             updateConversationListUI(conversations);
         },
         
@@ -1890,10 +1891,15 @@ function updateConversationListUI(conversations) {
     
     const currentUserId = <?= $selectedUser ? $selectedUser['id'] : 'null' ?>;
     
-    console.log('[updateConversationListUI] Updating', conversations.length, 'conversations');
+    console.log('[updateConversationListUI] Container found, updating', conversations.length, 'conversations');
     
     conversations.forEach((conv, index) => {
         const existingItem = container.querySelector(`a[href*="user=${conv.id}"]`);
+        
+        // Debug: log for first 3 conversations
+        if (index < 3) {
+            console.log(`[updateConversationListUI] Conv ${conv.id} (${conv.display_name}): element found = ${!!existingItem}`);
+        }
         
         if (existingItem) {
             // Update last message preview - use .last-msg class
