@@ -195,6 +195,27 @@ try {
                 throw new Exception('Use specific template actions for POST operations');
             }
             break;
+        
+        case 'get_template':
+            if ($method !== 'GET') {
+                throw new Exception('Method not allowed', 405);
+            }
+            
+            $templateId = (int)($_GET['id'] ?? 0);
+            if (!$templateId) {
+                throw new Exception('Template ID is required');
+            }
+            
+            $template = $templateService->getById($templateId);
+            if (!$template) {
+                throw new Exception('Template not found');
+            }
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $template
+            ]);
+            break;
             
         case 'create_template':
             if ($method !== 'POST') {
@@ -250,7 +271,8 @@ try {
                 throw new Exception('Method not allowed', 405);
             }
             
-            $templateId = (int)($_POST['id'] ?? 0);
+            $input = $jsonInput ?? $_POST;
+            $templateId = (int)($input['id'] ?? 0);
             if (!$templateId) {
                 throw new Exception('Template ID is required');
             }
