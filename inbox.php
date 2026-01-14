@@ -5782,49 +5782,198 @@ $templates = $templateService->getTemplates();
 
 <!-- Create/Edit Template Modal -->
 <div id="templateModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white rounded-2xl w-full max-w-lg">
-        <div class="p-4 border-b flex items-center justify-between">
-            <h3 class="font-bold text-lg" id="templateModalTitle">สร้าง Template</h3>
+    <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div class="p-4 border-b flex items-center justify-between sticky top-0 bg-white z-10">
+            <h3 class="font-bold text-lg" id="templateModalTitle">สร้าง Template ข้อความด่วน</h3>
             <button onclick="closeTemplateModal()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100">
                 <i class="fas fa-times"></i>
             </button>
         </div>
         <form id="templateForm" class="p-4 space-y-4">
             <input type="hidden" id="templateId" value="">
+            
+            <!-- ชื่อ Template -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ Template</label>
-                <input type="text" id="templateName" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="เช่น ทักทายลูกค้าใหม่" required>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <i class="fas fa-tag text-emerald-500 mr-1"></i>ชื่อ Template
+                </label>
+                <input type="text" id="templateName" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="เช่น ทักทายลูกค้าใหม่, ยืนยันคำสั่งซื้อ" required>
+                <p class="text-xs text-gray-500 mt-1">💡 ตั้งชื่อให้จำง่าย เพื่อหาใช้งานได้รวดเร็ว</p>
             </div>
+            
+            <!-- หมวดหมู่ -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่</label>
-                <input type="text" id="templateCategory" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="เช่น greeting, order, support">
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <i class="fas fa-folder text-blue-500 mr-1"></i>หมวดหมู่ (ไม่บังคับ)
+                </label>
+                <select id="templateCategory" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    <option value="">-- เลือกหมวดหมู่ --</option>
+                    <option value="greeting">👋 ทักทาย</option>
+                    <option value="order">🛒 คำสั่งซื้อ</option>
+                    <option value="support">💬 ช่วยเหลือ</option>
+                    <option value="promotion">🎉 โปรโมชั่น</option>
+                    <option value="followup">📞 ติดตามลูกค้า</option>
+                    <option value="other">📝 อื่นๆ</option>
+                </select>
             </div>
+            
+            <!-- เนื้อหา -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">เนื้อหา</label>
-                <textarea id="templateContent" rows="4" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="พิมพ์ข้อความ... ใช้ {name}, {phone}, {email} สำหรับ placeholder" required></textarea>
-                <p class="text-xs text-gray-500 mt-1">Placeholders: {name}, {phone}, {email}, {order_id}</p>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    <i class="fas fa-comment-dots text-purple-500 mr-1"></i>เนื้อหาข้อความ
+                </label>
+                <textarea id="templateContent" rows="4" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="สวัสดีค่ะคุณ {name} 😊&#10;ขอบคุณที่สนใจสินค้าของเรานะคะ" required oninput="updateTemplatePreview()"></textarea>
+                <div class="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p class="text-xs font-medium text-blue-700 mb-1">✨ ใช้ตัวแปรเหล่านี้ได้:</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="insertPlaceholder('{name}')" class="px-2 py-1 bg-white border border-blue-300 rounded text-xs hover:bg-blue-100">{name} - ชื่อลูกค้า</button>
+                        <button type="button" onclick="insertPlaceholder('{phone}')" class="px-2 py-1 bg-white border border-blue-300 rounded text-xs hover:bg-blue-100">{phone} - เบอร์โทร</button>
+                        <button type="button" onclick="insertPlaceholder('{email}')" class="px-2 py-1 bg-white border border-blue-300 rounded text-xs hover:bg-blue-100">{email} - อีเมล</button>
+                        <button type="button" onclick="insertPlaceholder('{order_id}')" class="px-2 py-1 bg-white border border-blue-300 rounded text-xs hover:bg-blue-100">{order_id} - เลขคำสั่งซื้อ</button>
+                    </div>
+                </div>
             </div>
+            
+            <!-- Preview -->
+            <div id="templatePreviewSection" class="hidden">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-eye text-green-500 mr-1"></i>ตัวอย่างข้อความ
+                </label>
+                <div class="p-3 bg-gray-50 border rounded-lg">
+                    <div class="bg-white rounded-lg p-3 shadow-sm max-w-xs">
+                        <p id="templatePreview" class="text-sm text-gray-800 whitespace-pre-wrap"></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Reply Buttons -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Quick Reply Buttons (JSON)</label>
-                <textarea id="templateQuickReply" rows="3" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono text-sm" placeholder='[{"type":"action","action":{"type":"message","label":"ดูสินค้า","text":"shop"}}]'></textarea>
-                <p class="text-xs text-gray-500 mt-1">ตัวอย่าง: [{"type":"action","action":{"type":"message","label":"ดูสินค้า","text":"shop"}}]</p>
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    <i class="fas fa-mouse-pointer text-orange-500 mr-1"></i>ปุ่มตอบกลับด่วน (ไม่บังคับ)
+                </label>
+                <div id="quickReplyButtons" class="space-y-2 mb-2">
+                    <!-- Buttons will be added here -->
+                </div>
+                <button type="button" onclick="addQuickReplyButton()" class="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-emerald-500 hover:text-emerald-500 text-sm">
+                    <i class="fas fa-plus mr-1"></i>เพิ่มปุ่ม
+                </button>
+                <textarea id="templateQuickReply" class="hidden"></textarea>
             </div>
+            
         </form>
-        <div class="p-4 border-t flex gap-2 justify-end">
+        <div class="p-4 border-t flex gap-2 justify-end sticky bottom-0 bg-white">
             <button onclick="closeTemplateModal()" class="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg">ยกเลิก</button>
-            <button onclick="saveTemplate()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg">บันทึก</button>
+            <button onclick="saveTemplate()" class="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg">
+                <i class="fas fa-save mr-1"></i>บันทึก Template
+            </button>
         </div>
     </div>
 </div>
 
 <script>
+let quickReplyButtonsData = [];
+
 function openCreateTemplateModal() {
-    document.getElementById('templateModalTitle').textContent = 'สร้าง Template';
+    document.getElementById('templateModalTitle').textContent = 'สร้าง Template ข้อความด่วน';
     document.getElementById('templateId').value = '';
     document.getElementById('templateName').value = '';
     document.getElementById('templateCategory').value = '';
     document.getElementById('templateContent').value = '';
     document.getElementById('templateQuickReply').value = '';
+    quickReplyButtonsData = [];
+    renderQuickReplyButtons();
+    updateTemplatePreview();
+    document.getElementById('templateModal').classList.remove('hidden');
+}
+
+function insertPlaceholder(placeholder) {
+    const textarea = document.getElementById('templateContent');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    textarea.value = text.substring(0, start) + placeholder + text.substring(end);
+    textarea.focus();
+    textarea.selectionStart = textarea.selectionEnd = start + placeholder.length;
+    updateTemplatePreview();
+}
+
+function updateTemplatePreview() {
+    const content = document.getElementById('templateContent').value;
+    const preview = document.getElementById('templatePreview');
+    const section = document.getElementById('templatePreviewSection');
+    
+    if (content.trim()) {
+        section.classList.remove('hidden');
+        // Replace placeholders with example data
+        let previewText = content
+            .replace(/{name}/g, 'คุณสมชาย')
+            .replace(/{phone}/g, '081-234-5678')
+            .replace(/{email}/g, 'customer@example.com')
+            .replace(/{order_id}/g, '#12345');
+        preview.textContent = previewText;
+    } else {
+        section.classList.add('hidden');
+    }
+}
+
+function addQuickReplyButton() {
+    quickReplyButtonsData.push({
+        label: '',
+        text: ''
+    });
+    renderQuickReplyButtons();
+}
+
+function removeQuickReplyButton(index) {
+    quickReplyButtonsData.splice(index, 1);
+    renderQuickReplyButtons();
+}
+
+function renderQuickReplyButtons() {
+    const container = document.getElementById('quickReplyButtons');
+    container.innerHTML = '';
+    
+    quickReplyButtonsData.forEach((btn, index) => {
+        const div = document.createElement('div');
+        div.className = 'flex gap-2 items-start p-3 bg-gray-50 rounded-lg';
+        div.innerHTML = `
+            <div class="flex-1 space-y-2">
+                <input type="text" 
+                       value="${btn.label}" 
+                       onchange="quickReplyButtonsData[${index}].label = this.value; updateQuickReplyJSON()"
+                       class="w-full px-2 py-1 border rounded text-sm" 
+                       placeholder="ข้อความบนปุ่ม เช่น ดูสินค้า">
+                <input type="text" 
+                       value="${btn.text}" 
+                       onchange="quickReplyButtonsData[${index}].text = this.value; updateQuickReplyJSON()"
+                       class="w-full px-2 py-1 border rounded text-sm" 
+                       placeholder="ข้อความที่จะส่ง เช่น shop">
+            </div>
+            <button type="button" onclick="removeQuickReplyButton(${index})" 
+                    class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-100 text-red-500">
+                <i class="fas fa-trash text-sm"></i>
+            </button>
+        `;
+        container.appendChild(div);
+    });
+    
+    updateQuickReplyJSON();
+}
+
+function updateQuickReplyJSON() {
+    const buttons = quickReplyButtonsData
+        .filter(btn => btn.label && btn.text)
+        .map(btn => ({
+            type: 'action',
+            action: {
+                type: 'message',
+                label: btn.label,
+                text: btn.text
+            }
+        }));
+    
+    document.getElementById('templateQuickReply').value = buttons.length > 0 ? JSON.stringify(buttons) : '';
+}
     document.getElementById('templateModal').classList.remove('hidden');
 }
 
@@ -5842,7 +5991,23 @@ async function editTemplate(id) {
             document.getElementById('templateName').value = data.data.name;
             document.getElementById('templateCategory').value = data.data.category || '';
             document.getElementById('templateContent').value = data.data.content;
-            document.getElementById('templateQuickReply').value = data.data.quick_reply || '';
+            
+            // Parse quick reply buttons
+            quickReplyButtonsData = [];
+            if (data.data.quick_reply) {
+                try {
+                    const buttons = JSON.parse(data.data.quick_reply);
+                    quickReplyButtonsData = buttons.map(btn => ({
+                        label: btn.action.label,
+                        text: btn.action.text
+                    }));
+                } catch (e) {
+                    console.error('Failed to parse quick reply:', e);
+                }
+            }
+            
+            renderQuickReplyButtons();
+            updateTemplatePreview();
             document.getElementById('templateModal').classList.remove('hidden');
         }
     } catch (e) {
