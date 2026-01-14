@@ -1331,6 +1331,9 @@ function formatThaiDateTime($datetime) {
                     <option value="tracking">🚚 ติดตามสถานะ</option>
                     <option value="billing">💰 ติดตามบิล</option>
                 </select>
+                <button onclick="markAllAsRead()" class="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs hover:bg-teal-700 transition whitespace-nowrap">
+                    <i class="fas fa-check-double"></i> อ่านทั้งหมด
+                </button>
             </div>
         </div>
         
@@ -1350,13 +1353,33 @@ function formatThaiDateTime($datetime) {
                         $assignment = $assignStmt->fetch(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {}
                     
+                    // Get user tags for filtering
+                    $userTagIds = [];
+                    try {
+                        $tagStmt = $db->prepare("SELECT tag_id FROM user_tag_assignments WHERE user_id = ?");
+                        $tagStmt->execute([$user['id']]);
+                        $userTagIds = $tagStmt->fetchAll(PDO::FETCH_COLUMN);
+                    } catch (PDOException $e) {}
+                    
                     $hasSlaWarning = in_array($user['id'], $slaViolationUserIds);
+                    
+                    // Chat status badge config
+                    $chatStatusBadges = [
+                        'pending' => ['icon' => '🔴', 'color' => '#EF4444', 'bg' => '#FEE2E2'],
+                        'completed' => ['icon' => '🟢', 'color' => '#10B981', 'bg' => '#D1FAE5'],
+                        'shipping' => ['icon' => '📦', 'color' => '#F59E0B', 'bg' => '#FEF3C7'],
+                        'tracking' => ['icon' => '🚚', 'color' => '#3B82F6', 'bg' => '#DBEAFE'],
+                        'billing' => ['icon' => '💰', 'color' => '#8B5CF6', 'bg' => '#EDE9FE']
+                    ];
+                    $chatStatus = $user['chat_status'] ?? '';
+                    $statusBadge = $chatStatusBadges[$chatStatus] ?? null;
                 ?>
                 <a href="?user=<?= $user['id'] ?>" 
                    class="user-item block p-3 border-b border-gray-50 <?= ($selectedUser && $selectedUser['id'] == $user['id']) ? 'active' : '' ?> <?= $hasSlaWarning ? 'sla-warning' : '' ?>" 
                    data-user-id="<?= $user['id'] ?>"
                    data-name="<?= strtolower($user['display_name']) ?>"
-                   data-chat-status="<?= htmlspecialchars($user['chat_status'] ?? '') ?>"
+                   data-chat-status="<?= htmlspecialchars($chatStatus) ?>"
+                   data-tags="<?= implode(',', $userTagIds) ?>"
                    data-assigned="<?= ($assignment && $assignment['status'] === 'active') ? '1' : '0' ?>">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
@@ -1377,11 +1400,19 @@ function formatThaiDateTime($datetime) {
                             </div>
                             <p class="last-msg text-xs text-gray-500 truncate" data-initial="<?= htmlspecialchars($user['last_msg'] ?? '') ?>"><?= htmlspecialchars(getMessagePreview($user['last_msg'], $user['last_type'])) ?></p>
                             
-                            <?php if ($assignment && $assignment['status'] === 'active'): ?>
-                            <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
-                                <i class="fas fa-user-check"></i> <?= htmlspecialchars($assignment['assigned_admin_name'] ?: 'Admin') ?>
-                            </span>
-                            <?php endif; ?>
+                            <div class="flex items-center gap-1 mt-1 flex-wrap">
+                                <?php if ($statusBadge): ?>
+                                <span class="chat-status-badge" style="background: <?= $statusBadge['bg'] ?>; color: <?= $statusBadge['color'] ?>; border: 1px solid <?= $statusBadge['color'] ?>30;">
+                                    <?= $statusBadge['icon'] ?>
+                                </span>
+                                <?php endif; ?>
+                                
+                                <?php if ($assignment && $assignment['status'] === 'active'): ?>
+                                <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                    <i class="fas fa-user-check"></i> <?= htmlspecialchars($assignment['assigned_admin_name'] ?: 'Admin') ?>
+                                </span>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                 </a>
@@ -4414,6 +4445,12 @@ function applyFilters() {
             show = show && isAssigned;
         }
         
+        // Filter by tag
+        if (tag) {
+            const itemTags = (item.dataset.tags || '').split(',').filter(t => t);
+            show = show && itemTags.includes(tag);
+        }
+        
         // Filter by chat status (work status)
         if (chatStatus) {
             const itemChatStatus = item.dataset.chatStatus || '';
@@ -4424,6 +4461,30 @@ function applyFilters() {
     });
 }
 
+// Mark all messages as read
+async function markAllAsRead() {
+    if (!confirm('ต้องการทำเครื่องหมายอ่านทั้งหมดหรือไม่?')) return;
+    
+    try {
+        const formData = new FormData();
+        formData.append('action', 'mark_all_read');
+        formData.append('line_account_id', <?= $currentBotId ?>);
+        
+        const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
+        const result = await response.json();
+        
+        if (result.success) {
+            // Remove all unread badges
+            document.querySelectorAll('.unread-badge').forEach(badge => badge.remove());
+            showNotification && showNotification('✓ ทำเครื่องหมายอ่านทั้งหมดแล้ว', 'success');
+        } else {
+            showNotification && showNotification('❌ ' + (result.error || 'เกิดข้อผิดพลาด'), 'error');
+        }
+    } catch (error) {
+        console.error('Mark all read error:', error);
+        showNotification && showNotification('❌ เกิดข้อผิดพลาด', 'error');
+    }
+}
 // Mobile functions
 function showChatList() {
     const sidebar = document.getElementById('inboxSidebar');

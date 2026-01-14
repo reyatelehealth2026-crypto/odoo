@@ -2160,6 +2160,28 @@ try {
             break;
 
         // ============================================
+        // POST /mark_all_read - Mark all messages as read
+        // ============================================
+        case 'mark_all_read':
+            if ($method !== 'POST') {
+                sendError('Method not allowed', 405);
+            }
+            
+            try {
+                $stmt = $db->prepare("UPDATE messages SET is_read = 1 WHERE line_account_id = ? AND direction = 'incoming' AND is_read = 0");
+                $stmt->execute([$lineAccountId]);
+                $affected = $stmt->rowCount();
+                
+                sendResponse([
+                    'success' => true,
+                    'message' => "Marked {$affected} messages as read"
+                ]);
+            } catch (Exception $e) {
+                sendError('Failed to mark messages as read: ' . $e->getMessage());
+            }
+            break;
+
+        // ============================================
         // Default - Unknown action
         // ============================================
         default:
