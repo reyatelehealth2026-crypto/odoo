@@ -22,17 +22,21 @@ class CustomerHealthEngineService
     const MIN_MESSAGES_FOR_CLASSIFICATION = 1;
     
     // Classification keywords for each type
+    // Note: For wholesale business, focus on HOW they communicate, not WHAT they buy
     private $typeKeywords = [
         'A' => [
-            'positive' => ['ขอ', 'เอา', 'ต้องการ', 'ซื้อ', 'สั่ง', 'ราคา', 'เท่าไหร่', 'มีไหม', 'ส่งได้ไหม', 'รีบ', 'ด่วน'],
-            'negative' => ['ทำไม', 'อธิบาย', 'รายละเอียด', 'กังวล', 'กลัว', 'ห่วง']
+            // Type A: Direct, transactional, minimal words
+            'positive' => ['รีบ', 'ด่วน', 'เร็ว', 'ตอนนี้', 'ทันที', 'วันนี้', 'พรุ่งนี้', 'asap', 'urgent'],
+            'negative' => ['ทำไม', 'อธิบาย', 'รายละเอียด', 'กังวล', 'กลัว', 'ห่วง', 'เปรียบเทียบ', 'ข้อมูล']
         ],
         'B' => [
-            'positive' => ['กังวล', 'กลัว', 'ห่วง', 'เป็นอะไร', 'อันตราย', 'ปลอดภัย', 'ผลข้างเคียง', 'แพ้', 'ไม่แน่ใจ', 'ช่วย', 'แนะนำ'],
-            'negative' => ['ราคา', 'เท่าไหร่', 'รายละเอียด', 'เปรียบเทียบ']
+            // Type B: Concerned, asks about safety, needs reassurance
+            'positive' => ['กังวล', 'กลัว', 'ห่วง', 'เป็นอะไร', 'อันตราย', 'ปลอดภัย', 'ผลข้างเคียง', 'แพ้', 'ไม่แน่ใจ', 'ช่วย', 'แนะนำ', 'ขอบคุณ', 'ดีใจ', 'หมอ', 'คุณหมอ', 'เภสัช'],
+            'negative' => ['รีบ', 'ด่วน', 'เร็ว']
         ],
         'C' => [
-            'positive' => ['รายละเอียด', 'อธิบาย', 'ทำไม', 'อย่างไร', 'เปรียบเทียบ', 'ข้อมูล', 'วิจัย', 'หลักฐาน', 'ส่วนประกอบ', 'กลไก'],
+            // Type C: Detail-oriented, wants information, compares options
+            'positive' => ['รายละเอียด', 'อธิบาย', 'ทำไม', 'อย่างไร', 'เปรียบเทียบ', 'ข้อมูล', 'วิจัย', 'หลักฐาน', 'ส่วนประกอบ', 'กลไก', 'ต่างกัน', 'ดีกว่า', 'แบบไหน', 'ยี่ห้อ', 'ตัวไหน'],
             'negative' => ['รีบ', 'ด่วน', 'เร็ว']
         ]
     ];
@@ -471,38 +475,38 @@ class CustomerHealthEngineService
         
         $msg = mb_strtolower($message);
         
-        // Angry keywords
-        if (preg_match('/โกรธ|โมโห|หัวร้อน|บ้า|เวร|ห่า|สัตว์|ไอ้|อี|แม่ง|เหี้ย|!{2,}/u', $msg)) {
+        // Angry keywords (strong negative)
+        if (preg_match('/โกรธ|โมโห|หัวร้อน|บ้า|เวร|ห่า|สัตว์|ไอ้|อี|แม่ง|เหี้ย|!{2,}|ไม่พอใจ|แย่มาก/u', $msg)) {
             return 'angry';
         }
         
-        // Frustrated keywords
-        if (preg_match('/หงุดหงิด|รำคาญ|เบื่อ|ช้า|นาน|รอ|ทำไม|ไม่ได้|ไม่ดี|แย่/u', $msg)) {
+        // Frustrated keywords (mild negative)
+        if (preg_match('/หงุดหงิด|รำคาญ|เบื่อ|ช้า|นาน|รอ|ไม่ได้|ไม่ดี|แย่|ผิดหวัง|เสียเวลา/u', $msg)) {
             return 'frustrated';
         }
         
-        // Happy keywords
-        if (preg_match('/ขอบคุณ|ดีมาก|เยี่ยม|สุดยอด|ชอบ|รัก|ปลื้ม|ดีใจ/u', $msg)) {
+        // Happy keywords (strong positive)
+        if (preg_match('/ขอบคุณ|ดีมาก|เยี่ยม|สุดยอด|ชอบ|รัก|ปลื้ม|ดีใจ|ประทับใจ|เก่ง|เจ๋ง|👍|😊|🙏/u', $msg)) {
             return 'happy';
         }
         
-        // Satisfied keywords
-        if (preg_match('/โอเค|ได้|ดี|เข้าใจ|ตกลง|ok|okay/ui', $msg)) {
+        // Satisfied keywords (mild positive)
+        if (preg_match('/โอเค|ได้|ดี|เข้าใจ|ตกลง|ok|okay|รับทราบ|เรียบร้อย|ครับ$|ค่ะ$|คะ$/ui', $msg)) {
             return 'satisfied';
         }
         
         // Confused keywords
-        if (preg_match('/งง|ไม่เข้าใจ|อะไร|ยังไง|หมายความว่า|\?{2,}|สับสน/u', $msg)) {
+        if (preg_match('/งง|ไม่เข้าใจ|อะไร|ยังไง|หมายความว่า|\?{2,}|สับสน|ไม่รู้/u', $msg)) {
             return 'confused';
         }
         
         // Worried keywords
-        if (preg_match('/กังวล|กลัว|เป็นห่วง|ไม่แน่ใจ|อันตราย|ผลข้างเคียง/u', $msg)) {
+        if (preg_match('/กังวล|กลัว|เป็นห่วง|ไม่แน่ใจ|อันตราย|ผลข้างเคียง|ปลอดภัย|แพ้/u', $msg)) {
             return 'worried';
         }
         
         // Urgent keywords
-        if (preg_match('/ด่วน|เร่ง|รีบ|ตอนนี้|ทันที|asap|urgent/ui', $msg)) {
+        if (preg_match('/ด่วน|เร่ง|รีบ|ตอนนี้|ทันที|asap|urgent|วันนี้|พรุ่งนี้/ui', $msg)) {
             return 'urgent';
         }
         
@@ -574,14 +578,26 @@ class CustomerHealthEngineService
         $totalMessages = count($messages);
         $totalLength = 0;
         $questionCount = 0;
+        $politeCount = 0; // Count polite expressions
+        $comparisonCount = 0; // Count comparison requests
         
         foreach ($messages as $message) {
             $content = $message['content'] ?? '';
             $totalLength += mb_strlen($content);
             
             // Count questions
-            if (preg_match('/[?？]/', $content)) {
+            if (preg_match('/[?？]/u', $content)) {
                 $questionCount++;
+            }
+            
+            // Count polite expressions (indicates Type B)
+            if (preg_match('/ครับ|ค่ะ|คะ|ขอบคุณ|รบกวน|ช่วย/u', $content)) {
+                $politeCount++;
+            }
+            
+            // Count comparison/detail requests (indicates Type C)
+            if (preg_match('/ต่างกัน|เปรียบเทียบ|แบบไหน|ตัวไหน|ดีกว่า|ยี่ห้อ/u', $content)) {
+                $comparisonCount++;
             }
             
             // Score based on keywords
@@ -593,33 +609,55 @@ class CustomerHealthEngineService
                 }
                 foreach ($keywords['negative'] as $keyword) {
                     if (mb_stripos($content, $keyword) !== false) {
-                        $scores[$type] -= 0.5;
+                        $scores[$type] -= 0.3;
                     }
                 }
             }
         }
         
-        // Adjust based on message length patterns
+        // Adjust based on message length patterns (reduced weight)
         $avgLength = $totalLength / $totalMessages;
         
-        // Type A: Short messages (< 30 chars avg)
-        if ($avgLength < 30) {
-            $scores['A'] += 2.0;
+        // Type A: Very short messages (< 15 chars avg) - reduced threshold
+        if ($avgLength < 15) {
+            $scores['A'] += 1.0;
         }
-        // Type C: Long messages (> 80 chars avg)
-        elseif ($avgLength > 80) {
-            $scores['C'] += 2.0;
+        // Type C: Long messages (> 100 chars avg) - increased threshold
+        elseif ($avgLength > 100) {
+            $scores['C'] += 1.5;
         }
-        // Type B: Medium length
-        else {
-            $scores['B'] += 1.0;
+        // Medium length - slight boost to B
+        elseif ($avgLength >= 30 && $avgLength <= 80) {
+            $scores['B'] += 0.5;
         }
         
         // Adjust based on question frequency
         $questionRatio = $questionCount / $totalMessages;
-        if ($questionRatio > 0.5) {
-            $scores['B'] += 1.5; // Concerned type asks more questions
-            $scores['C'] += 1.0; // Detail-oriented also asks questions
+        if ($questionRatio > 0.3) {
+            $scores['B'] += 1.0; // Concerned type asks questions
+            $scores['C'] += 0.8; // Detail-oriented also asks questions
+        }
+        
+        // Adjust based on politeness (indicates Type B - relationship-focused)
+        $politeRatio = $politeCount / $totalMessages;
+        if ($politeRatio > 0.5) {
+            $scores['B'] += 1.5;
+        } elseif ($politeRatio > 0.3) {
+            $scores['B'] += 0.8;
+        }
+        
+        // Adjust based on comparison requests (indicates Type C)
+        if ($comparisonCount > 0) {
+            $scores['C'] += $comparisonCount * 0.8;
+        }
+        
+        // If no strong signals, default to balanced scores
+        $totalScore = array_sum($scores);
+        if ($totalScore < 1.0) {
+            // No clear pattern - return balanced with slight A preference for wholesale
+            $scores['A'] = 0.4;
+            $scores['B'] = 0.3;
+            $scores['C'] = 0.3;
         }
         
         // Normalize scores

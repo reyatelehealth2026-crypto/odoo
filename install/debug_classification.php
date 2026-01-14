@@ -12,6 +12,21 @@ $lineAccountId = 1;
 
 echo "<h2>Debug Customer Classification</h2>";
 
+// Force re-analyze if requested
+$forceReanalyze = isset($_GET['force']) && $_GET['force'] == '1';
+if ($forceReanalyze) {
+    echo "<p style='color:green;font-weight:bold;'>🔄 Force re-analyzing all profiles...</p>";
+    // Clear existing profiles to force re-analysis
+    try {
+        $db->exec("DELETE FROM customer_health_profiles");
+        echo "<p style='color:green;'>✓ Cleared existing profiles</p>";
+    } catch (PDOException $e) {
+        echo "<p style='color:red;'>Error clearing profiles: " . $e->getMessage() . "</p>";
+    }
+}
+
+echo "<p><a href='?force=1' style='color:blue;'>🔄 Click to force re-analyze all customers</a></p>";
+
 // Get some users with messages
 $stmt = $db->query("
     SELECT u.id, u.display_name, 
@@ -24,22 +39,39 @@ $stmt = $db->query("
 ");
 $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-echo "<h3>Users with messages:</h3>";
-echo "<table border='1' cellpadding='5'>";
-echo "<tr><th>ID</th><th>Name</th><th>Msg Count</th><th>Last Message</th><th>Classification</th><th>Emotion</th></tr>";
+echo "<h3>Users with messages (Top 10 by message count):</h3>";
+echo "<table border='1' cellpadding='5' style='border-collapse:collapse;'>";
+echo "<tr style='background:#f0f0f0;'><th>ID</th><th>Name</th><th>Msg Count</th><th>Last Message</th><th>Type</th><th>Confidence</th><th>Emotion</th><th>Scores</th></tr>";
 
 $healthEngine = new CustomerHealthEngineService($db, $lineAccountId);
 
+$typeColors = [
+    'A' => '#e3f2fd',
+    'B' => '#fce4ec',
+    'C' => '#e8f5e9'
+];
+
 foreach ($users as $user) {
     $classification = $healthEngine->classifyCustomer($user['id']);
+    $bgColor = $typeColors[$classification['type']] ?? '#fff';
     
-    echo "<tr>";
+    // Format scores
+    $scoresStr = '';
+    if (isset($classification['scores'])) {
+        $scoresStr = "A:" . ($classification['scores']['A'] ?? 0) . 
+                     " B:" . ($classification['scores']['B'] ?? 0) . 
+                     " C:" . ($classification['scores']['C'] ?? 0);
+    }
+    
+    echo "<tr style='background:{$bgColor};'>";
     echo "<td>{$user['id']}</td>";
     echo "<td>" . htmlspecialchars($user['display_name'] ?? 'N/A') . "</td>";
     echo "<td>{$user['msg_count']}</td>";
-    echo "<td>" . htmlspecialchars(mb_substr($user['last_msg'] ?? '', 0, 50)) . "</td>";
-    echo "<td>Type: {$classification['type']}, Confidence: {$classification['confidence']}</td>";
-    echo "<td>" . ($classification['emotion'] ?? 'N/A') . "</td>";
+    echo "<td style='max-width:200px;overflow:hidden;'>" . htmlspecialchars(mb_substr($user['last_msg'] ?? '', 0, 50)) . "</td>";
+    echo "<td style='font-weight:bold;font-size:16px;'>{$classification['type']}</td>";
+    echo "<td>" . round(($classification['confidence'] ?? 0) * 100) . "%</td>";
+    echo "<td>" . ($classification['emotion'] ?? 'neutral') . "</td>";
+    echo "<td style='font-size:11px;'>{$scoresStr}</td>";
     echo "</tr>";
 }
 echo "</table>";
@@ -57,8 +89,8 @@ $testMessages = [
     'สวัสดีครับ'
 ];
 
-echo "<table border='1' cellpadding='5'>";
-echo "<tr><th>Message</th><th>Detected Emotion</th></tr>";
+echo "<table border='1' cellpadding='5' style='border-collapse:collapse;'>";
+echo "<tr style='background:#f0f0f0;'><th>Message</th><th>Detected Emotion</th></tr>";
 
 // Use reflection to call private method
 $reflection = new ReflectionClass($healthEngine);
@@ -68,6 +100,36 @@ $method->setAccessible(true);
 foreach ($testMessages as $msg) {
     $emotion = $method->invoke($healthEngine, $msg);
     echo "<tr><td>" . htmlspecialchars($msg) . "</td><td>{$emotion}</td></tr>";
+}
+echo "</table>";
+
+// Test classification patterns
+echo "<h3>Test Classification Patterns:</h3>";
+$testPatterns = [
+    ['msg' => 'พาราเซตามอล 500 กล่อง', 'expected' => 'A - Short, direct order'],
+    ['msg' => 'ด่วนครับ ต้องการวันนี้เลย', 'expected' => 'A - Urgent'],
+    ['msg' => 'กังวลเรื่องผลข้างเคียงครับ ปลอดภัยไหม', 'expected' => 'B - Concerned about safety'],
+    ['msg' => 'ขอบคุณมากครับ ช่วยแนะนำด้วยนะคะ', 'expected' => 'B - Polite, asks for help'],
+    ['msg' => 'ตัวนี้กับตัวนั้นต่างกันยังไงครับ ยี่ห้อไหนดีกว่า', 'expected' => 'C - Comparison request'],
+    ['msg' => 'ขอรายละเอียดส่วนประกอบหน่อยครับ', 'expected' => 'C - Wants details'],
+];
+
+echo "<table border='1' cellpadding='5' style='border-collapse:collapse;'>";
+echo "<tr style='background:#f0f0f0;'><th>Message</th><th>Expected</th><th>Scores</th></tr>";
+
+$analyzeMethod = $reflection->getMethod('analyzeMessagePatterns');
+$analyzeMethod->setAccessible(true);
+
+foreach ($testPatterns as $pattern) {
+    $scores = $analyzeMethod->invoke($healthEngine, [['content' => $pattern['msg']]]);
+    $scoresStr = "A:" . $scores['A'] . " B:" . $scores['B'] . " C:" . $scores['C'];
+    $winner = array_keys($scores, max($scores))[0];
+    $bgColor = $typeColors[$winner] ?? '#fff';
+    echo "<tr style='background:{$bgColor};'>";
+    echo "<td>" . htmlspecialchars($pattern['msg']) . "</td>";
+    echo "<td>{$pattern['expected']}</td>";
+    echo "<td><strong>{$winner}</strong> ({$scoresStr})</td>";
+    echo "</tr>";
 }
 echo "</table>";
 
