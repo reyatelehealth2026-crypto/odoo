@@ -59,6 +59,7 @@ try {
             $newCount = (int)$stmt->fetch(PDO::FETCH_ASSOC)['new_count'];
             
             // Get updated conversation list (sorted by latest message)
+            // Use subquery to get the actual latest message by created_at
             $stmt = $db->prepare("
                 SELECT 
                     u.id,
@@ -72,11 +73,11 @@ try {
                     (SELECT COUNT(*) FROM messages WHERE user_id = u.id AND direction = 'incoming' AND is_read = 0) as unread_count
                 FROM users u
                 INNER JOIN (
-                    SELECT user_id, MAX(id) as max_id
+                    SELECT user_id, MAX(created_at) as max_time
                     FROM messages
                     GROUP BY user_id
                 ) m_max ON u.id = m_max.user_id
-                INNER JOIN messages m_last ON m_max.max_id = m_last.id
+                INNER JOIN messages m_last ON m_last.user_id = m_max.user_id AND m_last.created_at = m_max.max_time
                 WHERE u.line_account_id = ?
                 ORDER BY m_last.created_at DESC
                 LIMIT 100
