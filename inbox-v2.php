@@ -38,6 +38,9 @@ require_once 'config/database.php';
 $db = Database::getInstance()->getConnection();
 $currentBotId = $_SESSION['current_bot_id'] ?? 1;
 
+// Debug: Log current bot ID
+error_log("[inbox-v2] Session current_bot_id: " . ($_SESSION['current_bot_id'] ?? 'NOT SET') . ", Using: $currentBotId");
+
 // Check if V2 is enabled - graceful fallback to v1 if disabled (Requirements: 10.6)
 require_once 'classes/VibeSellingHelper.php';
 $vibeHelper = VibeSellingHelper::getInstance($db);
@@ -1880,9 +1883,14 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function updateConversationListUI(conversations) {
     const container = document.getElementById('userList');
-    if (!container) return;
+    if (!container) {
+        console.warn('[updateConversationListUI] Container not found');
+        return;
+    }
     
     const currentUserId = <?= $selectedUser ? $selectedUser['id'] : 'null' ?>;
+    
+    console.log('[updateConversationListUI] Updating', conversations.length, 'conversations');
     
     conversations.forEach((conv, index) => {
         const existingItem = container.querySelector(`a[href*="user=${conv.id}"]`);
@@ -1892,7 +1900,14 @@ function updateConversationListUI(conversations) {
             const lastMsgEl = existingItem.querySelector('.last-msg');
             if (lastMsgEl) {
                 const prefix = conv.last_direction === 'outgoing' ? 'คุณ: ' : '';
-                lastMsgEl.textContent = prefix + conv.last_message;
+                const newText = prefix + conv.last_message;
+                
+                // Debug: log if jame.ver (id=15) or Kratae (id=492)
+                if (conv.id === 15 || conv.id === 492) {
+                    console.log(`[updateConversationListUI] ${conv.display_name} (${conv.id}): "${lastMsgEl.textContent}" -> "${newText}"`);
+                }
+                
+                lastMsgEl.textContent = newText;
             }
             
             // Update time - use .last-time class
