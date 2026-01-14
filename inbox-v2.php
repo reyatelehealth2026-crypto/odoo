@@ -700,12 +700,11 @@ function formatThaiDateTime($datetime) {
 .chat-bubble { 
     white-space: normal; 
     word-wrap: break-word; 
+    word-break: break-word;
     line-height: 1.5;
     font-size: 14px;
-    display: inline-block !important;
     padding: 10px 14px;
-    max-width: 70%;
-    width: auto !important;
+    max-width: 100%;
 }
 .chat-incoming { 
     background: #E8E8E8; 
@@ -1435,7 +1434,7 @@ function formatThaiDateTime($datetime) {
                 <?php endif; ?>
                 <div class="msg-content-wrapper" style="max-width: 70%; display: flex; flex-direction: column; <?= $isMe ? 'align-items: flex-end;' : 'align-items: flex-start;' ?>">
                     <?php if ($type === 'text'): ?>
-                        <div class="chat-bubble <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>" style="display: inline-block; width: auto;"><?= nl2br(htmlspecialchars($content ?? '')) ?></div>
+                        <div class="chat-bubble <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>"><?= nl2br(htmlspecialchars($content ?? '')) ?></div>
                     <?php elseif ($type === 'image'): ?>
                         <?php 
                         $imgSrc = $content;
