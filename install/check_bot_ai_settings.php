@@ -4,10 +4,14 @@
  * เพื่อหาสาเหตุว่าทำไม Bot ID 1 ใช้งานได้แต่ Bot ID อื่นไม่ได้
  */
 
-require_once __DIR__ . '/../config/config.php';
-require_once __DIR__ . '/../classes/Database.php';
-
-$db = Database::getInstance()->getConnection();
+try {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../classes/Database.php';
+    
+    $db = Database::getInstance()->getConnection();
+} catch (Exception $e) {
+    die("<h1>Database Connection Error</h1><p>" . $e->getMessage() . "</p>");
+}
 
 echo "<h1>🔍 ตรวจสอบการตั้งค่า AI ทุก Bot</h1>";
 echo "<style>

@@ -4,10 +4,19 @@
  * ปิดทั้ง ai_settings และ ai_chat_settings
  */
 
-require_once __DIR__ . '/../config/config.php';
-require_once __DIR__ . '/../classes/Database.php';
+// Enable error reporting for debugging
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
-$db = Database::getInstance()->getConnection();
+try {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../classes/Database.php';
+    
+    $db = Database::getInstance()->getConnection();
+} catch (Exception $e) {
+    die("<h1>Database Connection Error</h1><p>" . $e->getMessage() . "</p>");
+}
 
 echo "<h1>🔴 ปิด AI Module ทุก Bot</h1>";
 echo "<style>
