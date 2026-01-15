@@ -144,11 +144,11 @@ if (!$line) {
     // Log incoming webhook
     if (!empty($events)) {
         try {
-            devLog($db, 'webhook', 'webhook', 'Incoming webhook', [
-                'event_count' => count($events),
-                'account_id' => $lineAccountId,
-                'events' => array_map(fn($e) => $e['type'] ?? 'unknown', $events)
-            ]);
+            // devLog($db, 'webhook', 'webhook', 'Incoming webhook', [
+            //     'event_count' => count($events),
+            //     'account_id' => $lineAccountId,
+            //     'events' => array_map(fn($e) => $e['type'] ?? 'unknown', $events)
+            // ]);
         } catch (Exception $e) {}
     }
 
