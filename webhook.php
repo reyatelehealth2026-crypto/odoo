@@ -4168,6 +4168,8 @@ if (!$line) {
                 return false;
             }
         }
+        ===== END OF ORIGINAL AI CODE DISABLED ===== */
+        }
         
         // ==================== AI Mode Functions ====================
         
