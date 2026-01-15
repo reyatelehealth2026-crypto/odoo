@@ -2136,6 +2136,10 @@ function formatThaiDateTime($datetime) {
 <script>
 // Set global variables for FAB/HUD
 window.currentBotId = <?= $currentBotId ?>;
+// Customer communication type for analytics (A=Direct, B=Concerned, C=Detailed)
+window.customerCommunicationType = '<?= $customerClassification['type'] ?? 'A' ?>';
+// Current consultation stage
+window.currentConsultationStage = 'symptom_assessment';
 // Initialize ghostDraftState early so FAB/HUD can access it
 window.ghostDraftState = {
     currentDraft: null,
@@ -2145,6 +2149,109 @@ window.ghostDraftState = {
     lastCustomerMessage: '',
     draftAccepted: false
 };
+
+/**
+ * Consultation Analytics Tracker
+ * Records analytics when switching conversations or leaving page
+ * Requirements: 8.4
+ */
+window.ConsultationAnalytics = {
+    sessionStart: Date.now(),
+    messagesSent: 0,
+    aiSuggestionsShown: 0,
+    aiSuggestionsAccepted: 0,
+    
+    // Track when AI suggestion is shown
+    trackAiSuggestionShown: function() {
+        this.aiSuggestionsShown++;
+    },
+    
+    // Track when AI suggestion is accepted (used in ghost draft)
+    trackAiSuggestionAccepted: function() {
+        this.aiSuggestionsAccepted++;
+    },
+    
+    // Track message sent
+    trackMessageSent: function() {
+        this.messagesSent++;
+    },
+    
+    // Record analytics to server
+    recordAnalytics: async function(userId, resultedInPurchase = false, purchaseAmount = 0) {
+        if (!userId) return;
+        
+        const sessionDuration = Math.round((Date.now() - this.sessionStart) / 1000);
+        const avgResponseTime = this.messagesSent > 0 ? Math.round(sessionDuration / this.messagesSent) : 0;
+        
+        try {
+            const response = await fetch('api/inbox-v2.php?action=record_analytics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId,
+                    pharmacist_id: <?= $_SESSION['admin_id'] ?? 'null' ?>,
+                    communication_type: window.customerCommunicationType || 'A',
+                    stage_at_close: window.currentConsultationStage || 'unknown',
+                    response_time_avg: avgResponseTime,
+                    message_count: this.messagesSent,
+                    ai_suggestions_shown: this.aiSuggestionsShown,
+                    ai_suggestions_accepted: this.aiSuggestionsAccepted,
+                    resulted_in_purchase: resultedInPurchase,
+                    purchase_amount: purchaseAmount
+                })
+            });
+            console.log('Analytics recorded for user:', userId);
+        } catch (error) {
+            console.error('Failed to record analytics:', error);
+        }
+    },
+    
+    // Reset for new conversation
+    reset: function() {
+        this.sessionStart = Date.now();
+        this.messagesSent = 0;
+        this.aiSuggestionsShown = 0;
+        this.aiSuggestionsAccepted = 0;
+    }
+};
+
+// Record analytics before leaving page or switching conversation
+<?php if ($selectedUser): ?>
+// Track conversation switch - intercept clicks on conversation list
+document.addEventListener('click', function(e) {
+    const userLink = e.target.closest('a[data-user-id]');
+    if (userLink) {
+        const newUserId = userLink.getAttribute('data-user-id');
+        const currentUserId = <?= $selectedUser['id'] ?>;
+        
+        // Only record if switching to different user
+        if (newUserId && newUserId != currentUserId) {
+            // Record analytics for current conversation before switching
+            ConsultationAnalytics.recordAnalytics(currentUserId);
+        }
+    }
+});
+
+// Record analytics when leaving page
+window.addEventListener('beforeunload', function() {
+    // Use sendBeacon for reliable delivery
+    const data = JSON.stringify({
+        user_id: <?= $selectedUser['id'] ?>,
+        pharmacist_id: <?= $_SESSION['admin_id'] ?? 'null' ?>,
+        communication_type: window.customerCommunicationType || 'A',
+        stage_at_close: window.currentConsultationStage || 'unknown',
+        response_time_avg: ConsultationAnalytics.messagesSent > 0 ? 
+            Math.round((Date.now() - ConsultationAnalytics.sessionStart) / 1000 / ConsultationAnalytics.messagesSent) : 0,
+        message_count: ConsultationAnalytics.messagesSent,
+        ai_suggestions_shown: ConsultationAnalytics.aiSuggestionsShown,
+        ai_suggestions_accepted: ConsultationAnalytics.aiSuggestionsAccepted,
+        resulted_in_purchase: false,
+        purchase_amount: 0
+    });
+    
+    navigator.sendBeacon('api/inbox-v2.php?action=record_analytics', new Blob([data], {type: 'application/json'}));
+});
+<?php endif; ?>
 </script>
 
 <!-- Real-time Updates Script -->
@@ -2637,6 +2744,11 @@ function displayGhostDraft(draft) {
             ghostText.textContent = draft;
             ghostText.classList.remove('hidden');
             
+            // Track AI suggestion shown for analytics
+            if (window.ConsultationAnalytics) {
+                ConsultationAnalytics.trackAiSuggestionShown();
+            }
+            
             // Copy input styles to ghost text for alignment
             const inputStyles = window.getComputedStyle(messageInput);
             ghostText.style.padding = inputStyles.padding;
@@ -2749,6 +2861,11 @@ function acceptGhostDraft() {
         messageInput.value = ghostDraftState.currentDraft;
         ghostDraftState.draftAccepted = true;
         clearGhostDraft();
+        
+        // Track AI suggestion accepted for analytics
+        if (window.ConsultationAnalytics) {
+            ConsultationAnalytics.trackAiSuggestionAccepted();
+        }
         
         // Trigger resize
         autoResize(messageInput);
@@ -2910,6 +3027,11 @@ async function sendMessage(event) {
         const result = await response.json();
         
         if (result.success) {
+            // Track message sent for analytics
+            if (window.ConsultationAnalytics) {
+                ConsultationAnalytics.trackMessageSent();
+            }
+            
             // Add message to chat
             appendMessage(result.content, true, result.time, result.sent_by);
             
