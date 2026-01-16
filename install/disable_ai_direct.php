@@ -6,9 +6,9 @@
 
 // Database credentials - ปรับตามค่าจริง
 $host = 'localhost';
-$dbname = 'reyacrm';
-$username = 'root';
-$password = '';
+$dbname = 'zrismpsz_cny';
+$username = 'zrismpsz_cny';
+$password = 'zrismpsz_cny';
 
 try {
     $pdo = new PDO("mysql:host=$host;dbname=$dbname;charset=utf8mb4", $username, $password);
