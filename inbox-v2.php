@@ -755,6 +755,26 @@ function formatThaiDateTime($datetime) {
 .vibe-header { background: #0C665D; }
 .vibe-badge { background: #0C665D; color: white; font-size: 9px; padding: 2px 6px; border-radius: 4px; }
 
+/* Quick Reply Buttons Preview */
+.quick-reply-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.quick-reply-btn { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 4px;
+    padding: 6px 12px; 
+    background: white; 
+    border: 1.5px solid #0C665D; 
+    border-radius: 20px; 
+    font-size: 12px; 
+    color: #0C665D;
+    cursor: default;
+    transition: all 0.2s;
+}
+.quick-reply-btn:hover {
+    background: #E6F7F5;
+    border-color: #0A5550;
+}
+
 /* HUD Dashboard Styles - Clean solid colors */
 .hud-dashboard {
     position: fixed;
@@ -1478,7 +1498,53 @@ function formatThaiDateTime($datetime) {
                 <?php endif; ?>
                 <div class="msg-content-wrapper" style="max-width: 70%; display: flex; flex-direction: column; <?= $isMe ? 'align-items: flex-end;' : 'align-items: flex-start;' ?>">
                     <?php if ($type === 'text'): ?>
-                        <div class="chat-bubble <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>"><?= nl2br(htmlspecialchars($content ?? '')) ?></div>
+                        <?php
+                        // Parse JSON content if it's a JSON message object
+                        $textContent = $content;
+                        $hasQuickReply = false;
+                        $quickReplyItems = [];
+                        
+                        // Try to decode as JSON
+                        $messageData = json_decode($content, true);
+                        if ($messageData && isset($messageData['type']) && $messageData['type'] === 'text') {
+                            // It's a LINE message object, extract the text
+                            $textContent = $messageData['text'] ?? $content;
+                            
+                            // Check for Quick Reply
+                            if (isset($messageData['quickReply']['items'])) {
+                                $hasQuickReply = true;
+                                $quickReplyItems = $messageData['quickReply']['items'];
+                            }
+                        }
+                        ?>
+                        <div class="chat-bubble <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>"><?= nl2br(htmlspecialchars($textContent)) ?></div>
+                        
+                        <?php if ($hasQuickReply && !empty($quickReplyItems)): ?>
+                        <!-- Quick Reply Buttons Preview -->
+                        <div class="quick-reply-preview flex flex-wrap gap-1 mt-2" style="max-width: 100%;">
+                            <?php foreach ($quickReplyItems as $qrItem): 
+                                $action = $qrItem['action'] ?? [];
+                                $label = $action['label'] ?? '';
+                                $actionType = $action['type'] ?? 'message';
+                                
+                                // Icon based on type
+                                $icon = '';
+                                switch ($actionType) {
+                                    case 'message': $icon = '💬'; break;
+                                    case 'uri': $icon = '🔗'; break;
+                                    case 'postback': $icon = '📤'; break;
+                                    case 'datetimepicker': $icon = '📅'; break;
+                                    case 'camera': $icon = '📷'; break;
+                                    case 'cameraRoll': $icon = '🖼️'; break;
+                                    case 'location': $icon = '📍'; break;
+                                }
+                            ?>
+                            <span class="quick-reply-btn" title="<?= htmlspecialchars($actionType) ?>">
+                                <?= $icon ?> <?= htmlspecialchars($label) ?>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
                     <?php elseif ($type === 'image'): ?>
                         <?php 
                         $imgSrc = $content;

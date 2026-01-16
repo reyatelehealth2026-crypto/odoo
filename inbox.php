@@ -585,6 +585,27 @@ function formatThaiDateTime($datetime) {
 .flex-preview-btn { display: block; text-align: center; padding: 8px 12px; background: #10B981; color: white; border-radius: 6px; font-size: 12px; text-decoration: none; margin-top: 8px; }
 .flex-preview-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #F3F4F6; }
 .flex-preview-item:last-child { border-bottom: none; }
+
+/* Quick Reply Buttons Preview */
+.quick-reply-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.quick-reply-btn { 
+    display: inline-flex; 
+    align-items: center; 
+    gap: 4px;
+    padding: 6px 12px; 
+    background: white; 
+    border: 1.5px solid #10B981; 
+    border-radius: 20px; 
+    font-size: 12px; 
+    color: #10B981;
+    cursor: default;
+    transition: all 0.2s;
+}
+.quick-reply-btn:hover {
+    background: #F0FDF4;
+    border-color: #059669;
+}
+
 .typing-indicator { display: flex; gap: 4px; padding: 8px 12px; background: #fff; border-radius: 12px; }
 .typing-indicator span { width: 8px; height: 8px; background: #94A3B8; border-radius: 50%; animation: typing 1.4s infinite; }
 .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
@@ -1487,9 +1508,55 @@ function formatThaiDateTime($datetime) {
                 <?php endif; ?>
                 <div class="flex flex-col <?= $isMe ? 'items-end' : 'items-start' ?>" style="max-width:70%">
                     <?php if ($type === 'text'): ?>
+                        <?php
+                        // Parse JSON content if it's a JSON message object
+                        $textContent = $content;
+                        $hasQuickReply = false;
+                        $quickReplyItems = [];
+                        
+                        // Try to decode as JSON
+                        $messageData = json_decode($content, true);
+                        if ($messageData && isset($messageData['type']) && $messageData['type'] === 'text') {
+                            // It's a LINE message object, extract the text
+                            $textContent = $messageData['text'] ?? $content;
+                            
+                            // Check for Quick Reply
+                            if (isset($messageData['quickReply']['items'])) {
+                                $hasQuickReply = true;
+                                $quickReplyItems = $messageData['quickReply']['items'];
+                            }
+                        }
+                        ?>
                         <div class="chat-bubble px-4 py-2.5 text-sm shadow-sm <?= $isMe ? 'chat-outgoing' : 'chat-incoming' ?>">
-                            <?= nl2br(htmlspecialchars($content ?? '')) ?>
+                            <?= nl2br(htmlspecialchars($textContent)) ?>
                         </div>
+                        
+                        <?php if ($hasQuickReply && !empty($quickReplyItems)): ?>
+                        <!-- Quick Reply Buttons Preview -->
+                        <div class="quick-reply-preview flex flex-wrap gap-1 mt-2" style="max-width: 100%;">
+                            <?php foreach ($quickReplyItems as $qrItem): 
+                                $action = $qrItem['action'] ?? [];
+                                $label = $action['label'] ?? '';
+                                $actionType = $action['type'] ?? 'message';
+                                
+                                // Icon based on type
+                                $icon = '';
+                                switch ($actionType) {
+                                    case 'message': $icon = '💬'; break;
+                                    case 'uri': $icon = '🔗'; break;
+                                    case 'postback': $icon = '📤'; break;
+                                    case 'datetimepicker': $icon = '📅'; break;
+                                    case 'camera': $icon = '📷'; break;
+                                    case 'cameraRoll': $icon = '🖼️'; break;
+                                    case 'location': $icon = '📍'; break;
+                                }
+                            ?>
+                            <span class="quick-reply-btn" title="<?= htmlspecialchars($actionType) ?>">
+                                <?= $icon ?> <?= htmlspecialchars($label) ?>
+                            </span>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
                     <?php elseif ($type === 'image'): ?>
                         <?php 
                         $imgSrc = $content;
