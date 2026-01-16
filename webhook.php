@@ -1690,6 +1690,11 @@ if (!$line) {
                         if ($qrItems && is_array($qrItems)) {
                             $quickReplyActions = [];
                             foreach ($qrItems as $item) {
+                                // Skip items without label
+                                if (empty($item['label'])) {
+                                    continue;
+                                }
+                                
                                 $qrItem = ['type' => 'action'];
                                 
                                 // Add icon if exists
@@ -1709,6 +1714,10 @@ if (!$line) {
                                         break;
                                         
                                     case 'uri':
+                                        // Skip if no URI provided
+                                        if (empty($item['uri'])) {
+                                            continue 2;
+                                        }
                                         $qrItem['action'] = [
                                             'type' => 'uri',
                                             'label' => $item['label'],
