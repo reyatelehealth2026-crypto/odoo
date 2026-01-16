@@ -21,9 +21,9 @@ class LoyaltyPoints
         try {
             $stmt = $this->db->prepare("SELECT * FROM points_settings WHERE line_account_id = ? OR line_account_id IS NULL ORDER BY line_account_id DESC LIMIT 1");
             $stmt->execute([$this->lineAccountId]);
-            $this->settings = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['points_per_baht' => 1, 'min_order_for_points' => 0, 'points_expiry_days' => 365, 'is_active' => 1];
+            $this->settings = $stmt->fetch(PDO::FETCH_ASSOC) ?: ['points_per_baht' => 0.001, 'min_order_for_points' => 0, 'points_expiry_days' => 365, 'is_active' => 1];
         } catch (Exception $e) {
-            $this->settings = ['points_per_baht' => 1, 'min_order_for_points' => 0, 'points_expiry_days' => 365, 'is_active' => 1];
+            $this->settings = ['points_per_baht' => 0.001, 'min_order_for_points' => 0, 'points_expiry_days' => 365, 'is_active' => 1];
         }
     }
 
@@ -32,7 +32,7 @@ class LoyaltyPoints
     public function updateSettings($data)
     {
         $stmt = $this->db->prepare("INSERT INTO points_settings (line_account_id, points_per_baht, min_order_for_points, points_expiry_days, is_active) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE points_per_baht = VALUES(points_per_baht), min_order_for_points = VALUES(min_order_for_points), points_expiry_days = VALUES(points_expiry_days), is_active = VALUES(is_active)");
-        return $stmt->execute([$this->lineAccountId, $data['points_per_baht'] ?? 1, $data['min_order_for_points'] ?? 0, $data['points_expiry_days'] ?? 365, $data['is_active'] ?? 1]);
+        return $stmt->execute([$this->lineAccountId, $data['points_per_baht'] ?? 0.001, $data['min_order_for_points'] ?? 0, $data['points_expiry_days'] ?? 365, $data['is_active'] ?? 1]);
     }
 
     public function calculatePoints($amount)

@@ -134,7 +134,7 @@ function getPointsRules($db, $lineAccountId) {
         return [
             'id' => null,
             'line_account_id' => $lineAccountId,
-            'points_per_baht' => 1.00,
+            'points_per_baht' => 0.001,
             'min_order_for_points' => 0,
             'points_expiry_days' => 365,
             'is_active' => 1
@@ -223,7 +223,7 @@ function getCategories($db, $lineAccountId) {
  * Requirements 25.2, 25.6, 25.7
  */
 function updatePointsRules($db, $lineAccountId, $data) {
-    $pointsPerBaht = floatval($data['points_per_baht'] ?? 1);
+    $pointsPerBaht = floatval($data['points_per_baht'] ?? 0.001);
     $minOrder = floatval($data['min_order_for_points'] ?? 0);
     $expiryDays = intval($data['points_expiry_days'] ?? 365);
     $isActive = isset($data['is_active']) ? 1 : 0;

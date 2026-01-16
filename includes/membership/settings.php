@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['settings_action'])) {
         switch ($action) {
             case 'update_rules':
                 $data = [
-                    'points_per_baht' => floatval($_POST['points_per_baht'] ?? 1),
+                    'points_per_baht' => floatval($_POST['points_per_baht'] ?? 0.001),
                     'min_order_for_points' => floatval($_POST['min_order_for_points'] ?? 0),
                     'points_expiry_days' => intval($_POST['points_expiry_days'] ?? 365),
                     'is_active' => isset($_POST['is_active']) ? 1 : 0
@@ -174,15 +174,16 @@ $settingsTab = $_GET['settings_tab'] ?? 'rules';
             <div class="bg-gray-50 rounded-lg p-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2"><i class="fas fa-coins text-yellow-500 mr-1"></i>อัตราการได้รับแต้ม</label>
                 <div class="flex items-center gap-2">
-                    <input type="number" name="points_per_baht" id="points_per_baht" value="<?= htmlspecialchars($settings['points_per_baht'] ?? 1) ?>" step="0.01" min="0.01" max="100" class="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                    <input type="number" name="points_per_baht" id="points_per_baht" value="<?= htmlspecialchars($settings['points_per_baht'] ?? 0.001) ?>" step="0.001" min="0.001" max="100" class="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
                     <span class="text-gray-600">แต้ม ต่อ</span>
-                    <input type="number" name="baht_per_point" id="baht_per_point" value="<?= $settings['points_per_baht'] > 0 ? round(1 / $settings['points_per_baht']) : 25 ?>" step="1" min="1" max="1000" class="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
+                    <input type="number" name="baht_per_point" id="baht_per_point" value="<?= $settings['points_per_baht'] > 0 ? round(1 / $settings['points_per_baht']) : 1000 ?>" step="1" min="1" max="10000" class="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500">
                     <span class="text-gray-600">บาท</span>
                 </div>
-                <p class="text-xs text-gray-500 mt-2"><i class="fas fa-info-circle mr-1"></i>ตัวอย่าง: 1 แต้ม ต่อ 25 บาท = ซื้อ 100 บาท ได้ 4 แต้ม</p>
+                <p class="text-xs text-gray-500 mt-2"><i class="fas fa-info-circle mr-1"></i>ตัวอย่าง: 1 แต้ม ต่อ 1000 บาท = ซื้อ 5000 บาท ได้ 5 แต้ม</p>
                 <div class="mt-3 p-3 bg-white rounded border border-gray-200">
                     <div class="text-sm text-gray-600">ตัวอย่างการคำนวณ:</div>
-                    <div class="text-lg font-semibold text-purple-600">ซื้อ 100 บาท = <span id="previewPoints"><?= floor(100 * ($settings['points_per_baht'] ?? 1)) ?></span> แต้ม</div>
+                    <div class="text-lg font-semibold text-purple-600">ซื้อ 1,000 บาท = <span id="previewPoints"><?= floor(1000 * ($settings['points_per_baht'] ?? 0.001)) ?></span> แต้ม</div>
+                    <div class="text-sm text-gray-500 mt-1">ซื้อ 5,000 บาท = <span id="previewPoints5000"><?= floor(5000 * ($settings['points_per_baht'] ?? 0.001)) ?></span> แต้ม</div>
                 </div>
             </div>
             <div class="bg-gray-50 rounded-lg p-4">
@@ -546,11 +547,22 @@ document.getElementById('rulesForm')?.addEventListener('submit', function(e) {
 // Points preview
 document.getElementById('points_per_baht')?.addEventListener('input', function() {
     const value = parseFloat(this.value) || 0;
-    if (value > 0) { document.getElementById('baht_per_point').value = Math.round(1 / value); document.getElementById('previewPoints').textContent = Math.floor(100 * value); }
+    if (value > 0) { 
+        document.getElementById('baht_per_point').value = Math.round(1 / value); 
+        document.getElementById('previewPoints').textContent = Math.floor(1000 * value);
+        const preview5000 = document.getElementById('previewPoints5000');
+        if (preview5000) preview5000.textContent = Math.floor(5000 * value);
+    }
 });
 document.getElementById('baht_per_point')?.addEventListener('input', function() {
     const value = parseFloat(this.value) || 1;
-    if (value > 0) { const ppb = 1 / value; document.getElementById('points_per_baht').value = ppb.toFixed(2); document.getElementById('previewPoints').textContent = Math.floor(100 * ppb); }
+    if (value > 0) { 
+        const ppb = 1 / value; 
+        document.getElementById('points_per_baht').value = ppb.toFixed(3); 
+        document.getElementById('previewPoints').textContent = Math.floor(1000 * ppb);
+        const preview5000 = document.getElementById('previewPoints5000');
+        if (preview5000) preview5000.textContent = Math.floor(5000 * ppb);
+    }
 });
 
 // Campaign functions
