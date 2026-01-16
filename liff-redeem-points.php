@@ -117,7 +117,8 @@ $baseUrl = rtrim(BASE_URL, '/');
         <!-- Empty State -->
         <div id="emptyRewards" class="hidden text-center py-12">
             <i class="fas fa-gift text-6xl text-gray-300 mb-4"></i>
-            <p class="text-gray-500">ยังไม่มีของรางวัล</p>
+            <p class="text-gray-500 mb-2">ยังไม่มีของรางวัล</p>
+            <p class="text-gray-400 text-sm">กำลังเตรียมของรางวัลสุดพิเศษให้คุณ</p>
         </div>
     </div>
 
@@ -226,12 +227,18 @@ $baseUrl = rtrim(BASE_URL, '/');
             const response = await fetch(`${BASE_URL}/api/points-history.php?action=rewards&line_user_id=${userId}`);
             const data = await response.json();
             
+            console.log('Rewards API Response:', data); // Debug log
+            
             document.getElementById('loadingSkeleton').classList.add('hidden');
             
             if (data.success) {
-                userPoints = data.available_points;
+                userPoints = data.available_points || 0;
                 rewards = data.rewards || [];
                 myRedemptions = data.my_redemptions || [];
+                
+                console.log('User Points:', userPoints);
+                console.log('Rewards Count:', rewards.length);
+                console.log('My Redemptions Count:', myRedemptions.length);
                 
                 // Update points display
                 document.getElementById('availablePoints').textContent = numberFormat(userPoints);
@@ -242,7 +249,10 @@ $baseUrl = rtrim(BASE_URL, '/');
                 // Render rewards
                 if (rewards.length > 0) {
                     renderRewards();
+                    document.getElementById('rewardsGrid').classList.remove('hidden');
+                    document.getElementById('emptyRewards').classList.add('hidden');
                 } else {
+                    document.getElementById('rewardsGrid').classList.add('hidden');
                     document.getElementById('emptyRewards').classList.remove('hidden');
                 }
                 
@@ -252,8 +262,8 @@ $baseUrl = rtrim(BASE_URL, '/');
                 showError(data.error || 'ไม่สามารถโหลดข้อมูลได้');
             }
         } catch (e) {
-            console.error(e);
-            showError('ไม่สามารถโหลดข้อมูลได้');
+            console.error('Load data error:', e);
+            showError('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + e.message);
         }
     }
 

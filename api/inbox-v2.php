@@ -2210,133 +2210,90 @@ try {
             break;
 
         // ============================================
-        // POST /assign_conversation - Assign conversation to admin
+        // POST /assign_conversation - Assign conversation to admin(s)
+        // Supports multiple assignees
         // ============================================
         case 'assign_conversation':
             if ($method !== 'POST') {
                 sendError('Method not allowed', 405);
             }
             
-            $userId = intval($_POST['user_id'] ?? 0);
-            $assignTo = intval($_POST['assign_to'] ?? 0);
+            $body = getJsonBody();
+            $userId = intval($_POST['user_id'] ?? $body['user_id'] ?? 0);
+            $assignTo = $_POST['assign_to'] ?? $body['assign_to'] ?? null;
             
             if (!$userId) {
                 sendError('User ID is required');
             }
-            if (!$assignTo) {
-                sendError('Admin ID to assign is required');
+            if (empty($assignTo)) {
+                sendError('Admin ID(s) to assign is required');
+            }
+            
+            // Support both single ID and array of IDs
+            $adminIds = is_array($assignTo) ? $assignTo : [$assignTo];
+            $adminIds = array_map('intval', $adminIds);
+            $adminIds = array_filter($adminIds); // Remove zeros
+            
+            if (empty($adminIds)) {
+                sendError('Valid admin ID(s) required');
             }
             
             try {
-                // Check if table exists
-                $tableExists = false;
-                $hasLineAccountId = false;
+                require_once __DIR__ . '/../classes/InboxService.php';
+                $inboxService = new InboxService($db, $lineAccountId);
                 
-                try {
-                    $checkTable = $db->query("SHOW TABLES LIKE 'conversation_assignments'");
-                    $tableExists = $checkTable->rowCount() > 0;
-                    
-                    if ($tableExists) {
-                        // Check if line_account_id column exists
-                        $checkCol = $db->query("SHOW COLUMNS FROM conversation_assignments LIKE 'line_account_id'");
-                        $hasLineAccountId = $checkCol->rowCount() > 0;
-                    }
-                } catch (Exception $e) {
-                    // Ignore
-                }
-                
-                if (!$tableExists) {
-                    // Create table with all columns
-                    $db->exec("
-                        CREATE TABLE conversation_assignments (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            user_id INT NOT NULL,
-                            line_account_id INT NOT NULL DEFAULT 1,
-                            assigned_to INT NOT NULL,
-                            assigned_by INT NULL,
-                            assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                            status ENUM('active', 'completed', 'transferred') DEFAULT 'active',
-                            UNIQUE KEY unique_user_account (user_id, line_account_id),
-                            INDEX idx_assigned_to (assigned_to),
-                            INDEX idx_status (status)
-                        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                    ");
-                } elseif (!$hasLineAccountId) {
-                    // Table exists but missing line_account_id column - add it
-                    $db->exec("ALTER TABLE conversation_assignments ADD COLUMN line_account_id INT NOT NULL DEFAULT 1 AFTER user_id");
-                    // Drop old unique key if exists and create new one
-                    try {
-                        $db->exec("ALTER TABLE conversation_assignments DROP INDEX unique_user_account");
-                    } catch (Exception $e) {
-                        // Index might not exist
-                    }
-                    try {
-                        $db->exec("ALTER TABLE conversation_assignments ADD UNIQUE KEY unique_user_account (user_id, line_account_id)");
-                    } catch (Exception $e) {
-                        // Index might already exist
-                    }
-                }
-                
-                // Upsert assignment
-                $stmt = $db->prepare("
-                    INSERT INTO conversation_assignments (user_id, line_account_id, assigned_to, assigned_by, assigned_at)
-                    VALUES (?, ?, ?, ?, NOW())
-                    ON DUPLICATE KEY UPDATE 
-                        assigned_to = VALUES(assigned_to),
-                        assigned_by = VALUES(assigned_by),
-                        assigned_at = NOW(),
-                        status = 'active'
-                ");
                 $assignedBy = $_SESSION['admin_id'] ?? null;
-                $stmt->execute([$userId, $lineAccountId, $assignTo, $assignedBy]);
+                $success = $inboxService->assignConversation($userId, $adminIds, $assignedBy);
                 
-                // Also update user record if column exists
-                try {
-                    $stmt = $db->prepare("UPDATE users SET assigned_to = ? WHERE id = ?");
-                    $stmt->execute([$assignTo, $userId]);
-                } catch (Exception $e) {
-                    // Column might not exist, ignore
+                if ($success) {
+                    sendResponse([
+                        'success' => true,
+                        'message' => count($adminIds) > 1 
+                            ? 'มอบหมายงานให้ ' . count($adminIds) . ' คนสำเร็จ'
+                            : 'มอบหมายงานสำเร็จ',
+                        'assigned_count' => count($adminIds)
+                    ]);
+                } else {
+                    sendError('Failed to assign conversation');
                 }
-                
-                sendResponse([
-                    'success' => true,
-                    'message' => 'Conversation assigned successfully'
-                ]);
             } catch (Exception $e) {
                 sendError('Failed to assign conversation: ' . $e->getMessage());
             }
             break;
 
         // ============================================
-        // POST /unassign_conversation - Remove assignment
+        // POST /unassign_conversation - Remove assignment (all or specific admin)
         // ============================================
         case 'unassign_conversation':
             if ($method !== 'POST') {
                 sendError('Method not allowed', 405);
             }
             
-            $userId = intval($_POST['user_id'] ?? 0);
+            $body = getJsonBody();
+            $userId = intval($_POST['user_id'] ?? $body['user_id'] ?? 0);
+            $adminId = intval($_POST['admin_id'] ?? $body['admin_id'] ?? 0);
             
             if (!$userId) {
                 sendError('User ID is required');
             }
             
             try {
-                // Delete from assignments table
-                $stmt = $db->prepare("DELETE FROM conversation_assignments WHERE user_id = ? AND line_account_id = ?");
-                $stmt->execute([$userId, $lineAccountId]);
+                require_once __DIR__ . '/../classes/InboxService.php';
+                $inboxService = new InboxService($db, $lineAccountId);
                 
-                // Also update user record if column exists
-                try {
-                    $stmt = $db->prepare("UPDATE users SET assigned_to = NULL WHERE id = ?");
-                    $stmt->execute([$userId]);
-                } catch (Exception $e) {
-                    // Column might not exist, ignore
+                if ($adminId > 0) {
+                    // Remove specific admin
+                    $success = $inboxService->removeAssignee($userId, $adminId);
+                    $message = 'ยกเลิกการมอบหมายสำเร็จ';
+                } else {
+                    // Remove all assignments
+                    $success = $inboxService->unassignConversation($userId);
+                    $message = 'ยกเลิกการมอบหมายทั้งหมดสำเร็จ';
                 }
                 
                 sendResponse([
-                    'success' => true,
-                    'message' => 'Conversation unassigned successfully'
+                    'success' => $success,
+                    'message' => $message
                 ]);
             } catch (Exception $e) {
                 sendError('Failed to unassign conversation: ' . $e->getMessage());
@@ -2344,7 +2301,7 @@ try {
             break;
 
         // ============================================
-        // GET /get_assignment - Get current assignment for user
+        // GET /get_assignment - Get current assignment for user (multi-assignee)
         // ============================================
         case 'get_assignment':
             if ($method !== 'GET') {
@@ -2358,18 +2315,14 @@ try {
             }
             
             try {
-                $stmt = $db->prepare("
-                    SELECT ca.*, au.display_name as assigned_to_name, au.username as assigned_to_username
-                    FROM conversation_assignments ca
-                    LEFT JOIN admin_users au ON ca.assigned_to = au.id
-                    WHERE ca.user_id = ? AND ca.line_account_id = ? AND ca.status = 'active'
-                ");
-                $stmt->execute([$userId, $lineAccountId]);
-                $assignment = $stmt->fetch(PDO::FETCH_ASSOC);
+                require_once __DIR__ . '/../classes/InboxService.php';
+                $inboxService = new InboxService($db, $lineAccountId);
+                
+                $assignment = $inboxService->getAssignment($userId);
                 
                 sendResponse([
                     'success' => true,
-                    'data' => $assignment ?: null
+                    'data' => $assignment
                 ]);
             } catch (Exception $e) {
                 sendError('Failed to get assignment: ' . $e->getMessage());

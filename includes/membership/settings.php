@@ -11,13 +11,21 @@
 // Variables available: $db, $lineAccountId, $adminId, $loyalty
 
 // Check if required tables exist
+$tablesExist = true;
+$missingTables = [];
+
 try {
-    $db->query("SELECT 1 FROM points_rules LIMIT 1");
+    $db->query("SELECT 1 FROM points_settings LIMIT 1");
 } catch (PDOException $e) {
+    $tablesExist = false;
+    $missingTables[] = 'points_settings';
+}
+
+if (!$tablesExist) {
     echo '<div class="bg-yellow-50 border border-yellow-200 rounded-xl p-6">';
     echo '<h2 class="text-xl font-bold text-yellow-800 mb-4"><i class="fas fa-exclamation-triangle mr-2"></i>ต้องรัน Migration ก่อน</h2>';
-    echo '<p class="text-yellow-700 mb-4">ตาราง points_rules ยังไม่มีในฐานข้อมูล กรุณารัน migration ก่อนใช้งาน</p>';
-    echo '<a href="/install/run_points_rules_migration.php" class="inline-block px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700">รัน Migration</a>';
+    echo '<p class="text-yellow-700 mb-4">ตาราง ' . implode(', ', $missingTables) . ' ยังไม่มีในฐานข้อมูล กรุณารัน migration ก่อนใช้งาน</p>';
+    echo '<a href="/install/run_loyalty_migration.php" class="inline-block px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700">รัน Loyalty Migration</a>';
     echo '</div>';
     return;
 }
@@ -538,10 +546,41 @@ function showToast(message, type = 'info') {
 document.getElementById('rulesForm')?.addEventListener('submit', function(e) {
     e.preventDefault();
     const formData = new FormData(this);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>กำลังบันทึก...';
+    
     fetch('membership.php?tab=settings', { method: 'POST', body: formData })
-    .then(r => r.json())
-    .then(data => { if (data.success) { showToast(data.message, 'success'); setTimeout(() => location.reload(), 1000); } else { showToast(data.message || 'เกิดข้อผิดพลาด', 'error'); } })
-    .catch(() => showToast('เกิดข้อผิดพลาดในการบันทึก', 'error'));
+    .then(r => {
+        if (!r.ok) throw new Error('HTTP error ' + r.status);
+        return r.text();
+    })
+    .then(text => {
+        console.log('Response:', text); // Debug
+        try {
+            const data = JSON.parse(text);
+            if (data.success) { 
+                showToast(data.message, 'success'); 
+                setTimeout(() => location.reload(), 1000); 
+            } else { 
+                showToast(data.message || 'เกิดข้อผิดพลาด', 'error'); 
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+        } catch (e) {
+            console.error('JSON parse error:', e, text);
+            showToast('เกิดข้อผิดพลาด: ไม่สามารถอ่าน response ได้', 'error');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalText;
+        }
+    })
+    .catch(err => {
+        console.error('Fetch error:', err);
+        showToast('เกิดข้อผิดพลาดในการบันทึก: ' + err.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+    });
 });
 
 // Points preview

@@ -1366,11 +1366,18 @@ function formatThaiDateTime($datetime) {
                 </div>
             <?php else: ?>
                 <?php foreach ($users as $index => $user): 
-                    $assignment = null;
+                    // Get multi-assignees
+                    $assignees = [];
                     try {
-                        $assignStmt = $db->prepare("SELECT ca.*, au.username as assigned_admin_name FROM conversation_assignments ca LEFT JOIN admin_users au ON ca.assigned_to = au.id WHERE ca.user_id = ?");
+                        $assignStmt = $db->prepare("
+                            SELECT cma.admin_id, au.username, au.display_name
+                            FROM conversation_multi_assignees cma
+                            LEFT JOIN admin_users au ON cma.admin_id = au.id
+                            WHERE cma.user_id = ? AND cma.status = 'active'
+                            ORDER BY cma.assigned_at DESC
+                        ");
                         $assignStmt->execute([$user['id']]);
-                        $assignment = $assignStmt->fetch(PDO::FETCH_ASSOC);
+                        $assignees = $assignStmt->fetchAll(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {}
                     
                     // Get user tags for filtering
@@ -1400,7 +1407,7 @@ function formatThaiDateTime($datetime) {
                    data-name="<?= strtolower($user['display_name']) ?>"
                    data-chat-status="<?= htmlspecialchars($chatStatus) ?>"
                    data-tags="<?= implode(',', $userTagIds) ?>"
-                   data-assigned="<?= ($assignment && $assignment['status'] === 'active') ? '1' : '0' ?>">
+                   data-assigned="<?= count($assignees) > 0 ? '1' : '0' ?>">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
                             <img src="<?= $user['picture_url'] ?: 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E' ?>" 
@@ -1427,10 +1434,16 @@ function formatThaiDateTime($datetime) {
                                 </span>
                                 <?php endif; ?>
                                 
-                                <?php if ($assignment && $assignment['status'] === 'active'): ?>
-                                <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
-                                    <i class="fas fa-user-check"></i> <?= htmlspecialchars($assignment['assigned_admin_name'] ?: 'Admin') ?>
-                                </span>
+                                <?php if (count($assignees) > 0): ?>
+                                    <?php if (count($assignees) === 1): ?>
+                                        <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                            <i class="fas fa-user-check"></i> <?= htmlspecialchars($assignees[0]['display_name'] ?: $assignees[0]['username'] ?: 'Admin') ?>
+                                        </span>
+                                    <?php else: ?>
+                                        <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
+                                            <i class="fas fa-users"></i> <?= count($assignees) ?> คน
+                                        </span>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                         </div>

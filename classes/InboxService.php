@@ -28,7 +28,7 @@ class InboxService {
         $limit = max(1, min(100, $limit)); // Cap at 100
         $offset = ($page - 1) * $limit;
         
-        // Build base query with subquery for last message
+        // Build base query with subquery for last message and assignees
         $sql = "
             SELECT 
                 u.id,
@@ -47,7 +47,11 @@ class InboxService {
                 ca.assigned_to,
                 ca.status as assignment_status,
                 ca.assigned_at,
-                au.username as assigned_admin_name
+                au.username as assigned_admin_name,
+                (SELECT GROUP_CONCAT(CONCAT(au2.username, ':', cma.admin_id) SEPARATOR '||')
+                 FROM conversation_multi_assignees cma
+                 LEFT JOIN admin_users au2 ON cma.admin_id = au2.id
+                 WHERE cma.user_id = u.id AND cma.status = 'active') as assignees_list
             FROM users u
             LEFT JOIN (
                 SELECT 
@@ -97,9 +101,14 @@ class InboxService {
             $countParams[] = (int)$filters['tag_id'];
         }
         
-        // Assigned to filter
+        // Assigned to filter (supports multi-assignee)
         if (!empty($filters['assigned_to'])) {
-            $whereConditions[] = "ca.assigned_to = ?";
+            $whereConditions[] = "EXISTS (
+                SELECT 1 FROM conversation_multi_assignees cma_filter
+                WHERE cma_filter.user_id = u.id 
+                AND cma_filter.admin_id = ?
+                AND cma_filter.status = 'active'
+            )";
             $params[] = (int)$filters['assigned_to'];
             $countParams[] = (int)$filters['assigned_to'];
         }
@@ -178,9 +187,25 @@ class InboxService {
         $stmt->execute($params);
         $conversations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        // Get tags for each conversation
+        // Get tags and parse assignees for each conversation
         foreach ($conversations as &$conv) {
             $conv['tags'] = $this->getUserTags($conv['id']);
+            
+            // Parse assignees_list into array
+            $conv['assignees'] = [];
+            if (!empty($conv['assignees_list'])) {
+                $assigneesParts = explode('||', $conv['assignees_list']);
+                foreach ($assigneesParts as $part) {
+                    if (strpos($part, ':') !== false) {
+                        list($username, $adminId) = explode(':', $part, 2);
+                        $conv['assignees'][] = [
+                            'admin_id' => (int)$adminId,
+                            'username' => $username
+                        ];
+                    }
+                }
+            }
+            unset($conv['assignees_list']); // Remove raw data
         }
         
         return [
@@ -370,15 +395,20 @@ class InboxService {
 
     
     /**
-     * Assign conversation to admin
-     * Requirements: 3.1 - Notify assigned admin
+     * Assign conversation to admin(s)
+     * Requirements: 3.1 - Notify assigned admin, supports multiple assignees
      * 
      * @param int $userId Customer user ID
-     * @param int $adminId Admin user ID
+     * @param int|array $adminIds Admin user ID(s) - can be single int or array
      * @param int|null $assignedBy Admin who assigned (null for self-assign)
      * @return bool Success
      */
-    public function assignConversation(int $userId, int $adminId, ?int $assignedBy = null): bool {
+    public function assignConversation(int $userId, $adminIds, ?int $assignedBy = null): bool {
+        // Convert single ID to array
+        if (!is_array($adminIds)) {
+            $adminIds = [$adminIds];
+        }
+        
         // Check if user exists
         $checkSql = "SELECT id FROM users WHERE id = ? AND line_account_id = ?";
         $checkStmt = $this->db->prepare($checkSql);
@@ -387,16 +417,37 @@ class InboxService {
             return false;
         }
         
-        // Check if admin exists
-        $checkAdminSql = "SELECT id FROM admin_users WHERE id = ?";
-        $checkAdminStmt = $this->db->prepare($checkAdminSql);
-        $checkAdminStmt->execute([$adminId]);
-        if (!$checkAdminStmt->fetch()) {
-            return false;
+        // Validate all admin IDs
+        foreach ($adminIds as $adminId) {
+            $checkAdminSql = "SELECT id FROM admin_users WHERE id = ?";
+            $checkAdminStmt = $this->db->prepare($checkAdminSql);
+            $checkAdminStmt->execute([$adminId]);
+            if (!$checkAdminStmt->fetch()) {
+                return false;
+            }
         }
         
-        // Use INSERT ... ON DUPLICATE KEY UPDATE for upsert
+        // Insert assignments (multi-assignee support)
         $sql = "
+            INSERT INTO conversation_multi_assignees 
+            (user_id, admin_id, assigned_by, assigned_at, status)
+            VALUES (?, ?, ?, NOW(), 'active')
+            ON DUPLICATE KEY UPDATE 
+                assigned_by = VALUES(assigned_by),
+                assigned_at = NOW(),
+                status = 'active'
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        
+        foreach ($adminIds as $adminId) {
+            if (!$stmt->execute([$userId, $adminId, $assignedBy ?? $adminId])) {
+                return false;
+            }
+        }
+        
+        // Also update old table for backward compatibility (use first admin)
+        $legacySql = "
             INSERT INTO conversation_assignments 
             (user_id, assigned_to, assigned_by, assigned_at, status)
             VALUES (?, ?, ?, NOW(), 'active')
@@ -406,21 +457,43 @@ class InboxService {
                 assigned_at = NOW(),
                 status = 'active'
         ";
+        $legacyStmt = $this->db->prepare($legacySql);
+        $legacyStmt->execute([$userId, $adminIds[0], $assignedBy ?? $adminIds[0]]);
         
-        $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$userId, $adminId, $assignedBy ?? $adminId]);
+        return true;
     }
     
     /**
-     * Unassign conversation
+     * Remove specific admin from conversation assignment
+     * 
+     * @param int $userId Customer user ID
+     * @param int $adminId Admin user ID to remove
+     * @return bool Success
+     */
+    public function removeAssignee(int $userId, int $adminId): bool {
+        $sql = "DELETE FROM conversation_multi_assignees WHERE user_id = ? AND admin_id = ?";
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([$userId, $adminId]);
+    }
+    
+    /**
+     * Unassign conversation (remove all assignees)
      * 
      * @param int $userId Customer user ID
      * @return bool Success
      */
     public function unassignConversation(int $userId): bool {
-        $sql = "DELETE FROM conversation_assignments WHERE user_id = ?";
+        // Remove from multi-assignees
+        $sql = "DELETE FROM conversation_multi_assignees WHERE user_id = ?";
         $stmt = $this->db->prepare($sql);
-        return $stmt->execute([$userId]);
+        $result = $stmt->execute([$userId]);
+        
+        // Also remove from legacy table
+        $legacySql = "DELETE FROM conversation_assignments WHERE user_id = ?";
+        $legacyStmt = $this->db->prepare($legacySql);
+        $legacyStmt->execute([$userId]);
+        
+        return $result;
     }
     
     /**
@@ -453,25 +526,59 @@ class InboxService {
     }
     
     /**
-     * Get assignment info for a user
+     * Get assignment info for a user (supports multiple assignees)
      * 
      * @param int $userId User ID
-     * @return array|null Assignment info or null if not assigned
+     * @return array Assignment info with assignees array
      */
-    public function getAssignment(int $userId): ?array {
+    public function getAssignment(int $userId): array {
+        // Get all assignees for this conversation
         $sql = "
             SELECT 
-                ca.*,
-                au.username as assigned_admin_name
-            FROM conversation_assignments ca
-            LEFT JOIN admin_users au ON ca.assigned_to = au.id
-            WHERE ca.user_id = ?
+                cma.admin_id,
+                cma.assigned_by,
+                cma.assigned_at,
+                cma.status,
+                cma.resolved_at,
+                au.username,
+                au.display_name
+            FROM conversation_multi_assignees cma
+            LEFT JOIN admin_users au ON cma.admin_id = au.id
+            WHERE cma.user_id = ?
+            ORDER BY cma.assigned_at DESC
         ";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$userId]);
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        $assignees = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        return $result ?: null;
+        if (empty($assignees)) {
+            return [
+                'user_id' => $userId,
+                'assignees' => [],
+                'is_assigned' => false
+            ];
+        }
+        
+        return [
+            'user_id' => $userId,
+            'assignees' => $assignees,
+            'is_assigned' => true,
+            'status' => $assignees[0]['status'] ?? 'active',
+            'assigned_at' => $assignees[0]['assigned_at'] ?? null
+        ];
+    }
+    
+    /**
+     * Get all admin IDs assigned to a conversation
+     * 
+     * @param int $userId User ID
+     * @return array Array of admin IDs
+     */
+    public function getAssignedAdminIds(int $userId): array {
+        $sql = "SELECT admin_id FROM conversation_multi_assignees WHERE user_id = ? AND status = 'active'";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
     }
     
     /**

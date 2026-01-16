@@ -699,11 +699,11 @@ const HUDMode = {
     },
     
     // ============================================
-    // ASSIGN TASK FUNCTIONS
+    // ASSIGN TASK FUNCTIONS (Multi-Assignee Support)
     // ============================================
     
     adminList: [],
-    selectedAdminId: null,
+    selectedAdminIds: [], // Changed to array for multi-select
     currentAssignment: null,
     
     async showAssignModal() {
@@ -722,10 +722,13 @@ const HUDMode = {
             modal.innerHTML = `
                 <div class="assign-modal">
                     <div class="assign-modal-header">
-                        <h3><i class="fas fa-user-plus"></i> มอบหมายงาน</h3>
+                        <h3><i class="fas fa-user-plus"></i> มอบหมายงาน (เลือกได้หลายคน)</h3>
                         <button class="assign-modal-close" onclick="HUDMode.hideAssignModal()">&times;</button>
                     </div>
                     <div class="assign-modal-body">
+                        <div class="assign-selected-count" id="assignSelectedCount" style="display:none;">
+                            <i class="fas fa-check-circle"></i> เลือกแล้ว <span id="assignCountNumber">0</span> คน
+                        </div>
                         <div id="assignAdminList" class="assign-admin-list">
                             <div class="assign-loading"><i class="fas fa-spinner fa-spin"></i> กำลังโหลด...</div>
                         </div>
@@ -739,11 +742,15 @@ const HUDMode = {
             document.body.appendChild(modal);
         }
         
+        // Reset selection
+        this.selectedAdminIds = [];
+        
         // Show modal
         setTimeout(() => modal.classList.add('show'), 10);
         
-        // Load admin list
+        // Load admin list and current assignment
         await this.loadAdminList();
+        await this.loadCurrentAssignment();
     },
     
     hideAssignModal() {
@@ -751,7 +758,30 @@ const HUDMode = {
         if (modal) {
             modal.classList.remove('show');
         }
-        this.selectedAdminId = null;
+        this.selectedAdminIds = [];
+    },
+    
+    async loadCurrentAssignment() {
+        const userId = window.ghostDraftState?.userId;
+        if (!userId) return;
+        
+        try {
+            const response = await fetch(`api/inbox-v2.php?action=get_assignment&user_id=${userId}&line_account_id=${window.currentBotId || 1}`);
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                this.currentAssignment = result.data;
+                
+                // Pre-select currently assigned admins
+                if (result.data.assignees && Array.isArray(result.data.assignees)) {
+                    this.selectedAdminIds = result.data.assignees.map(a => a.admin_id);
+                    this.updateSelectedCount();
+                    this.renderAdminList();
+                }
+            }
+        } catch (error) {
+            console.error('Load assignment error:', error);
+        }
     },
     
     async loadAdminList() {
@@ -781,32 +811,57 @@ const HUDMode = {
             return;
         }
         
-        listContainer.innerHTML = this.adminList.map(admin => `
-            <div class="assign-admin-item ${this.selectedAdminId === admin.id ? 'selected' : ''}" 
-                 onclick="HUDMode.selectAdmin(${admin.id})">
-                <div class="assign-admin-avatar">
-                    ${admin.display_name ? admin.display_name.charAt(0).toUpperCase() : 'A'}
+        listContainer.innerHTML = this.adminList.map(admin => {
+            const isSelected = this.selectedAdminIds.includes(admin.id);
+            return `
+                <div class="assign-admin-item ${isSelected ? 'selected' : ''}" 
+                     onclick="HUDMode.toggleAdmin(${admin.id})">
+                    <div class="assign-admin-checkbox">
+                        <i class="fas fa-${isSelected ? 'check-square' : 'square'}"></i>
+                    </div>
+                    <div class="assign-admin-avatar">
+                        ${admin.display_name ? admin.display_name.charAt(0).toUpperCase() : 'A'}
+                    </div>
+                    <div class="assign-admin-info">
+                        <div class="assign-admin-name">${escapeHtml(admin.display_name || admin.username || 'Admin')}</div>
+                        <div class="assign-admin-role">${escapeHtml(admin.role || 'Staff')}</div>
+                    </div>
                 </div>
-                <div class="assign-admin-info">
-                    <div class="assign-admin-name">${escapeHtml(admin.display_name || admin.username || 'Admin')}</div>
-                    <div class="assign-admin-role">${escapeHtml(admin.role || 'Staff')}</div>
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     },
     
-    selectAdmin(adminId) {
-        this.selectedAdminId = adminId;
+    toggleAdmin(adminId) {
+        const index = this.selectedAdminIds.indexOf(adminId);
+        if (index > -1) {
+            // Remove from selection
+            this.selectedAdminIds.splice(index, 1);
+        } else {
+            // Add to selection
+            this.selectedAdminIds.push(adminId);
+        }
+        
+        this.updateSelectedCount();
         this.renderAdminList();
         
         const confirmBtn = document.getElementById('assignConfirmBtn');
         if (confirmBtn) {
-            confirmBtn.disabled = !this.selectedAdminId;
+            confirmBtn.disabled = this.selectedAdminIds.length === 0;
+        }
+    },
+    
+    updateSelectedCount() {
+        const countContainer = document.getElementById('assignSelectedCount');
+        const countNumber = document.getElementById('assignCountNumber');
+        
+        if (countContainer && countNumber) {
+            countNumber.textContent = this.selectedAdminIds.length;
+            countContainer.style.display = this.selectedAdminIds.length > 0 ? 'block' : 'none';
         }
     },
     
     async confirmAssign() {
-        if (!this.selectedAdminId) return;
+        if (this.selectedAdminIds.length === 0) return;
         
         const userId = window.ghostDraftState?.userId;
         if (!userId) {
@@ -821,14 +876,15 @@ const HUDMode = {
             const formData = new FormData();
             formData.append('action', 'assign_conversation');
             formData.append('user_id', userId);
-            formData.append('assign_to', this.selectedAdminId);
+            formData.append('assign_to', JSON.stringify(this.selectedAdminIds)); // Send as JSON array
             formData.append('line_account_id', window.currentBotId || 1);
             
             const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
             const result = await response.json();
             
             if (result.success) {
-                showNotification && showNotification('✓ มอบหมายงานสำเร็จ', 'success');
+                const count = result.assigned_count || this.selectedAdminIds.length;
+                showNotification && showNotification(`✓ มอบหมายงานให้ ${count} คนสำเร็จ`, 'success');
                 this.hideAssignModal();
                 this.loadCRMData(); // Refresh CRM data
                 this.updateAssignedDisplay();
@@ -843,16 +899,21 @@ const HUDMode = {
         }
     },
     
-    async unassignConversation() {
+    async unassignConversation(adminId = null) {
         const userId = window.ghostDraftState?.userId;
         if (!userId) return;
         
-        if (!confirm('ต้องการยกเลิกการมอบหมายงานนี้?')) return;
+        const message = adminId 
+            ? 'ต้องการยกเลิกการมอบหมายให้คนนี้?' 
+            : 'ต้องการยกเลิกการมอบหมายทั้งหมด?';
+        
+        if (!confirm(message)) return;
         
         try {
             const formData = new FormData();
             formData.append('action', 'unassign_conversation');
             formData.append('user_id', userId);
+            if (adminId) formData.append('admin_id', adminId);
             formData.append('line_account_id', window.currentBotId || 1);
             
             const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
@@ -872,12 +933,28 @@ const HUDMode = {
         const display = document.getElementById('assignedToDisplay');
         if (!display) return;
         
-        if (this.currentAssignment && this.currentAssignment.assigned_to) {
-            const admin = this.adminList.find(a => a.id === this.currentAssignment.assigned_to);
-            const name = admin ? (admin.display_name || admin.username) : 'Admin #' + this.currentAssignment.assigned_to;
+        if (this.currentAssignment && this.currentAssignment.assignees && this.currentAssignment.assignees.length > 0) {
+            const assignees = this.currentAssignment.assignees;
+            const names = assignees.map(a => {
+                const admin = this.adminList.find(ad => ad.id === a.admin_id);
+                return admin ? (admin.display_name || admin.username) : a.username || 'Admin';
+            });
+            
             display.innerHTML = `
-                <span><i class="fas fa-user-check"></i> มอบหมายให้: ${escapeHtml(name)}</span>
-                <button class="unassign-btn" onclick="HUDMode.unassignConversation()">ยกเลิก</button>
+                <div class="assigned-list">
+                    <span><i class="fas fa-user-check"></i> มอบหมายให้ ${assignees.length} คน:</span>
+                    <div class="assigned-names">
+                        ${assignees.map((a, idx) => `
+                            <span class="assigned-badge">
+                                ${escapeHtml(names[idx])}
+                                <button class="remove-assignee-btn" onclick="HUDMode.unassignConversation(${a.admin_id})" title="ยกเลิก">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </span>
+                        `).join('')}
+                    </div>
+                    <button class="unassign-all-btn" onclick="HUDMode.unassignConversation()">ยกเลิกทั้งหมด</button>
+                </div>
             `;
             display.classList.add('show');
         } else {
