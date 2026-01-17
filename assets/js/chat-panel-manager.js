@@ -751,9 +751,14 @@ class ChatPanelManager {
             this.renderMessagesVirtual(messages);
         } else {
             // Render all messages normally
-            messages.forEach(message => {
-                this.appendMessage(message, false);
-            });
+            // Ensure messages is an array before calling forEach
+            if (Array.isArray(messages)) {
+                messages.forEach(message => {
+                    this.appendMessage(message, false);
+                });
+            } else {
+                console.error('messages is not an array:', messages);
+            }
         }
         
         // Scroll to bottom
@@ -783,9 +788,14 @@ class ChatPanelManager {
         // In a full implementation, we would only render visible + buffer
         // This is a simplified version that focuses on lazy image loading
         
-        messages.forEach(message => {
-            this.appendMessage(message, false);
-        });
+        // Ensure messages is an array before calling forEach
+        if (Array.isArray(messages)) {
+            messages.forEach(message => {
+                this.appendMessage(message, false);
+            });
+        } else {
+            console.error('renderMessagesVirtual: messages is not an array:', messages);
+        }
         
         // Observe all message elements for intersection
         if (this.intersectionObserver) {
@@ -833,7 +843,7 @@ class ChatPanelManager {
      * @private
      */
     prependMessages(messages) {
-        if (!this.messageContainer || !messages || messages.length === 0) {
+        if (!this.messageContainer || !messages || !Array.isArray(messages) || messages.length === 0) {
             return;
         }
         
