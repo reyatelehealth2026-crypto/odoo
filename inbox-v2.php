@@ -689,6 +689,9 @@ function formatThaiDateTime($datetime) {
 }
 ?>
 
+<!-- Tailwind CSS - Required for layout -->
+<script src="https://cdn.tailwindcss.com"></script>
+
 <!-- FAB & HUD Mode Switcher CSS -->
 <link rel="stylesheet" href="assets/css/inbox-v2-fab.css?v=<?= time() ?>">
 
