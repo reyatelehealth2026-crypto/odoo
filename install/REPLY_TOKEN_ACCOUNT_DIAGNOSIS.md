@@ -330,3 +330,152 @@ This debug approach will definitively show whether the problem is:
 - LINE not sending tokens (API/config issue)
 - Webhook not receiving tokens (code issue)
 - Database not storing tokens (storage issue)
+
+---
+
+## ✅ ROOT CAUSE IDENTIFIED (2026-01-18)
+
+### The Problem: Account 3 is in "Standby Mode"
+
+After analyzing the debug logs, we found the root cause:
+
+**Debug Log Evidence:**
+```json
+{
+  "type": "message",
+  "message": {...},
+  "mode": "standby",  ← THIS IS THE PROBLEM
+  "replyToken": null
+}
+```
+
+**Key Finding:** `"mode":"standby"` appears in ALL Account 3 events
+
+### What is Standby Mode?
+
+LINE bots can operate in two modes:
+
+1. **Active Mode** (ปกติ)
+   - Bot receives webhook events WITH replyToken
+   - Bot can reply automatically
+   - This is the normal operating mode
+
+2. **Standby Mode** (พักรอ)
+   - Bot receives webhook events WITHOUT replyToken
+   - Bot CANNOT reply automatically
+   - Used when you want to receive events but not respond
+   - Often used with LINE Official Account Manager (manual chat)
+
+### Why Account 3 Has No Reply Tokens
+
+When a LINE bot is in **standby mode**:
+- LINE still sends webhook events (so you can log/track messages)
+- LINE does NOT include `replyToken` in the events
+- This is BY DESIGN, not a bug
+
+**Evidence from logs:**
+- All 416 messages from Account 3 show `"mode":"standby"`
+- All 416 messages have `"Reply Token from event: NULL"`
+- Account 4 (working normally) is in "active mode"
+
+### The Solution
+
+**Change Account 3 from "Standby Mode" to "Active Mode"**
+
+#### Step-by-Step Fix:
+
+1. **Go to LINE Developers Console**
+   - URL: https://developers.line.biz/console/
+   - Login with your LINE account
+
+2. **Select Account 3 (cnypharmacy)**
+   - Find the channel for Account ID 3
+   - Click to open channel settings
+
+3. **Go to Messaging API Tab**
+   - Click "Messaging API" in the left menu
+
+4. **Find "Response settings" Section**
+   - Look for "Chat" or "Response mode" settings
+   - You should see current mode: **"Standby"** or **"Chat disabled"**
+
+5. **Change to Active Mode**
+   - Option 1: Enable "Webhooks" and disable "Auto-reply messages"
+   - Option 2: Set response mode to "Bot" or "Active"
+   - Make sure "Use webhooks" is enabled (ON)
+
+6. **Save Changes**
+   - Click "Update" or "Save"
+   - Wait a few seconds for changes to propagate
+
+7. **Test Immediately**
+   - Send a test message to Account 3 LINE bot
+   - Check if reply token is now received:
+   ```bash
+   php install/check_reply_token_by_account.php
+   ```
+
+### Expected Results After Fix
+
+**Before (Standby Mode):**
+```
+Account 3: 0% with token (0/416 messages)
+```
+
+**After (Active Mode):**
+```
+Account 3: 100% with token (new messages will have tokens)
+```
+
+### Verification Steps
+
+1. **Send test message** to Account 3
+2. **Check debug logs**:
+   ```bash
+   php install/check_account3_logs.php
+   ```
+3. **Look for**:
+   ```
+   "mode": "active"  ← Should change from "standby"
+   "Reply Token from event": "abc123..."  ← Should have value
+   ```
+
+4. **Verify in database**:
+   ```sql
+   SELECT reply_token FROM messages 
+   WHERE line_account_id = 3 
+   ORDER BY created_at DESC LIMIT 1;
+   ```
+   Should return a non-NULL token
+
+### Why This Happened
+
+Possible reasons Account 3 was in standby mode:
+1. **Manual chat enabled** - LINE Official Account Manager was turned on
+2. **Initial setup** - Bot was set to standby during channel creation
+3. **Accidental change** - Someone changed settings in LINE Console
+4. **Migration** - Account was migrated from different LINE account type
+
+### Important Notes
+
+- **Old messages will stay NULL** - Only NEW messages after the fix will have tokens
+- **No code changes needed** - This is a LINE Console configuration issue
+- **Webhook URL is correct** - The problem was never in the webhook URL
+- **Channel tokens are correct** - Access token and secret are working fine
+
+### Related LINE Documentation
+
+- [LINE Messaging API - Response Mode](https://developers.line.biz/en/docs/messaging-api/receiving-messages/#response-mode)
+- [LINE Official Account - Chat Settings](https://developers.line.biz/en/docs/messaging-api/overview/#chat-settings)
+
+---
+
+## Summary
+
+**Problem:** Account 3 receives 0% reply tokens (416 messages, all NULL)
+
+**Root Cause:** Account 3 is in "standby mode" - LINE intentionally does not send replyToken in standby mode
+
+**Solution:** Change Account 3 from "standby mode" to "active mode" in LINE Developers Console
+
+**Status:** ✅ Root cause identified, waiting for user to apply fix in LINE Console
