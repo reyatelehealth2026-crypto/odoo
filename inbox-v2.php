@@ -1658,6 +1658,7 @@ function formatThaiDateTime($datetime) {
                    data-chat-status="<?= htmlspecialchars($chatStatus) ?>"
                    data-tags="<?= implode(',', $userTagIds) ?>"
                    data-assigned="<?= count($assignees) > 0 ? '1' : '0' ?>"
+                   onclick="window.location.href='?user=<?= $user['id'] ?>'"
                    tabindex="0">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
