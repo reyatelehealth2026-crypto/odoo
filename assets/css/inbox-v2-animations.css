@@ -52,6 +52,8 @@
     transform: translateZ(0);
     /* Prevent subpixel rendering issues */
     backface-visibility: hidden;
+    /* Make clickable */
+    cursor: pointer;
 }
 
 /**
@@ -67,6 +69,13 @@
 .user-item.active {
     background-color: rgba(20, 184, 166, 0.1);
     border-left: 3px solid #14b8a6;
+}
+
+/**
+ * Cursor pointer utility class
+ */
+.cursor-pointer {
+    cursor: pointer;
 }
 
 /* ============================================

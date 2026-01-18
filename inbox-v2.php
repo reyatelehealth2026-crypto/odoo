@@ -7185,6 +7185,10 @@ function handleConversationClick(conversation) {
     
     console.log('[AJAX] Conversation clicked:', userId, userData);
     
+    // Update URL without page reload using history API
+    const newUrl = `${window.location.pathname}?user=${userId}`;
+    window.history.pushState({ userId: userId }, '', newUrl);
+    
     // Load the conversation via AJAX
     loadConversationAJAX(userId, userData);
 }

@@ -855,13 +855,15 @@ class ConversationListManager {
      * @private
      */
     createConversationElement(conversation, index) {
-        const element = document.createElement('a');
+        // Use div instead of anchor to prevent navigation issues
+        const element = document.createElement('div');
         const userId = conversation.id || conversation.user_id;
-        element.href = `?user=${userId}`;
-        element.className = 'user-item block p-3 border-b border-gray-50';
+        element.className = 'user-item block p-3 border-b border-gray-50 cursor-pointer';
         element.dataset.userId = userId;
         element.dataset.index = index;
         element.setAttribute('tabindex', '0');
+        element.setAttribute('role', 'button');
+        element.setAttribute('aria-label', `Open conversation with ${conversation.display_name || 'user'}`);
         
         // Set position for virtual scrolling
         element.style.position = 'absolute';
@@ -869,16 +871,27 @@ class ConversationListManager {
         element.style.height = `${this.itemHeight}px`;
         element.style.width = '100%';
         
-        // Populate content (this will be customized based on actual UI)
+        // Populate content
         element.innerHTML = this.getConversationHTML(conversation);
         
-        // Add click handler (override default link behavior if callback provided)
-        if (this.onConversationClick) {
-            element.addEventListener('click', (e) => {
-                e.preventDefault();
+        // Add click handler
+        element.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (this.onConversationClick) {
                 this.onConversationClick(conversation);
-            });
-        }
+            }
+        });
+        
+        // Add keyboard support
+        element.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (this.onConversationClick) {
+                    this.onConversationClick(conversation);
+                }
+            }
+        });
         
         return element;
     }
