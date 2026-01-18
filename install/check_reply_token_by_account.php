@@ -12,15 +12,40 @@ try {
     
     echo "=== Reply Token Analysis by LINE Account ===\n\n";
     
+    // ตรวจสอบ columns ที่มีในตาราง line_accounts
+    $stmt = $db->query("SHOW COLUMNS FROM line_accounts");
+    $columns = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $columns[] = $row['Field'];
+    }
+    
+    // หา column ที่เก็บชื่อ account (ลองหลาย possibilities)
+    $nameColumn = null;
+    $possibleNames = ['account_name', 'bot_name', 'name', 'display_name', 'channel_name'];
+    foreach ($possibleNames as $possible) {
+        if (in_array($possible, $columns)) {
+            $nameColumn = $possible;
+            break;
+        }
+    }
+    
+    // ถ้าไม่เจอ column ชื่อ ใช้ id แทน
+    if (!$nameColumn) {
+        $nameColumn = "CONCAT('Account ', id)";
+        $nameColumnAlias = 'account_name';
+    } else {
+        $nameColumnAlias = $nameColumn;
+    }
+    
     // 1. ข้อความล่าสุด 30 รายการ พร้อม reply_token
     echo "Recent Messages (Last 30):\n";
     echo str_repeat("-", 100) . "\n";
     
-    $stmt = $db->query("
+    $query = "
         SELECT 
             m.id,
             m.line_account_id,
-            COALESCE(la.bot_name, CONCAT('Account ', la.id), 'Unknown') as account_name,
+            COALESCE(la.{$nameColumn}, CONCAT('Account ', m.line_account_id), 'Unknown') as account_name,
             u.display_name,
             CASE 
                 WHEN m.reply_token IS NOT NULL AND m.reply_token != '' THEN 'YES'
@@ -39,7 +64,9 @@ try {
         WHERE m.direction = 'incoming'
         ORDER BY m.created_at DESC
         LIMIT 30
-    ");
+    ";
+    
+    $stmt = $db->query($query);
     
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         printf(
@@ -59,10 +86,10 @@ try {
     echo "Statistics by Account (Last 24 hours):\n";
     echo str_repeat("-", 100) . "\n";
     
-    $stmt = $db->query("
+    $query = "
         SELECT 
             COALESCE(m.line_account_id, 0) as account_id,
-            COALESCE(la.bot_name, CONCAT('Account ', la.id), 'Unknown') as account_name,
+            COALESCE(la.{$nameColumn}, CONCAT('Account ', m.line_account_id), 'Unknown') as account_name,
             COUNT(*) as total_messages,
             SUM(CASE WHEN m.reply_token IS NOT NULL AND m.reply_token != '' THEN 1 ELSE 0 END) as with_token,
             SUM(CASE WHEN m.reply_token IS NULL OR m.reply_token = '' THEN 1 ELSE 0 END) as without_token,
@@ -74,9 +101,11 @@ try {
         LEFT JOIN line_accounts la ON m.line_account_id = la.id
         WHERE m.direction = 'incoming'
         AND m.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-        GROUP BY m.line_account_id, la.bot_name, la.id
+        GROUP BY m.line_account_id, la.{$nameColumnAlias}
         ORDER BY m.line_account_id
-    ");
+    ";
+    
+    $stmt = $db->query($query);
     
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         printf(
@@ -101,15 +130,17 @@ try {
     echo "LINE Account Webhook Configuration:\n";
     echo str_repeat("-", 100) . "\n";
     
-    $stmt = $db->query("
+    $query = "
         SELECT 
             id,
-            COALESCE(bot_name, CONCAT('Account ', id)) as account_name,
+            {$nameColumn} as account_name,
             webhook_url,
             CASE WHEN channel_access_token IS NOT NULL THEN 'Yes' ELSE 'No' END as has_token
         FROM line_accounts
         ORDER BY id
-    ");
+    ";
+    
+    $stmt = $db->query($query);
     
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         echo "Account {$row['id']}: {$row['account_name']}\n";
@@ -133,4 +164,8 @@ try {
     
 } catch (Exception $e) {
     echo "Error: " . $e->getMessage() . "\n";
+    echo "\nDebug Info:\n";
+    echo "- Make sure database is running\n";
+    echo "- Check config/config.php for correct credentials\n";
+    echo "- Verify line_accounts table exists\n";
 }
