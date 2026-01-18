@@ -20,7 +20,7 @@ try {
         SELECT 
             m.id,
             m.line_account_id,
-            COALESCE(la.account_name, 'Unknown') as account_name,
+            COALESCE(la.bot_name, CONCAT('Account ', la.id), 'Unknown') as account_name,
             u.display_name,
             CASE 
                 WHEN m.reply_token IS NOT NULL AND m.reply_token != '' THEN 'YES'
@@ -62,7 +62,7 @@ try {
     $stmt = $db->query("
         SELECT 
             COALESCE(m.line_account_id, 0) as account_id,
-            COALESCE(la.account_name, 'Unknown') as account_name,
+            COALESCE(la.bot_name, CONCAT('Account ', la.id), 'Unknown') as account_name,
             COUNT(*) as total_messages,
             SUM(CASE WHEN m.reply_token IS NOT NULL AND m.reply_token != '' THEN 1 ELSE 0 END) as with_token,
             SUM(CASE WHEN m.reply_token IS NULL OR m.reply_token = '' THEN 1 ELSE 0 END) as without_token,
@@ -74,7 +74,7 @@ try {
         LEFT JOIN line_accounts la ON m.line_account_id = la.id
         WHERE m.direction = 'incoming'
         AND m.created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
-        GROUP BY m.line_account_id, la.account_name
+        GROUP BY m.line_account_id, la.bot_name, la.id
         ORDER BY m.line_account_id
     ");
     
@@ -104,7 +104,7 @@ try {
     $stmt = $db->query("
         SELECT 
             id,
-            account_name,
+            COALESCE(bot_name, CONCAT('Account ', id)) as account_name,
             webhook_url,
             CASE WHEN channel_access_token IS NOT NULL THEN 'Yes' ELSE 'No' END as has_token
         FROM line_accounts
