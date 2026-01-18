@@ -2715,6 +2715,101 @@ try {
             break;
 
         // ============================================
+        // GET /search_conversations - Search conversations by name, message, or tag
+        // ============================================
+        case 'search_conversations':
+        case 'search-conversations':
+            if ($method !== 'GET') {
+                sendError('Method not allowed', 405);
+            }
+            
+            $query = trim($_GET['query'] ?? '');
+            $limit = max(1, min(50, (int)($_GET['limit'] ?? 10)));
+            
+            if (empty($query)) {
+                sendError('Search query is required');
+            }
+            
+            try {
+                $searchTerm = '%' . $query . '%';
+                
+                // Search in users table (name, phone) and messages table (content)
+                // Also include tag matches
+                $sql = "
+                    SELECT DISTINCT
+                        u.id,
+                        u.user_id,
+                        u.display_name,
+                        u.picture_url,
+                        u.phone,
+                        (SELECT content FROM messages 
+                         WHERE user_id = u.id 
+                         AND line_account_id = ? 
+                         ORDER BY timestamp DESC LIMIT 1) as last_message_preview,
+                        (SELECT timestamp FROM messages 
+                         WHERE user_id = u.id 
+                         AND line_account_id = ? 
+                         ORDER BY timestamp DESC LIMIT 1) as last_message_time,
+                        (SELECT COUNT(*) FROM messages 
+                         WHERE user_id = u.id 
+                         AND line_account_id = ? 
+                         AND is_read = 0 
+                         AND direction = 'incoming') as unread_count
+                    FROM users u
+                    WHERE u.line_account_id = ?
+                    AND (
+                        u.display_name LIKE ?
+                        OR u.phone LIKE ?
+                        OR u.id IN (
+                            SELECT DISTINCT user_id 
+                            FROM messages 
+                            WHERE line_account_id = ? 
+                            AND content LIKE ?
+                        )
+                        OR u.id IN (
+                            SELECT DISTINCT uta.user_id
+                            FROM user_tag_assignments uta
+                            JOIN user_tags ut ON uta.tag_id = ut.id
+                            WHERE ut.line_account_id = ?
+                            AND ut.tag_name LIKE ?
+                        )
+                    )
+                    ORDER BY last_message_time DESC
+                    LIMIT ?
+                ";
+                
+                $stmt = $db->prepare($sql);
+                $stmt->execute([
+                    $lineAccountId, // last_message_preview
+                    $lineAccountId, // last_message_time
+                    $lineAccountId, // unread_count
+                    $lineAccountId, // main WHERE
+                    $searchTerm,    // display_name
+                    $searchTerm,    // phone
+                    $lineAccountId, // messages subquery
+                    $searchTerm,    // message content
+                    $lineAccountId, // tags subquery
+                    $searchTerm,    // tag_name
+                    $limit
+                ]);
+                
+                $conversations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                sendResponse([
+                    'success' => true,
+                    'data' => [
+                        'conversations' => $conversations,
+                        'count' => count($conversations),
+                        'query' => $query
+                    ]
+                ]);
+                
+            } catch (Exception $e) {
+                sendError('Failed to search conversations: ' . $e->getMessage());
+            }
+            break;
+
+        // ============================================
         // Default - Unknown action
         // ============================================
         default:

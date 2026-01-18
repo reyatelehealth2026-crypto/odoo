@@ -1587,7 +1587,12 @@ function formatThaiDateTime($datetime) {
             <div class="relative">
                 <input type="text" id="userSearch" placeholder="🔍 ค้นหาชื่อ, ข้อความ, แท็ก..." 
                        class="w-full px-3 py-2 bg-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none pr-8" 
-                       oninput="debouncedSearch(this.value)">
+                       oninput="debouncedSearch(this.value)"
+                       autocomplete="off">
+                <!-- Autocomplete dropdown -->
+                <div id="searchAutocomplete" class="hidden absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
+                    <!-- Results will be inserted here -->
+                </div>
             </div>
         </div>
         
@@ -5259,15 +5264,135 @@ let searchState = {
     localResults: [],
     serverResults: [],
     pendingRequest: null,
-    minCharsForServerSearch: 2 // Minimum characters to trigger server search
+    minCharsForServerSearch: 1 // Changed from 2 to 1 - search immediately
 };
 
 const debouncedSearch = debounce(function(query) {
-    performHybridSearch(query);
-}, 200); // Reduced from 300ms for faster response
+    performAutocompleteSearch(query);
+}, 150); // Faster response for autocomplete
 
 /**
- * Perform hybrid search (local first, then server)
+ * Perform autocomplete search with dropdown
+ */
+async function performAutocompleteSearch(query) {
+    searchState.query = query.trim();
+    const autocompleteDiv = document.getElementById('searchAutocomplete');
+    
+    // Cancel any pending request
+    if (searchState.pendingRequest) {
+        searchState.pendingRequest.abort();
+        searchState.pendingRequest = null;
+    }
+
+    // If query is empty, hide autocomplete and show all
+    if (!searchState.query) {
+        autocompleteDiv.classList.add('hidden');
+        resetSearch();
+        return;
+    }
+
+    // Show autocomplete dropdown
+    autocompleteDiv.classList.remove('hidden');
+    autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm"><i class="fas fa-spinner fa-spin"></i> กำลังค้นหา...</div>';
+
+    // Search server immediately
+    try {
+        const controller = new AbortController();
+        searchState.pendingRequest = controller;
+
+        const params = new URLSearchParams({
+            action: 'search_conversations',
+            query: searchState.query,
+            line_account_id: window.currentBotId || <?= $currentBotId ?>,
+            limit: 10
+        });
+
+        const response = await fetch(`api/inbox-v2.php?${params.toString()}`, {
+            signal: controller.signal
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.conversations) {
+            displayAutocompleteResults(result.data.conversations);
+        } else {
+            autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
+        }
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('[Autocomplete] Error:', error);
+            autocompleteDiv.innerHTML = '<div class="p-3 text-center text-red-500 text-sm">เกิดข้อผิดพลาด</div>';
+        }
+    }
+}
+
+/**
+ * Display autocomplete results in dropdown
+ */
+function displayAutocompleteResults(conversations) {
+    const autocompleteDiv = document.getElementById('searchAutocomplete');
+    
+    if (!conversations || conversations.length === 0) {
+        autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
+        return;
+    }
+
+    let html = '';
+    conversations.forEach(conv => {
+        const displayName = conv.display_name || 'Unknown';
+        const lastMsg = conv.last_message_preview || '';
+        const pictureUrl = conv.picture_url || '';
+        const unreadCount = conv.unread_count || 0;
+        const userId = conv.id || conv.user_id;
+
+        html += `
+            <div class="autocomplete-item p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 flex items-center gap-3" 
+                 onclick="selectAutocompleteResult(${userId})" 
+                 data-user-id="${userId}">
+                <img src="${pictureUrl || 'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 28 28%22%3E%3Ccircle cx=%2214%22 cy=%2214%22 r=%2214%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M14 15.4c2.3 0 4.2-1.9 4.2-4.2s-1.9-4.2-4.2-4.2-4.2 1.9-4.2 4.2 1.9 4.2 4.2 4.2zm0 2.1c-2.8 0-8.4 1.4-8.4 4.2v2.1h16.8v-2.1c0-2.8-5.6-4.2-8.4-4.2z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E'}" 
+                     class="w-10 h-10 rounded-full flex-shrink-0" 
+                     onerror="this.style.display='none'">
+                <div class="flex-1 min-w-0">
+                    <div class="font-medium text-sm text-gray-900 truncate">${displayName}</div>
+                    <div class="text-xs text-gray-500 truncate">${lastMsg}</div>
+                </div>
+                ${unreadCount > 0 ? `<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">${unreadCount}</span>` : ''}
+            </div>
+        `;
+    });
+
+    autocompleteDiv.innerHTML = html;
+}
+
+/**
+ * Select autocomplete result and load conversation
+ */
+function selectAutocompleteResult(userId) {
+    const autocompleteDiv = document.getElementById('searchAutocomplete');
+    autocompleteDiv.classList.add('hidden');
+    
+    // Clear search input
+    document.getElementById('userSearch').value = '';
+    searchState.query = '';
+    
+    // Load the conversation
+    loadConversation(userId);
+}
+
+// Close autocomplete when clicking outside
+document.addEventListener('click', function(e) {
+    const searchInput = document.getElementById('userSearch');
+    const autocompleteDiv = document.getElementById('searchAutocomplete');
+    
+    if (searchInput && autocompleteDiv && 
+        !searchInput.contains(e.target) && 
+        !autocompleteDiv.contains(e.target)) {
+        autocompleteDiv.classList.add('hidden');
+    }
+});
+
+/**
+ * Perform hybrid search (local first, then server) - LEGACY
  */
 async function performHybridSearch(query) {
     searchState.query = query.trim();
