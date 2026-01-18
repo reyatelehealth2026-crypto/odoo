@@ -9,12 +9,25 @@
  * 4. Reply token expiration status
  */
 
-require_once __DIR__ . '/../config/config.php';
-require_once __DIR__ . '/../classes/Database.php';
+// Error handling
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+try {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../config/database.php';
+    require_once __DIR__ . '/../classes/Database.php';
+} catch (Exception $e) {
+    die("Error loading files: " . $e->getMessage());
+}
 
 header('Content-Type: text/html; charset=utf-8');
 
-$db = Database::getInstance()->getConnection();
+try {
+    $db = Database::getInstance()->getConnection();
+} catch (Exception $e) {
+    die("Database connection failed: " . $e->getMessage());
+}
 
 echo "<h1>Reply Token Storage Diagnostic</h1>";
 echo "<style>
@@ -258,3 +271,5 @@ echo "</pre>";
 
 echo "<hr>";
 echo "<p><small>Generated at: " . date('Y-m-d H:i:s') . "</small></p>";
+
+?>
