@@ -210,13 +210,14 @@ if (!$line) {
             
             // DEBUG: Log replyToken extraction for Account 3
             if ($lineAccountId == 3) {
-                error_log("=== ACCOUNT 3 DEBUG ===");
-                error_log("Event Type: " . ($event['type'] ?? 'unknown'));
-                error_log("User ID: " . ($userId ?? 'none'));
-                error_log("Reply Token from event: " . ($event['replyToken'] ?? 'NULL'));
-                error_log("Reply Token variable: " . ($replyToken ?? 'NULL'));
-                error_log("Full event JSON: " . json_encode($event));
-                error_log("======================");
+                $debugInfo = "=== ACCOUNT 3 DEBUG ===\n";
+                $debugInfo .= "Event Type: " . ($event['type'] ?? 'unknown') . "\n";
+                $debugInfo .= "User ID: " . ($userId ?? 'none') . "\n";
+                $debugInfo .= "Reply Token from event: " . ($event['replyToken'] ?? 'NULL') . "\n";
+                $debugInfo .= "Reply Token variable: " . ($replyToken ?? 'NULL') . "\n";
+                $debugInfo .= "Full event JSON: " . json_encode($event) . "\n";
+                $debugInfo .= "======================";
+                error_log($debugInfo);
             }
             
             // Handle join/leave events (ไม่ต้องมี userId)
@@ -836,11 +837,12 @@ if (!$line) {
                     
                     // DEBUG: Log for Account 3
                     if ($lineAccountId == 3) {
-                        error_log("=== ACCOUNT 3 TOKEN SAVE ===");
-                        error_log("User ID: " . $user['id']);
-                        error_log("Reply Token: " . substr($replyToken, 0, 30) . "...");
-                        error_log("Expires: " . $expires);
-                        error_log("===========================");
+                        $debugInfo = "=== ACCOUNT 3 TOKEN SAVE ===\n";
+                        $debugInfo .= "User ID: " . $user['id'] . "\n";
+                        $debugInfo .= "Reply Token: " . substr($replyToken, 0, 30) . "...\n";
+                        $debugInfo .= "Expires: " . $expires . "\n";
+                        $debugInfo .= "===========================";
+                        error_log($debugInfo);
                     }
                     
                     error_log("Reply token saved for user {$user['id']}, expires: {$expires}");
@@ -851,11 +853,12 @@ if (!$line) {
             } else {
                 // DEBUG: Log when no token for Account 3
                 if ($lineAccountId == 3) {
-                    error_log("=== ACCOUNT 3 NO TOKEN ===");
-                    error_log("User ID: " . ($user['id'] ?? 'unknown'));
-                    error_log("Message Type: " . $messageType);
-                    error_log("Message Content: " . mb_substr($messageContent, 0, 50));
-                    error_log("==========================");
+                    $debugInfo = "=== ACCOUNT 3 NO TOKEN ===\n";
+                    $debugInfo .= "User ID: " . ($user['id'] ?? 'unknown') . "\n";
+                    $debugInfo .= "Message Type: " . $messageType . "\n";
+                    $debugInfo .= "Message Content: " . mb_substr($messageContent, 0, 50) . "\n";
+                    $debugInfo .= "==========================";
+                    error_log($debugInfo);
                 }
             }
             
