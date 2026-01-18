@@ -1900,9 +1900,13 @@ function formatThaiDateTime($datetime) {
                         <div class="location-message bg-white rounded-xl border shadow-sm overflow-hidden max-w-[300px]">
                             <?php if ($lat && $lng): ?>
                             <a href="https://www.google.com/maps?q=<?= $lat ?>,<?= $lng ?>" target="_blank" class="block hover:opacity-90">
-                                <img src="https://maps.googleapis.com/maps/api/staticmap?center=<?= $lat ?>,<?= $lng ?>&zoom=15&size=300x150&markers=color:red%7C<?= $lat ?>,<?= $lng ?>&key=<?= defined('GOOGLE_MAPS_API_KEY') ? GOOGLE_MAPS_API_KEY : '' ?>" 
-                                     class="w-full h-32 object-cover" 
-                                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22300%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 fill=%22%239ca3af%22 font-size=%2216%22%3E📍 Location%3C/text%3E%3C/svg%3E'">
+                                <!-- Simple location placeholder without Google Maps API -->
+                                <div class="w-full h-32 bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
+                                    <div class="text-center">
+                                        <i class="fas fa-map-marker-alt text-red-500 text-4xl mb-2"></i>
+                                        <p class="text-xs text-gray-600">คลิกเพื่อดูแผนที่</p>
+                                    </div>
+                                </div>
                                 <div class="p-3">
                                     <div class="flex items-start gap-2">
                                         <i class="fas fa-map-marker-alt text-red-500 mt-1"></i>
