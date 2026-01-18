@@ -43,7 +43,8 @@ class ConversationListManager {
         this.visibleRange = { start: 0, end: 0 };
         
         // Search and filter properties
-        this.searchDebounceMs = options.searchDebounceMs || 300;
+        // Reduced debounce to 200ms for more responsive feel while still preventing excessive API calls
+        this.searchDebounceMs = options.searchDebounceMs || 200; // was 300ms
         this.searchDebouncer = null;
         this.pendingSearchRequest = null; // AbortController for cancelling requests
         this.currentSearchQuery = '';
@@ -57,6 +58,10 @@ class ConversationListManager {
         this.onConversationClick = options.onConversationClick || null;
         this.onLoadMore = options.onLoadMore || null;
         this.onSearch = options.onSearch || null; // Server-side search callback
+        this.onConversationHover = options.onConversationHover || null; // For preloading on hover
+
+        // Preload debounce timer
+        this.preloadDebouncer = null;
     }
     
     /**
@@ -772,11 +777,11 @@ class ConversationListManager {
                     this.updateConversationElement(userId, conversation);
                 }
                 
-                // Update position if index changed
+                // Update position if index changed (using transform for GPU acceleration)
                 const currentIndex = parseInt(element.dataset.index);
                 if (currentIndex !== absoluteIndex) {
                     element.dataset.index = absoluteIndex;
-                    element.style.top = `${absoluteIndex * this.itemHeight}px`;
+                    element.style.transform = `translateY(${absoluteIndex * this.itemHeight}px)`;
                 }
             } else {
                 // Create new element
@@ -865,9 +870,11 @@ class ConversationListManager {
         element.setAttribute('role', 'button');
         element.setAttribute('aria-label', `Open conversation with ${conversation.display_name || 'user'}`);
         
-        // Set position for virtual scrolling
+        // Set position for virtual scrolling using CSS transform for GPU acceleration
         element.style.position = 'absolute';
-        element.style.top = `${index * this.itemHeight}px`;
+        element.style.top = '0';
+        element.style.transform = `translateY(${index * this.itemHeight}px)`;
+        element.style.willChange = 'transform'; // Hint to browser for optimization
         element.style.height = `${this.itemHeight}px`;
         element.style.width = '100%';
         
@@ -882,7 +889,7 @@ class ConversationListManager {
                 this.onConversationClick(conversation);
             }
         });
-        
+
         // Add keyboard support
         element.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' || e.key === ' ') {
@@ -892,7 +899,29 @@ class ConversationListManager {
                 }
             }
         });
-        
+
+        // Add hover handler for preloading (with debounce to avoid excessive calls)
+        element.addEventListener('mouseenter', () => {
+            if (this.onConversationHover) {
+                // Clear any pending preload
+                if (this.preloadDebouncer) {
+                    clearTimeout(this.preloadDebouncer);
+                }
+                // Debounce preload to 150ms - only triggers if user hovers for a bit
+                this.preloadDebouncer = setTimeout(() => {
+                    this.onConversationHover(userId);
+                }, 150);
+            }
+        });
+
+        // Cancel preload if mouse leaves before debounce completes
+        element.addEventListener('mouseleave', () => {
+            if (this.preloadDebouncer) {
+                clearTimeout(this.preloadDebouncer);
+                this.preloadDebouncer = null;
+            }
+        });
+
         return element;
     }
     

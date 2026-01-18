@@ -42,8 +42,10 @@ class ChatPanelManager {
         this.currentUserData = null;
         
         // Cache configuration (Requirements 3.3, 3.4, 3.5)
-        this.cacheTTL = options.cacheTTL || 30000; // 30 seconds
-        this.cacheMaxSize = options.cacheMaxSize || 10; // Max 10 conversations
+        // Increased TTL to 60 seconds for better cache hit rate
+        this.cacheTTL = options.cacheTTL || 60000; // 60 seconds (was 30 seconds)
+        // Increased cache size to 20 for better coverage in team environments
+        this.cacheMaxSize = options.cacheMaxSize || 20; // Max 20 conversations (was 10)
         this.messageCache = new LRUCache(this.cacheMaxSize);
         
         // Pagination configuration (Requirement 3.1, 3.2)
@@ -70,6 +72,9 @@ class ChatPanelManager {
         // Message queue for optimistic UI and offline support
         this.pendingMessages = [];
         this.messageIdCounter = 0;
+
+        // Request deduplication - prevent duplicate API calls when switching conversations rapidly
+        this.pendingRequests = new Map(); // Map<userId, AbortController>
         
         // State tracking
         this.isInitialized = false;
@@ -322,16 +327,27 @@ class ChatPanelManager {
         // Start performance tracking (Requirements: 12.4)
         const perfStart = performance.now();
         const endpoint = 'getMessages';
-        
+
         const messageLimit = limit || this.messageLimit;
-        
+
         // Build URL with cursor-based pagination (Requirement 7.2)
         let url = `${this.apiEndpoint}?action=getMessages&user_id=${encodeURIComponent(userId)}&limit=${messageLimit}`;
-        
+
         if (cursor) {
             url += `&cursor=${encodeURIComponent(cursor)}`;
         }
-        
+
+        // Request deduplication - cancel previous request for this userId if exists
+        const requestKey = cursor ? `${userId}_${cursor}` : userId;
+        if (this.pendingRequests.has(requestKey)) {
+            console.log(`Cancelling previous request for: ${requestKey}`);
+            this.pendingRequests.get(requestKey).abort();
+        }
+
+        // Create new AbortController for this request
+        const abortController = new AbortController();
+        this.pendingRequests.set(requestKey, abortController);
+
         try {
             const response = await fetch(url, {
                 method: 'GET',
@@ -339,7 +355,8 @@ class ChatPanelManager {
                     'Content-Type': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                signal: abortController.signal
             });
             
             // Track API call performance (Requirements: 12.4)
@@ -379,9 +396,21 @@ class ChatPanelManager {
                 messages = data.messages;
             }
             
+            // Clean up pending request on success
+            this.pendingRequests.delete(requestKey);
+
             return messages;
-            
+
         } catch (error) {
+            // Clean up pending request on error
+            this.pendingRequests.delete(requestKey);
+
+            // Ignore AbortError - request was cancelled intentionally
+            if (error.name === 'AbortError') {
+                console.log(`Request cancelled for: ${requestKey}`);
+                return [];
+            }
+
             // Track failed API call (Requirements: 12.4)
             if (window.performanceTracker) {
                 window.performanceTracker.trackApiCall(
@@ -391,7 +420,7 @@ class ChatPanelManager {
                     0
                 );
             }
-            
+
             console.error('Error fetching messages:', error);
             throw error;
         }
@@ -1293,11 +1322,63 @@ class ChatPanelManager {
     getLoadingState() {
         return this.loadingState;
     }
-    
+
+    /**
+     * Preload conversation messages in background (for faster switching)
+     * Should be called on hover or when user is likely to click a conversation
+     * Uses low priority fetch to avoid blocking main requests
+     *
+     * @param {string} userId - User ID to preload
+     * @returns {Promise<void>}
+     */
+    async preloadConversation(userId) {
+        if (!userId) {
+            return;
+        }
+
+        // Don't preload if already cached and valid
+        if (this.isCached(userId)) {
+            return;
+        }
+
+        // Don't preload if already loading this conversation
+        if (this.pendingRequests.has(userId)) {
+            return;
+        }
+
+        // Don't preload if it's the current conversation
+        if (userId === this.currentUserId) {
+            return;
+        }
+
+        console.log(`Preloading conversation: ${userId}`);
+
+        try {
+            // Fetch with lower priority (not blocking main thread)
+            const messages = await this.fetchMessages(userId, null, 30); // Fetch fewer messages for preload
+
+            // Cache the result
+            if (messages && messages.length > 0) {
+                this.messageCache.set(userId, {
+                    messages: messages,
+                    timestamp: Date.now(),
+                    isPreload: true // Mark as preloaded (can be refreshed on actual load)
+                });
+                console.log(`Preloaded ${messages.length} messages for: ${userId}`);
+            }
+        } catch (error) {
+            // Silently fail preloading - it's optional optimization
+            if (error.name !== 'AbortError') {
+                console.warn(`Preload failed for ${userId}:`, error.message);
+            }
+        }
+    }
+
     /**
      * Load images for a message element (lazy loading)
      * Only loads images when message enters viewport
-     * 
+     * Uses batching to limit concurrent image loads for better performance
+     *
      * Validates: Requirement 6.2 (lazy load images outside viewport)
      * @param {HTMLElement} messageEl - Message element
      * @private
@@ -1306,46 +1387,105 @@ class ChatPanelManager {
         if (!messageEl) {
             return;
         }
-        
+
         // Find all lazy-load images in this message
         const lazyImages = messageEl.querySelectorAll('img[data-src]');
-        
+
         lazyImages.forEach(img => {
-            // Check if already loaded
-            if (img.dataset.loaded === 'true') {
+            // Check if already loaded or queued
+            if (img.dataset.loaded === 'true' || img.dataset.queued === 'true') {
                 return;
             }
-            
-            // Load the image
+
+            // Mark as queued to prevent duplicate loading
+            img.dataset.queued = 'true';
+
+            // Add to image load queue for batching
+            this.queueImageLoad(img);
+        });
+    }
+
+    /**
+     * Queue image for batched loading
+     * Limits concurrent image loads to improve performance
+     *
+     * @param {HTMLImageElement} img - Image element to load
+     * @private
+     */
+    queueImageLoad(img) {
+        // Initialize image queue if not exists
+        if (!this.imageLoadQueue) {
+            this.imageLoadQueue = [];
+            this.activeImageLoads = 0;
+            this.maxConcurrentImageLoads = 4; // Limit concurrent loads
+        }
+
+        // Add to queue
+        this.imageLoadQueue.push(img);
+
+        // Process queue
+        this.processImageQueue();
+    }
+
+    /**
+     * Process image load queue with concurrency control
+     * @private
+     */
+    processImageQueue() {
+        // Don't process if at max concurrent loads
+        while (this.activeImageLoads < this.maxConcurrentImageLoads && this.imageLoadQueue.length > 0) {
+            const img = this.imageLoadQueue.shift();
+
+            // Skip if already loaded (element may have been processed while in queue)
+            if (img.dataset.loaded === 'true') {
+                continue;
+            }
+
             const src = img.dataset.src;
-            
+            if (!src) {
+                continue;
+            }
+
+            // Increment active loads
+            this.activeImageLoads++;
+
             // Show loading placeholder
             img.classList.add('loading');
-            
+
             // Create a new image to preload
             const tempImg = new Image();
-            
+
             tempImg.onload = () => {
                 // Set the actual source
                 img.src = src;
                 img.dataset.loaded = 'true';
+                delete img.dataset.queued;
                 img.classList.remove('loading');
                 img.classList.add('loaded');
-                
+
                 // Remove data-src attribute
                 delete img.dataset.src;
+
+                // Decrement active loads and process next
+                this.activeImageLoads--;
+                this.processImageQueue();
             };
-            
+
             tempImg.onerror = () => {
                 // Show error placeholder
                 img.classList.remove('loading');
                 img.classList.add('error');
+                delete img.dataset.queued;
                 img.alt = 'Failed to load image';
+
+                // Decrement active loads and process next
+                this.activeImageLoads--;
+                this.processImageQueue();
             };
-            
+
             // Start loading
             tempImg.src = src;
-        });
+        }
     }
     
     /**

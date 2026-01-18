@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(wc:*)",
-      "Bash(php -l:*)"
+      "Bash(php -l:*)",
+      "Bash(find:*)"
     ]
   }
 }

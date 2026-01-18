@@ -306,20 +306,4 @@ Track in admin dashboard:
 - Token expiry rate
 - Average time between message and reply
 
-## Related Files
-- `webhook.php` - Main webhook handler (lines 818-830)
-- `database/schema_complete.sql` - Database schema
-- `database/install_complete.sql` - Installation schema
-- `install/check_reply_token_storage.php` - Diagnostic script
-- `classes/LineAPI.php` - LINE API wrapper
-
-## References
-- [LINE Messaging API - Reply Message](https://developers.line.biz/en/reference/messaging-api/#send-reply-message)
-- [LINE Messaging API - Push Message](https://developers.line.biz/en/reference/messaging-api/#send-push-message)
-- Reply tokens expire in 1 minute and can only be used once
-
-## Status
-- ⏳ **Investigation in progress**
-- 🔍 **Diagnostic script created**
-- 📝 **Fixes documented**
-- ⏭️ **Next: Apply fixes and test**
+## Related 
