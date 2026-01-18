@@ -652,6 +652,10 @@ if (isset($_GET['user'])) {
 function getMessagePreview($content, $type) {
     if ($content === null) return '';
     if ($type === 'image') return '📷 รูปภาพ';
+    if ($type === 'video') return '🎥 วิดีโอ';
+    if ($type === 'audio') return '🎵 เสียง';
+    if ($type === 'location') return '📍 ตำแหน่งที่อยู่';
+    if ($type === 'file') return '📄 ไฟล์';
     if ($type === 'sticker') return '😊 สติกเกอร์';
     if ($type === 'flex') return '📋 Flex';
     return mb_strlen($content) > 30 ? mb_substr($content, 0, 30) . '...' : $content;
@@ -1868,6 +1872,90 @@ function formatThaiDateTime($datetime) {
                         <?php else: ?>
                         <div class="bg-white rounded-lg border p-2 text-xs text-gray-500">😊 Sticker</div>
                         <?php endif; ?>
+                    <?php elseif ($type === 'video'): ?>
+                        <?php 
+                        $videoSrc = $content;
+                        if (preg_match('/ID:\s*(\d+)/', $content, $m)) {
+                            $videoSrc = 'api/line_content.php?id=' . $m[1];
+                        } elseif (!preg_match('/^https?:\/\//', $content)) {
+                            $videoSrc = 'api/line_content.php?id=' . $content;
+                        }
+                        ?>
+                        <div class="video-message rounded-xl overflow-hidden max-w-[300px] border shadow-sm">
+                            <video controls class="w-full" preload="metadata">
+                                <source src="<?= htmlspecialchars($videoSrc) ?>" type="video/mp4">
+                                เบราว์เซอร์ของคุณไม่รองรับการเล่นวิดีโอ
+                            </video>
+                        </div>
+                    <?php elseif ($type === 'location'): ?>
+                        <?php 
+                        // Parse location data: [location] Address (lat, lng)
+                        $lat = $lng = $address = '';
+                        if (preg_match('/\[location\]\s*(.+?)\s*\(([0-9.-]+),\s*([0-9.-]+)\)/', $content, $m)) {
+                            $address = trim($m[1]);
+                            $lat = $m[2];
+                            $lng = $m[3];
+                        }
+                        ?>
+                        <div class="location-message bg-white rounded-xl border shadow-sm overflow-hidden max-w-[300px]">
+                            <?php if ($lat && $lng): ?>
+                            <a href="https://www.google.com/maps?q=<?= $lat ?>,<?= $lng ?>" target="_blank" class="block hover:opacity-90">
+                                <img src="https://maps.googleapis.com/maps/api/staticmap?center=<?= $lat ?>,<?= $lng ?>&zoom=15&size=300x150&markers=color:red%7C<?= $lat ?>,<?= $lng ?>&key=<?= GOOGLE_MAPS_API_KEY ?? '' ?>" 
+                                     class="w-full h-32 object-cover" 
+                                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 150%22%3E%3Crect fill=%22%23e5e7eb%22 width=%22300%22 height=%22150%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 fill=%22%239ca3af%22 font-size=%2216%22%3E📍 Location%3C/text%3E%3C/svg%3E'">
+                                <div class="p-3">
+                                    <div class="flex items-start gap-2">
+                                        <i class="fas fa-map-marker-alt text-red-500 mt-1"></i>
+                                        <div class="flex-1">
+                                            <?php if ($address): ?>
+                                            <p class="text-sm text-gray-800 font-medium"><?= htmlspecialchars($address) ?></p>
+                                            <?php endif; ?>
+                                            <p class="text-xs text-gray-500 mt-1"><?= $lat ?>, <?= $lng ?></p>
+                                            <p class="text-xs text-teal-600 mt-1"><i class="fas fa-external-link-alt mr-1"></i>เปิดใน Google Maps</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                            <?php else: ?>
+                            <div class="p-3 text-center text-gray-500">
+                                <i class="fas fa-map-marker-alt text-2xl mb-2"></i>
+                                <p class="text-sm">📍 Location</p>
+                            </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php elseif ($type === 'audio'): ?>
+                        <?php 
+                        $audioSrc = $content;
+                        if (preg_match('/ID:\s*(\d+)/', $content, $m)) {
+                            $audioSrc = 'api/line_content.php?id=' . $m[1];
+                        } elseif (!preg_match('/^https?:\/\//', $content)) {
+                            $audioSrc = 'api/line_content.php?id=' . $content;
+                        }
+                        ?>
+                        <div class="audio-message bg-white rounded-xl border shadow-sm p-3 max-w-[300px]">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-volume-up text-teal-600 text-xl"></i>
+                                <audio controls class="flex-1" preload="metadata">
+                                    <source src="<?= htmlspecialchars($audioSrc) ?>" type="audio/mpeg">
+                                    เบราว์เซอร์ของคุณไม่รองรับการเล่นเสียง
+                                </audio>
+                            </div>
+                        </div>
+                    <?php elseif ($type === 'file'): ?>
+                        <?php 
+                        $fileData = json_decode($content, true);
+                        $fileName = $fileData['name'] ?? 'File';
+                        $fileUrl = $fileData['url'] ?? '#';
+                        ?>
+                        <a href="<?= htmlspecialchars($fileUrl) ?>" target="_blank" class="file-message bg-white rounded-xl border shadow-sm p-3 max-w-[300px] hover:bg-gray-50 block">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-file-pdf text-red-500 text-2xl"></i>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium text-gray-800 truncate"><?= htmlspecialchars($fileName) ?></p>
+                                    <p class="text-xs text-teal-600 mt-1"><i class="fas fa-download mr-1"></i>ดาวน์โหลด</p>
+                                </div>
+                            </div>
+                        </a>
                     <?php else: ?>
                         <div class="bg-white rounded-lg border p-3 text-xs text-gray-500"><i class="fas fa-file-alt mr-1"></i><?= ucfirst($type) ?></div>
                     <?php endif; ?>
