@@ -1658,7 +1658,12 @@ function formatThaiDateTime($datetime) {
                    data-chat-status="<?= htmlspecialchars($chatStatus) ?>"
                    data-tags="<?= implode(',', $userTagIds) ?>"
                    data-assigned="<?= count($assignees) > 0 ? '1' : '0' ?>"
-                   onclick="window.location.href='?user=<?= $user['id'] ?>'"
+                   data-display-name="<?= htmlspecialchars($user['display_name']) ?>"
+                   data-picture-url="<?= htmlspecialchars($user['picture_url'] ?: '') ?>"
+                   data-last-message="<?= htmlspecialchars($user['last_msg'] ?? '') ?>"
+                   data-last-type="<?= htmlspecialchars($user['last_type'] ?? 'text') ?>"
+                   data-last-time="<?= htmlspecialchars($user['last_time'] ?? '') ?>"
+                   data-unread="<?= intval($user['unread']) ?>"
                    tabindex="0">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
@@ -7732,27 +7737,55 @@ function loadInitialConversations() {
     const conversations = [];
     
     conversationElements.forEach(el => {
-        const userData = extractUserDataFromElement(el);
-        const lastMsgEl = el.querySelector('.last-msg');
-        const lastTimeEl = el.querySelector('.last-time');
-        const unreadBadge = el.querySelector('.unread-badge');
+        const userId = el.getAttribute('data-user-id');
+        const displayName = el.getAttribute('data-display-name') || el.getAttribute('data-name') || 'Unknown';
+        const pictureUrl = el.getAttribute('data-picture-url') || '';
+        const lastMessage = el.getAttribute('data-last-message') || '';
+        const lastType = el.getAttribute('data-last-type') || 'text';
+        const lastTime = el.getAttribute('data-last-time') || new Date().toISOString();
+        const unreadCount = parseInt(el.getAttribute('data-unread')) || 0;
+        const chatStatus = el.getAttribute('data-chat-status') || '';
+        const tags = el.getAttribute('data-tags') ? el.getAttribute('data-tags').split(',') : [];
         
-        conversations.push({
-            id: userData.id,
-            user_id: userData.id,
-            display_name: userData.display_name,
-            picture_url: userData.picture_url,
-            last_message: lastMsgEl ? lastMsgEl.textContent.trim() : '',
-            last_message_at: lastTimeEl ? lastTimeEl.getAttribute('data-timestamp') || new Date().toISOString() : new Date().toISOString(),
-            unread_count: unreadBadge ? parseInt(unreadBadge.textContent) || 0 : 0,
-            chat_status: userData.chat_status,
-            tags: userData.tags,
+        const conversationData = {
+            id: userId,
+            user_id: userId,
+            display_name: displayName,
+            picture_url: pictureUrl,
+            last_message: lastMessage,
+            last_type: lastType,
+            last_message_at: lastTime,
+            last_time: lastTime,
+            unread_count: unreadCount,
+            unread: unreadCount,
+            chat_status: chatStatus,
+            tags: tags,
             is_pinned: false
+        };
+        
+        conversations.push(conversationData);
+        
+        // Attach click handler to existing DOM element
+        el.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[AJAX] Conversation clicked (DOM element):', userId);
+            handleConversationClick(conversationData);
+        });
+        
+        // Add keyboard support
+        el.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log('[AJAX] Conversation activated via keyboard:', userId);
+                handleConversationClick(conversationData);
+            }
         });
     });
     
     conversationListManager.setConversations(conversations);
-    console.log(`[AJAX] Loaded ${conversations.length} initial conversations`);
+    console.log(`[AJAX] Loaded ${conversations.length} initial conversations and attached click handlers`);
 }
 
 /**
