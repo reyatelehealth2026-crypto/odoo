@@ -626,15 +626,21 @@ class RewardsCatalog {
         const reward = this.rewards.find(r => r.id === rewardId);
         if (!reward) return;
 
+        console.log('RewardsCatalog: showRewardDetail called');
+        console.log('  - Reward ID:', rewardId);
+        console.log('  - Reward points required:', reward.points_required);
+        console.log('  - User points available:', this.userPoints);
+        console.log('  - Can redeem:', this.userPoints >= reward.points_required);
+
         this.selectedReward = reward;
-        
+
         // Remove existing modal if any
         const existingModal = document.getElementById('rewardDetailModal');
         if (existingModal) existingModal.remove();
 
         // Add modal to DOM
         document.body.insertAdjacentHTML('beforeend', this.renderRewardDetailModal(reward));
-        
+
         // Animate in
         setTimeout(() => {
             const modal = document.getElementById('rewardDetailModal');
