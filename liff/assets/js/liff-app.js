@@ -7688,22 +7688,21 @@ class LiffApp {
             const modalHtml = `
                 <div class="modal-overlay" id="rewardDetailModal" onclick="if(event.target === this) window.liffApp.closeRewardModal()">
                     <div class="modal-content reward-detail-modal">
-                        <button class="modal-close" onclick="window.liffApp.closeRewardModal()">
-                            <i class="fas fa-times"></i>
-                        </button>
+                        <button class="close-modal" onclick="window.liffApp.closeRewardModal()"></button>
 
-                        <div class="reward-detail-image">
-                            <img src="${reward.image_url || this.config.BASE_URL + '/assets/images/image-placeholder.svg'}"
-                                 alt="${reward.name}"
-                                 onerror="this.src='${this.config.BASE_URL}/assets/images/image-placeholder.svg'">
-                        </div>
+                        <img class="reward-detail-image"
+                             src="${reward.image_url || this.config.BASE_URL + '/assets/images/image-placeholder.svg'}"
+                             alt="${reward.name}"
+                             onerror="this.src='${this.config.BASE_URL}/assets/images/image-placeholder.svg'">
 
                         <div class="reward-detail-content">
-                            <h2 class="reward-detail-title">${reward.name}</h2>
+                            <h2>${reward.name}</h2>
 
                             <div class="reward-detail-points">
-                                <i class="fas fa-coins"></i>
-                                <span>${this.formatNumber(reward.points_required)} แต้ม</span>
+                                <span class="points-badge">
+                                    <i class="fas fa-coins"></i>
+                                    ${this.formatNumber(reward.points_required)} แต้ม
+                                </span>
                             </div>
 
                             ${reward.description ? `
@@ -7716,36 +7715,35 @@ class LiffApp {
                             ${reward.terms ? `
                                 <div class="reward-detail-terms">
                                     <h3>เงื่อนไข</h3>
-                                    <p>${reward.terms}</p>
+                                    <ul>
+                                        ${reward.terms.split('\n').map(term => term.trim() ? `<li>${term}</li>` : '').join('')}
+                                    </ul>
                                 </div>
                             ` : ''}
 
                             ${reward.stock && reward.stock > 0 && reward.stock <= 10 ? `
                                 <div class="reward-stock-warning">
                                     <i class="fas fa-exclamation-triangle"></i>
-                                    เหลือเพียง ${reward.stock} รางวัล
+                                    <span>เหลือเพียง ${reward.stock} รางวัล</span>
                                 </div>
                             ` : ''}
-
-                            <div class="reward-detail-balance">
-                                <span>แต้มของคุณ:</span>
-                                <strong class="${canRedeem ? 'text-success' : 'text-danger'}">
-                                    ${this.formatNumber(userPoints)} แต้ม
-                                </strong>
-                            </div>
 
                             ${!canRedeem ? `
                                 <div class="reward-insufficient-notice">
-                                    <i class="fas fa-info-circle"></i>
-                                    ต้องการอีก ${this.formatNumber(reward.points_required - userPoints)} แต้ม
+                                    <div class="notice-header">
+                                        <i class="fas fa-info-circle"></i>
+                                        <strong>แต้มไม่เพียงพอ</strong>
+                                    </div>
+                                    <p class="user-points">แต้มของคุณ: ${this.formatNumber(userPoints)} แต้ม</p>
+                                    <p class="shortage">ต้องการอีก ${this.formatNumber(reward.points_required - userPoints)} แต้ม</p>
                                 </div>
                             ` : ''}
 
-                            <button class="btn ${canRedeem ? 'btn-primary' : 'btn-disabled'} btn-lg btn-block reward-redeem-btn"
+                            <button class="reward-redeem-btn ${canRedeem ? 'primary' : 'disabled'}"
                                     onclick="window.liffApp.confirmRedeem(${reward.id})"
-                                    ${!canRedeem ? 'disabled' : ''}>
+                                    ${!canRedeem || (reward.stock !== null && reward.stock <= 0) ? 'disabled' : ''}>
                                 <i class="fas fa-gift"></i>
-                                ${canRedeem ? 'แลกรางวัลนี้' : 'แต้มไม่เพียงพอ'}
+                                ${canRedeem ? (reward.stock !== null && reward.stock <= 0 ? 'สินค้าหมด' : 'แลกรางวัลนี้') : 'แต้มไม่เพียงพอ'}
                             </button>
                         </div>
                     </div>
