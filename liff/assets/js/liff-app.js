@@ -7651,15 +7651,21 @@ class LiffApp {
                 container.innerHTML = html;
 
                 // Add click event listeners
-                container.querySelectorAll('.reward-card').forEach(card => {
+                console.log('📋 Adding click listeners to', container.querySelectorAll('.reward-card').length, 'reward cards');
+                container.querySelectorAll('.reward-card').forEach((card, index) => {
                     const rewardId = card.getAttribute('data-reward-id');
                     const canRedeem = card.getAttribute('data-can-redeem') === 'true';
+
+                    console.log(`Card ${index}: ID=${rewardId}, canRedeem=${canRedeem}`);
 
                     if (canRedeem) {
                         card.style.cursor = 'pointer';
                         card.addEventListener('click', () => {
+                            console.log('🎁 Reward card clicked! ID:', rewardId);
                             this.showRewardDetail(parseInt(rewardId));
                         });
+                    } else {
+                        card.style.cursor = 'not-allowed';
                     }
                 });
             } else {
