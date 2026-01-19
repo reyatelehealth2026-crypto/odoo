@@ -7907,6 +7907,10 @@ class LiffApp {
             } else {
                 console.error('❌ ERROR: Redemption failed');
                 console.error('Error message:', data.error || data.message);
+                
+                // Show error alert
+                alert('❌ แลกรางวัลไม่สำเร็จ\n\n' + (data.error || data.message || 'ไม่สามารถแลกรางวัลได้'));
+                
                 throw new Error(data.error || data.message || 'ไม่สามารถแลกรางวัลได้');
             }
 
@@ -7915,6 +7919,9 @@ class LiffApp {
             console.error('Error type:', error.constructor.name);
             console.error('Error message:', error.message);
             console.error('Error stack:', error.stack);
+            
+            // Show error alert
+            alert('❌ เกิดข้อผิดพลาด\n\n' + (error.message || 'ไม่สามารถแลกรางวัลได้'));
             
             this.showToast(error.message || 'เกิดข้อผิดพลาด', 'error');
 

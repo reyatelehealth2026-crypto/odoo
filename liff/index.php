@@ -257,7 +257,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
     </script>
 
     <!-- App Scripts -->
-    <?php $v = '20260119'; // Cache bust version - Updated for rewards API fix ?>
+    <?php $v = '20260119b'; // Cache bust version - Added error alerts for debugging ?>
     <script>window.debugLog('Loading scripts...', 'info');</script>
     <script src="<?= $baseUrl ?>/liff/assets/js/store.js?v=<?= $v ?>" onerror="window.debugLog('FAILED: store.js', 'error')"></script>
     <script>window.debugLog('store.js loaded', 'success');</script>
