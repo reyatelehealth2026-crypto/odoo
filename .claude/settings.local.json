@@ -10,7 +10,11 @@
       "Bash(git branch:*)",
       "Bash(git push:*)",
       "Bash(ls:*)",
-      "Bash(du:*)"
+      "Bash(du:*)",
+      "Bash(npm install:*)",
+      "Bash(claude --version:*)",
+      "Bash(claude setup-token)",
+      "Bash(git check-ignore:*)"
     ]
   }
 }
