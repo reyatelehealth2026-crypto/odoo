@@ -604,19 +604,37 @@ async function deleteReward(id, name) {
     const formData = new FormData();
     formData.append('reward_action', 'delete');
     formData.append('id', id);
-    const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
-    else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    try {
+        const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response');
+        }
+        const data = await res.json();
+        if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
+        else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    } catch (error) {
+        console.error('Delete reward error:', error);
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถลบรางวัลได้' });
+    }
 }
 
 async function toggleReward(id) {
     const formData = new FormData();
     formData.append('reward_action', 'toggle');
     formData.append('id', id);
-    const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) { location.reload(); }
+    try {
+        const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response');
+        }
+        const data = await res.json();
+        if (data.success) { location.reload(); }
+    } catch (error) {
+        console.error('Toggle reward error:', error);
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถเปลี่ยนสถานะได้' });
+    }
 }
 
 async function approveRedemption(id) {
@@ -625,10 +643,19 @@ async function approveRedemption(id) {
     const formData = new FormData();
     formData.append('reward_action', 'approve_redemption');
     formData.append('redemption_id', id);
-    const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
-    else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    try {
+        const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response');
+        }
+        const data = await res.json();
+        if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
+        else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    } catch (error) {
+        console.error('Approve redemption error:', error);
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถอนุมัติได้' });
+    }
 }
 
 async function deliverRedemption(id) {
@@ -637,10 +664,19 @@ async function deliverRedemption(id) {
     const formData = new FormData();
     formData.append('reward_action', 'deliver_redemption');
     formData.append('redemption_id', id);
-    const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
-    else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    try {
+        const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response');
+        }
+        const data = await res.json();
+        if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
+        else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    } catch (error) {
+        console.error('Deliver redemption error:', error);
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถบันทึกการส่งมอบได้' });
+    }
 }
 
 async function cancelRedemption(id) {
@@ -649,10 +685,19 @@ async function cancelRedemption(id) {
     const formData = new FormData();
     formData.append('reward_action', 'cancel_redemption');
     formData.append('redemption_id', id);
-    const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
-    else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    try {
+        const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response');
+        }
+        const data = await res.json();
+        if (data.success) { Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
+        else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    } catch (error) {
+        console.error('Cancel redemption error:', error);
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถยกเลิกได้' });
+    }
 }
 
 function exportCSV() {
@@ -665,10 +710,19 @@ function exportCSV() {
 document.getElementById('rewardForm').addEventListener('submit', async function(e) {
     e.preventDefault();
     const formData = new FormData(this);
-    const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
-    const data = await res.json();
-    if (data.success) { closeRewardModal(); Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
-    else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    try {
+        const res = await fetch('membership.php?tab=rewards', { method: 'POST', body: formData });
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+            throw new Error('Server returned non-JSON response');
+        }
+        const data = await res.json();
+        if (data.success) { closeRewardModal(); Swal.fire({ icon: 'success', title: data.message, timer: 1500, showConfirmButton: false }); setTimeout(() => location.reload(), 1500); }
+        else { Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: data.message }); }
+    } catch (error) {
+        console.error('Form submit error:', error);
+        Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: 'ไม่สามารถบันทึกข้อมูลได้' });
+    }
 });
 
 document.getElementById('rewardModal').addEventListener('click', function(e) { if (e.target === this) closeRewardModal(); });
