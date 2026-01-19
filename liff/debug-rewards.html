@@ -373,22 +373,20 @@
                 
                 const response = await fetch(url);
                 console.log('Response status:', response.status);
-                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
                 
-                // Try to parse as JSON first
-                let data;
-                try {
-                    data = await response.json();
-                    console.log('✅ JSON parsed successfully');
-                    console.log('Response data:', data);
-                } catch (jsonError) {
-                    // If JSON parsing fails, get text and show error
-                    console.error('❌ JSON parsing failed:', jsonError.message);
-                    const text = await response.text();
-                    console.error('Response text (first 1000 chars):', text.substring(0, 1000));
-                    console.error('Response text (last 500 chars):', text.substring(Math.max(0, text.length - 500)));
-                    console.error('Total response length:', text.length, 'characters');
-                    throw new Error('Failed to parse JSON response. Check console for details.');
+                // Parse JSON directly
+                const data = await response.json();
+                console.log('✅ JSON parsed successfully');
+                
+                // Log summary instead of full data
+                if (data.rewards) {
+                    console.log(`📦 Received ${data.rewards.length} rewards`);
+                } else {
+                    console.log('Response summary:', {
+                        success: data.success,
+                        error: data.error,
+                        keys: Object.keys(data)
+                    });
                 }
                 
                 // If response has error details, log them
