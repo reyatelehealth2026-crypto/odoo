@@ -196,11 +196,11 @@ class LoyaltyPoints
         $stmt = $this->db->prepare("UPDATE users SET total_points = total_points + ?, available_points = available_points + ? WHERE id = ?");
         $stmt->execute([$points, $points, $userId]);
 
-        // Convert referenceId to string to avoid SQL type errors
-        $referenceIdStr = $referenceId !== null ? (string)$referenceId : null;
+        // Keep referenceId as integer or null (don't convert to string for INT column)
+        $referenceIdValue = ($referenceId !== null && $referenceId !== '') ? (int)$referenceId : null;
         
         $stmt = $this->db->prepare("INSERT INTO points_transactions (user_id, line_account_id, type, points, balance_after, reference_type, reference_id, description, expires_at) VALUES (?, ?, 'earn', ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$userId, $this->lineAccountId, $points, $newBalance, $referenceType, $referenceIdStr, $description ?? "Earned {$points} points", $expiresAt]);
+        $stmt->execute([$userId, $this->lineAccountId, $points, $newBalance, $referenceType, $referenceIdValue, $description ?? "Earned {$points} points", $expiresAt]);
         return true;
     }
 
@@ -214,11 +214,11 @@ class LoyaltyPoints
         $stmt = $this->db->prepare("UPDATE users SET available_points = available_points - ?, used_points = used_points + ? WHERE id = ?");
         $stmt->execute([$points, $points, $userId]);
 
-        // Convert referenceId to string to avoid SQL type errors
-        $referenceIdStr = $referenceId !== null ? (string)$referenceId : null;
+        // Keep referenceId as integer or null (don't convert to string for INT column)
+        $referenceIdValue = ($referenceId !== null && $referenceId !== '') ? (int)$referenceId : null;
         
         $stmt = $this->db->prepare("INSERT INTO points_transactions (user_id, line_account_id, type, points, balance_after, reference_type, reference_id, description) VALUES (?, ?, 'redeem', ?, ?, ?, ?, ?)");
-        $stmt->execute([$userId, $this->lineAccountId, -$points, $newBalance, $referenceType, $referenceIdStr, $description ?? "Used {$points} points"]);
+        $stmt->execute([$userId, $this->lineAccountId, -$points, $newBalance, $referenceType, $referenceIdValue, $description ?? "Used {$points} points"]);
         return true;
     }
 
