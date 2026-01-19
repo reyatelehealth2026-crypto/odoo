@@ -184,6 +184,7 @@
             <h2>🧪 Test Actions</h2>
             <button class="btn btn-primary" onclick="testLoadRewards()">Test Load Rewards</button>
             <button class="btn btn-success" onclick="testRedeemReward()">Test Redeem (First Reward)</button>
+            <button class="btn btn-secondary" onclick="addTestPoints(1000)">Add 1000 Test Points</button>
             <button class="btn btn-danger" onclick="testAPIError()">Test API Error</button>
             <button class="btn btn-secondary" onclick="testNetworkError()">Test Network Error</button>
         </div>
@@ -201,11 +202,11 @@
 
     <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
     <script>
-        // Configuration
+        // Configuration - will be loaded from API
         const CONFIG = {
             BASE_URL: window.location.origin,
-            LIFF_ID: '2006630088-Yx5Aw0Aw', // Replace with your LIFF ID
-            ACCOUNT_ID: 1 // Replace with your account ID
+            LIFF_ID: null, // Will be loaded from API
+            ACCOUNT_ID: 1 // Default account ID
         };
         
         let profile = null;
@@ -260,25 +261,39 @@
             console.log('🚀 Initializing debug page...');
             
             try {
-                // Initialize LIFF
-                console.log('Initializing LIFF with ID:', CONFIG.LIFF_ID);
-                await liff.init({ liffId: CONFIG.LIFF_ID });
-                console.log('✅ LIFF initialized successfully');
+                // Load configuration from API
+                console.log('Loading configuration...');
+                const configResponse = await fetch(`${CONFIG.BASE_URL}/api/debug-rewards.php?action=get_config&line_account_id=${CONFIG.ACCOUNT_ID}`);
+                const configData = await configResponse.json();
                 
-                // Check login status
-                if (liff.isLoggedIn()) {
-                    profile = await liff.getProfile();
-                    console.log('✅ User logged in:', profile.displayName);
-                    updateSystemStatus(true);
-                } else {
-                    console.warn('⚠️ User not logged in');
-                    updateSystemStatus(false);
-                    
-                    if (liff.isInClient()) {
-                        console.log('In LINE app, triggering login...');
-                        liff.login();
-                    }
+                if (configData.success && configData.config) {
+                    CONFIG.LIFF_ID = configData.config.liff_id;
+                    CONFIG.ACCOUNT_ID = configData.config.account_id;
+                    console.log('✅ Configuration loaded:', configData.config);
                 }
+                
+                // Try to initialize LIFF if ID is available
+                if (CONFIG.LIFF_ID) {
+                    console.log('Initializing LIFF with ID:', CONFIG.LIFF_ID);
+                    await liff.init({ liffId: CONFIG.LIFF_ID });
+                    console.log('✅ LIFF initialized successfully');
+                    
+                    // Check login status
+                    if (liff.isLoggedIn()) {
+                        profile = await liff.getProfile();
+                        console.log('✅ User logged in:', profile.displayName);
+                        updateSystemStatus(true);
+                    } else {
+                        console.warn('⚠️ User not logged in');
+                        updateSystemStatus(false);
+                    }
+                } else {
+                    console.warn('⚠️ No LIFF ID available, running in test mode');
+                    updateSystemStatus(false, 'No LIFF ID configured - using test mode');
+                }
+                
+                // Load test user
+                await loadTestUser();
                 
                 // Load rewards
                 await loadRewards();
@@ -286,6 +301,9 @@
             } catch (error) {
                 console.error('❌ Initialization failed:', error);
                 updateSystemStatus(false, error.message);
+                
+                // Try to load rewards anyway
+                await loadRewards();
             }
         }
         
@@ -319,12 +337,38 @@
             `;
         }
         
+        async function loadTestUser() {
+            console.log('📥 Loading test user...');
+            
+            try {
+                const url = `${CONFIG.BASE_URL}/api/debug-rewards.php?action=test_user&line_account_id=${CONFIG.ACCOUNT_ID}`;
+                console.log('Fetching from:', url);
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                if (data.success) {
+                    profile = {
+                        userId: data.user.line_user_id,
+                        displayName: data.user.display_name,
+                        pictureUrl: 'https://via.placeholder.com/40'
+                    };
+                    console.log('✅ Test user loaded:', profile);
+                    updateSystemStatus(true);
+                } else {
+                    console.error('❌ Failed to load test user');
+                }
+            } catch (error) {
+                console.error('❌ Error loading test user:', error);
+            }
+        }
+        
         async function loadRewards() {
             console.log('📥 Loading rewards...');
             const rewardsDiv = document.getElementById('rewardsList');
             
             try {
-                const url = `${CONFIG.BASE_URL}/api/points-history.php?action=rewards&line_account_id=${CONFIG.ACCOUNT_ID}`;
+                const url = `${CONFIG.BASE_URL}/api/debug-rewards.php?action=rewards&line_account_id=${CONFIG.ACCOUNT_ID}`;
                 console.log('Fetching from:', url);
                 
                 const response = await fetch(url);
@@ -397,26 +441,24 @@
             console.log(`🧪 Testing redeem reward ID: ${rewardId}`);
             
             if (!profile) {
-                console.error('❌ Not logged in');
-                alert('Please login first');
+                console.error('❌ No profile available');
+                alert('Please wait for initialization to complete');
                 return;
             }
             
             try {
                 const formData = new FormData();
                 formData.append('action', 'redeem');
-                formData.append('line_user_id', profile.userId);
                 formData.append('line_account_id', CONFIG.ACCOUNT_ID);
                 formData.append('reward_id', rewardId);
                 
                 console.log('Sending request with data:', {
                     action: 'redeem',
-                    line_user_id: profile.userId,
                     line_account_id: CONFIG.ACCOUNT_ID,
                     reward_id: rewardId
                 });
                 
-                const url = `${CONFIG.BASE_URL}/api/points-history.php`;
+                const url = `${CONFIG.BASE_URL}/api/debug-rewards.php`;
                 console.log('POST to:', url);
                 
                 const response = await fetch(url, {
@@ -441,6 +483,9 @@
                     console.log('✅ Redemption successful!');
                     console.log('Redemption code:', data.redemption_code);
                     alert(`Success! Redemption code: ${data.redemption_code}`);
+                    
+                    // Reload rewards
+                    await loadRewards();
                 } else {
                     console.error('❌ Redemption failed:', data.error || data.message);
                     alert(`Failed: ${data.error || data.message}`);
@@ -473,6 +518,36 @@
                 console.log('Response:', data);
             } catch (error) {
                 console.error('Network error caught:', error);
+            }
+        }
+        
+        async function addTestPoints(points) {
+            console.log(`🧪 Adding ${points} test points...`);
+            
+            try {
+                const formData = new FormData();
+                formData.append('action', 'add_points');
+                formData.append('line_account_id', CONFIG.ACCOUNT_ID);
+                formData.append('points', points);
+                
+                const response = await fetch(`${CONFIG.BASE_URL}/api/debug-rewards.php`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                console.log('Response:', data);
+                
+                if (data.success) {
+                    console.log('✅ Points added successfully');
+                    alert(`เพิ่ม ${points} แต้มสำเร็จ! คะแนนปัจจุบัน: ${data.member?.points || 0}`);
+                } else {
+                    console.error('❌ Failed to add points');
+                    alert('Failed to add points');
+                }
+            } catch (error) {
+                console.error('❌ Error adding points:', error);
+                alert(`Error: ${error.message}`);
             }
         }
         
