@@ -7777,13 +7777,15 @@ class LiffApp {
     }
 
     async confirmRedeem(rewardId) {
+        console.log('=== REDEEM REWARD START ===');
         console.log('confirmRedeem called with rewardId:', rewardId);
         
         const profile = window.store?.get('profile');
         console.log('Profile:', profile);
         
         if (!profile?.userId) {
-            console.error('No userId in profile');
+            console.error('❌ ERROR: No userId in profile');
+            console.error('Profile object:', profile);
             this.showToast('กรุณาเข้าสู่ระบบ', 'error');
             return;
         }
@@ -7809,42 +7811,57 @@ class LiffApp {
             formData.append('line_account_id', this.config.ACCOUNT_ID);
             formData.append('reward_id', rewardId);
             
-            console.log('Sending request to:', `${this.config.BASE_URL}/api/points-history.php`);
-            console.log('FormData:', {
+            const requestData = {
                 action: 'redeem',
                 line_user_id: profile.userId,
                 line_account_id: this.config.ACCOUNT_ID,
                 reward_id: rewardId
-            });
+            };
+            
+            console.log('📤 Sending request to:', `${this.config.BASE_URL}/api/points-history.php`);
+            console.log('📤 Request data:', requestData);
 
             const response = await fetch(`${this.config.BASE_URL}/api/points-history.php`, {
                 method: 'POST',
                 body: formData
             });
 
-            console.log('Response status:', response.status);
-            console.log('Response headers:', response.headers.get('content-type'));
+            console.log('📥 Response status:', response.status);
+            console.log('📥 Response status text:', response.statusText);
+            console.log('📥 Response headers:', Object.fromEntries(response.headers.entries()));
             
             // Check if response is JSON
             const contentType = response.headers.get('content-type');
+            console.log('📥 Content-Type:', contentType);
+            
             if (!contentType || !contentType.includes('application/json')) {
                 const text = await response.text();
-                console.error('Non-JSON response:', text.substring(0, 500));
-                throw new Error('API ส่งข้อมูลผิดพลาด กรุณาลองใหม่อีกครั้ง');
+                console.error('❌ ERROR: Non-JSON response received');
+                console.error('Response text (first 1000 chars):', text.substring(0, 1000));
+                console.error('Response text (full):', text);
+                throw new Error('API ส่งข้อมูลผิดพลาด (ไม่ใช่ JSON) กรุณาลองใหม่อีกครั้ง');
             }
             
             const data = await response.json();
-            console.log('Response data:', data);
+            console.log('📥 Response data:', data);
+            console.log('📥 Response success:', data.success);
+            console.log('📥 Response message:', data.message);
+            console.log('📥 Response error:', data.error);
 
             if (data.success) {
+                console.log('✅ SUCCESS: Redemption successful');
+                console.log('Redemption code:', data.redemption_code);
+                
                 // Update member points
                 const member = window.store?.get('member');
                 if (member) {
                     // Deduct points locally
                     const reward = data.reward || {};
                     const pointsUsed = reward.points_required || 0;
+                    console.log('Updating member points. Current:', member.points, 'Used:', pointsUsed);
                     member.points = Math.max(0, (member.points || 0) - pointsUsed);
                     window.store?.set('member', member);
+                    console.log('New points:', member.points);
                 }
 
                 // Close modal
@@ -7884,13 +7901,21 @@ class LiffApp {
 
                 // Reload rewards list after closing success modal
                 setTimeout(() => this.loadRewards(), 1000);
+                
+                console.log('=== REDEEM REWARD SUCCESS ===');
 
             } else {
+                console.error('❌ ERROR: Redemption failed');
+                console.error('Error message:', data.error || data.message);
                 throw new Error(data.error || data.message || 'ไม่สามารถแลกรางวัลได้');
             }
 
         } catch (error) {
-            console.error('Error redeeming reward:', error);
+            console.error('❌ EXCEPTION: Error redeeming reward');
+            console.error('Error type:', error.constructor.name);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            
             this.showToast(error.message || 'เกิดข้อผิดพลาด', 'error');
 
             // Restore button
@@ -7898,6 +7923,8 @@ class LiffApp {
                 btn.disabled = false;
                 btn.innerHTML = '<i class="fas fa-gift"></i> แลกรางวัลนี้';
             }
+            
+            console.log('=== REDEEM REWARD FAILED ===');
         }
     }
 

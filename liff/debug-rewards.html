@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Rewards - LINE Telepharmacy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 16px;
+        }
+        
+        .debug-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .debug-header {
+            background: #fff;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .debug-header h1 {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        
+        .debug-section {
+            background: #fff;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .debug-section h2 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #333;
+            border-bottom: 2px solid #6366f1;
+            padding-bottom: 8px;
+        }
+        
+        .log-entry {
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        
+        .log-entry.info {
+            background: #e0f2fe;
+            border-left: 4px solid #0284c7;
+        }
+        
+        .log-entry.success {
+            background: #dcfce7;
+            border-left: 4px solid #16a34a;
+        }
+        
+        .log-entry.error {
+            background: #fee2e2;
+            border-left: 4px solid #dc2626;
+        }
+        
+        .log-entry.warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+        }
+        
+        .log-timestamp {
+            color: #666;
+            font-size: 10px;
+            margin-bottom: 4px;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-right: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .btn-primary {
+            background: #6366f1;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #16a34a;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #dc2626;
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .reward-card {
+            background: #f9fafb;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        
+        .reward-card h3 {
+            font-size: 14px;
+            margin-bottom: 4px;
+        }
+        
+        .reward-card p {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        
+        .status-badge.active {
+            background: #dcfce7;
+            color: #16a34a;
+        }
+        
+        .status-badge.inactive {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+        
+        #clearLogs {
+            float: right;
+        }
+    </style>
+</head>
+<body>
+    <div class="debug-container">
+        <div class="debug-header">
+            <h1>🔍 Debug Rewards System</h1>
+            <p>ตรวจสอบ errors และ logs ทั้งหมดเมื่อคลิกแลกรางวัล</p>
+        </div>
+        
+        <div class="debug-section">
+            <h2>📊 System Status</h2>
+            <div id="systemStatus">
+                <p>กำลังตรวจสอบ...</p>
+            </div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>🎁 Available Rewards</h2>
+            <div id="rewardsList">
+                <p>กำลังโหลด...</p>
+            </div>
+        </div>
+        
+        <div class="debug-section">
+            <h2>🧪 Test Actions</h2>
+            <button class="btn btn-primary" onclick="testLoadRewards()">Test Load Rewards</button>
+            <button class="btn btn-success" onclick="testRedeemReward()">Test Redeem (First Reward)</button>
+            <button class="btn btn-danger" onclick="testAPIError()">Test API Error</button>
+            <button class="btn btn-secondary" onclick="testNetworkError()">Test Network Error</button>
+        </div>
+        
+        <div class="debug-section">
+            <h2>
+                📝 Console Logs
+                <button class="btn btn-secondary" id="clearLogs" onclick="clearLogs()">Clear Logs</button>
+            </h2>
+            <div id="consoleLogs">
+                <p class="log-entry info">Logs จะแสดงที่นี่...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <script>
+        // Configuration
+        const CONFIG = {
+            BASE_URL: window.location.origin,
+            LIFF_ID: '2006630088-Yx5Aw0Aw', // Replace with your LIFF ID
+            ACCOUNT_ID: 1 // Replace with your account ID
+        };
+        
+        let profile = null;
+        let rewards = [];
+        
+        // Enhanced console logging
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+        
+        function addLog(message, type = 'info') {
+            const logsContainer = document.getElementById('consoleLogs');
+            const timestamp = new Date().toLocaleTimeString('th-TH');
+            
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `
+                <div class="log-timestamp">${timestamp}</div>
+                <div>${typeof message === 'object' ? JSON.stringify(message, null, 2) : message}</div>
+            `;
+            
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addLog(args.join(' '), 'info');
+        };
+        
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addLog(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addLog(args.join(' '), 'warning');
+        };
+        
+        // Catch all unhandled errors
+        window.addEventListener('error', (event) => {
+            console.error(`Unhandled Error: ${event.message} at ${event.filename}:${event.lineno}:${event.colno}`);
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error(`Unhandled Promise Rejection: ${event.reason}`);
+        });
+        
+        // Initialize
+        async function init() {
+            console.log('🚀 Initializing debug page...');
+            
+            try {
+                // Initialize LIFF
+                console.log('Initializing LIFF with ID:', CONFIG.LIFF_ID);
+                await liff.init({ liffId: CONFIG.LIFF_ID });
+                console.log('✅ LIFF initialized successfully');
+                
+                // Check login status
+                if (liff.isLoggedIn()) {
+                    profile = await liff.getProfile();
+                    console.log('✅ User logged in:', profile.displayName);
+                    updateSystemStatus(true);
+                } else {
+                    console.warn('⚠️ User not logged in');
+                    updateSystemStatus(false);
+                    
+                    if (liff.isInClient()) {
+                        console.log('In LINE app, triggering login...');
+                        liff.login();
+                    }
+                }
+                
+                // Load rewards
+                await loadRewards();
+                
+            } catch (error) {
+                console.error('❌ Initialization failed:', error);
+                updateSystemStatus(false, error.message);
+            }
+        }
+        
+        function updateSystemStatus(isLoggedIn, errorMsg = null) {
+            const statusDiv = document.getElementById('systemStatus');
+            
+            if (errorMsg) {
+                statusDiv.innerHTML = `
+                    <div class="log-entry error">
+                        <strong>❌ Error:</strong> ${errorMsg}
+                    </div>
+                `;
+                return;
+            }
+            
+            statusDiv.innerHTML = `
+                <div class="log-entry ${isLoggedIn ? 'success' : 'warning'}">
+                    <strong>Login Status:</strong> ${isLoggedIn ? '✅ Logged In' : '⚠️ Not Logged In'}
+                </div>
+                ${profile ? `
+                    <div class="log-entry info">
+                        <strong>User:</strong> ${profile.displayName}<br>
+                        <strong>User ID:</strong> ${profile.userId}
+                    </div>
+                ` : ''}
+                <div class="log-entry info">
+                    <strong>Base URL:</strong> ${CONFIG.BASE_URL}<br>
+                    <strong>Account ID:</strong> ${CONFIG.ACCOUNT_ID}<br>
+                    <strong>LIFF ID:</strong> ${CONFIG.LIFF_ID}
+                </div>
+            `;
+        }
+        
+        async function loadRewards() {
+            console.log('📥 Loading rewards...');
+            const rewardsDiv = document.getElementById('rewardsList');
+            
+            try {
+                const url = `${CONFIG.BASE_URL}/api/points-history.php?action=rewards&line_account_id=${CONFIG.ACCOUNT_ID}`;
+                console.log('Fetching from:', url);
+                
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response received:', text.substring(0, 500));
+                    throw new Error('API returned non-JSON response');
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.success && data.rewards) {
+                    rewards = data.rewards;
+                    console.log(`✅ Loaded ${rewards.length} rewards`);
+                    
+                    let html = '';
+                    rewards.forEach((reward, index) => {
+                        html += `
+                            <div class="reward-card">
+                                <h3>
+                                    ${reward.name}
+                                    <span class="status-badge ${reward.is_active ? 'active' : 'inactive'}">
+                                        ${reward.is_active ? 'Active' : 'Inactive'}
+                                    </span>
+                                </h3>
+                                <p>
+                                    <strong>ID:</strong> ${reward.id} | 
+                                    <strong>Points:</strong> ${reward.points_required} | 
+                                    <strong>Stock:</strong> ${reward.stock === null || reward.stock === -1 ? 'Unlimited' : reward.stock}
+                                </p>
+                                <button class="btn btn-success" onclick="testRedeemSpecific(${reward.id})">
+                                    Test Redeem This
+                                </button>
+                            </div>
+                        `;
+                    });
+                    
+                    rewardsDiv.innerHTML = html || '<p>No rewards found</p>';
+                } else {
+                    console.warn('⚠️ No rewards in response');
+                    rewardsDiv.innerHTML = '<p class="log-entry warning">No rewards available</p>';
+                }
+                
+            } catch (error) {
+                console.error('❌ Error loading rewards:', error);
+                rewardsDiv.innerHTML = `<p class="log-entry error">Error: ${error.message}</p>`;
+            }
+        }
+        
+        async function testLoadRewards() {
+            console.log('🧪 Testing load rewards...');
+            await loadRewards();
+        }
+        
+        async function testRedeemReward() {
+            if (rewards.length === 0) {
+                console.error('❌ No rewards available to test');
+                return;
+            }
+            
+            await testRedeemSpecific(rewards[0].id);
+        }
+        
+        async function testRedeemSpecific(rewardId) {
+            console.log(`🧪 Testing redeem reward ID: ${rewardId}`);
+            
+            if (!profile) {
+                console.error('❌ Not logged in');
+                alert('Please login first');
+                return;
+            }
+            
+            try {
+                const formData = new FormData();
+                formData.append('action', 'redeem');
+                formData.append('line_user_id', profile.userId);
+                formData.append('line_account_id', CONFIG.ACCOUNT_ID);
+                formData.append('reward_id', rewardId);
+                
+                console.log('Sending request with data:', {
+                    action: 'redeem',
+                    line_user_id: profile.userId,
+                    line_account_id: CONFIG.ACCOUNT_ID,
+                    reward_id: rewardId
+                });
+                
+                const url = `${CONFIG.BASE_URL}/api/points-history.php`;
+                console.log('POST to:', url);
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                console.log('Response status:', response.status);
+                console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response:', text.substring(0, 500));
+                    throw new Error('API returned non-JSON response');
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.success) {
+                    console.log('✅ Redemption successful!');
+                    console.log('Redemption code:', data.redemption_code);
+                    alert(`Success! Redemption code: ${data.redemption_code}`);
+                } else {
+                    console.error('❌ Redemption failed:', data.error || data.message);
+                    alert(`Failed: ${data.error || data.message}`);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error during redemption:', error);
+                alert(`Error: ${error.message}`);
+            }
+        }
+        
+        async function testAPIError() {
+            console.log('🧪 Testing API error handling...');
+            
+            try {
+                const response = await fetch(`${CONFIG.BASE_URL}/api/points-history.php?action=invalid_action`);
+                const data = await response.json();
+                console.log('API error response:', data);
+            } catch (error) {
+                console.error('Caught error:', error);
+            }
+        }
+        
+        async function testNetworkError() {
+            console.log('🧪 Testing network error handling...');
+            
+            try {
+                const response = await fetch('https://invalid-domain-that-does-not-exist.com/api');
+                const data = await response.json();
+                console.log('Response:', data);
+            } catch (error) {
+                console.error('Network error caught:', error);
+            }
+        }
+        
+        function clearLogs() {
+            document.getElementById('consoleLogs').innerHTML = '<p class="log-entry info">Logs cleared</p>';
+            console.log('🗑️ Logs cleared');
+        }
+        
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
