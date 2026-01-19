@@ -48,6 +48,48 @@ class LoyaltyPoints
         $stmt->execute([$userId]);
         return $stmt->fetch(PDO::FETCH_ASSOC) ?: ['total_points' => 0, 'available_points' => 0, 'used_points' => 0];
     }
+    
+    /**
+     * Get member information by user ID
+     * @param int $userId User ID
+     * @return array|null Member information
+     */
+    public function getMemberByUserId($userId)
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT 
+                    u.id,
+                    u.display_name,
+                    u.picture_url,
+                    u.total_points,
+                    u.available_points,
+                    u.used_points,
+                    u.line_user_id
+                FROM users u
+                WHERE u.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$userId]);
+            $member = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$member) {
+                return null;
+            }
+            
+            // Get tier information
+            $tier = $this->getUserTier($userId);
+            $member['tier'] = $tier;
+            
+            // Ensure points fields exist
+            $member['points'] = $member['available_points'] ?? 0;
+            
+            return $member;
+        } catch (PDOException $e) {
+            error_log("Error getting member by user ID: " . $e->getMessage());
+            return null;
+        }
+    }
 
     /**
      * Get user tier information
@@ -213,6 +255,15 @@ class LoyaltyPoints
         } catch (PDOException $e) {
             return [];
         }
+    }
+    
+    /**
+     * Get active rewards (alias for getRewards with activeOnly=true)
+     * @return array Active rewards
+     */
+    public function getActiveRewards()
+    {
+        return $this->getRewards(true);
     }
 
     public function getReward($rewardId)

@@ -379,11 +379,23 @@
                 if (!contentType || !contentType.includes('application/json')) {
                     const text = await response.text();
                     console.error('Non-JSON response received:', text.substring(0, 500));
-                    throw new Error('API returned non-JSON response');
+                    console.error('Full response:', text);
+                    throw new Error('API returned non-JSON response. Check console for details.');
                 }
                 
                 const data = await response.json();
                 console.log('Response data:', data);
+                
+                // If response has error details, log them
+                if (!data.success && data.error) {
+                    console.error('API Error:', data.error);
+                    if (data.file) console.error('File:', data.file);
+                    if (data.line) console.error('Line:', data.line);
+                    if (data.trace) {
+                        console.error('Stack trace:');
+                        data.trace.forEach(line => console.error('  ' + line));
+                    }
+                }
                 
                 if (data.success && data.rewards) {
                     rewards = data.rewards;

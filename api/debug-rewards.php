@@ -4,20 +4,79 @@
  * This endpoint allows testing rewards functionality without LIFF login
  */
 
+// Enable error reporting for debugging
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('log_errors', 1);
+ini_set('error_log', __DIR__ . '/../debug_rewards_errors.log');
+
+// Set headers
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST');
 header('Access-Control-Allow-Headers: Content-Type');
 
-require_once '../config/config.php';
-require_once '../config/database.php';
-require_once '../classes/LoyaltyPoints.php';
+// Handle preflight requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
 
-$db = Database::getInstance()->getConnection();
+// Log all requests
+error_log("=== Debug Rewards API Request ===");
+error_log("Method: " . $_SERVER['REQUEST_METHOD']);
+error_log("GET: " . json_encode($_GET));
+error_log("POST: " . json_encode($_POST));
+
+try {
+    // Include required files
+    if (!file_exists('../config/config.php')) {
+        throw new Exception('Config file not found');
+    }
+    require_once '../config/config.php';
+    
+    if (!file_exists('../config/database.php')) {
+        throw new Exception('Database config file not found');
+    }
+    require_once '../config/database.php';
+    
+    if (!file_exists('../classes/LoyaltyPoints.php')) {
+        throw new Exception('LoyaltyPoints class file not found');
+    }
+    require_once '../classes/LoyaltyPoints.php';
+    
+    // Get database connection
+    $db = Database::getInstance()->getConnection();
+    
+    if (!$db) {
+        throw new Exception('Failed to get database connection');
+    }
+    
+    error_log("✅ All files loaded successfully");
+    
+} catch (Exception $e) {
+    error_log("❌ Fatal error during initialization: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
+    
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Initialization failed: ' . $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine()
+    ]);
+    exit;
+}
 
 try {
     $action = $_GET['action'] ?? $_POST['action'] ?? '';
     $lineAccountId = (int)($_GET['line_account_id'] ?? $_POST['line_account_id'] ?? 1);
+    
+    error_log("Action: $action, Line Account ID: $lineAccountId");
+    
+    if (empty($action)) {
+        throw new Exception('No action specified');
+    }
     
     switch ($action) {
         case 'get_config':
@@ -45,12 +104,23 @@ try {
             
         case 'rewards':
             // Get all active rewards (no authentication required for debug)
+            error_log("Getting rewards for account ID: $lineAccountId");
+            
             $loyalty = new LoyaltyPoints($db, $lineAccountId);
-            $rewards = $loyalty->getActiveRewards();
+            
+            // Check if getActiveRewards method exists, otherwise use getRewards
+            if (method_exists($loyalty, 'getActiveRewards')) {
+                $rewards = $loyalty->getActiveRewards();
+            } else {
+                $rewards = $loyalty->getRewards(true); // true = active only
+            }
+            
+            error_log("Found " . count($rewards) . " rewards");
             
             echo json_encode([
                 'success' => true,
-                'rewards' => $rewards
+                'rewards' => $rewards,
+                'count' => count($rewards)
             ]);
             break;
             
@@ -168,6 +238,27 @@ try {
     }
     
 } catch (Exception $e) {
-    error_log("Debug Rewards API error: " . $e->getMessage());
-    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    error_log("❌ Debug Rewards API error: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
+    
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => explode("\n", $e->getTraceAsString())
+    ]);
+} catch (Error $e) {
+    error_log("❌ Debug Rewards API fatal error: " . $e->getMessage());
+    error_log("Stack trace: " . $e->getTraceAsString());
+    
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Fatal error: ' . $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => explode("\n", $e->getTraceAsString())
+    ]);
 }
