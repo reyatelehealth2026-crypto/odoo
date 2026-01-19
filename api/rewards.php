@@ -61,14 +61,16 @@ function handleGetRewards($db) {
         $loyalty = new LoyaltyPoints($db, $lineAccountId);
         $rewards = $loyalty->getActiveRewards();
 
-        // If no rewards found, try with default account
-        if (empty($rewards) && $lineAccountId != 1) {
+        // If no rewards found, try with default account (fallback)
+        if (empty($rewards)) {
             // Get default account
             $stmt = $db->prepare("SELECT id FROM line_accounts WHERE is_default = 1 LIMIT 1");
             $stmt->execute();
             $defaultAccount = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            if ($defaultAccount) {
+            // Only use default account if it's different from current account
+            if ($defaultAccount && $defaultAccount['id'] != $lineAccountId) {
+                error_log("Rewards API: No rewards for account {$lineAccountId}, falling back to default account {$defaultAccount['id']}");
                 $loyalty = new LoyaltyPoints($db, $defaultAccount['id']);
                 $rewards = $loyalty->getActiveRewards();
             }
