@@ -8684,8 +8684,14 @@ class ConversationLoader {
     async autoLoadAll() {
         console.log('[Progressive Load] Starting auto-load of all conversations...');
 
-        while (this.hasMore && !this.isLoading) {
-            await this.loadMore();
+        while (this.hasMore) {
+            // Wait if currently loading
+            if (this.isLoading) {
+                await new Promise(resolve => setTimeout(resolve, 50));
+                continue;
+            }
+
+            await this.loadMoreForAutoLoad();
 
             // Small delay between batches to keep UI responsive
             if (this.hasMore) {
@@ -8697,6 +8703,48 @@ class ConversationLoader {
 
         // Notify that all conversations are loaded
         this.onAllLoaded();
+    }
+
+    /**
+     * Load more conversations (for auto-load, bypasses isLoading check)
+     */
+    async loadMoreForAutoLoad() {
+        if (!this.hasMore) return;
+
+        this.isLoading = true;
+        this.showLoadingSpinner();
+
+        try {
+            const response = await fetch(`/api/inbox-v2.php?action=getConversations&cursor=${encodeURIComponent(this.cursor || '')}&limit=50`);
+            const data = await response.json();
+
+            if (data.success && data.data && data.data.conversations) {
+                const conversations = data.data.conversations;
+
+                if (conversations.length > 0) {
+                    this.appendConversations(conversations);
+                    this.cursor = data.data.next_cursor;
+                    this.hasMore = data.data.has_more;
+                    this.loadedCount += conversations.length;
+
+                    // Update sentinel
+                    this.updateSentinel();
+
+                    console.log(`[Progressive Load] Auto-loaded ${conversations.length} conversations (total: ${this.loadedCount})`);
+                } else {
+                    this.hasMore = false;
+                }
+            } else {
+                console.error('[Progressive Load] Invalid response:', data);
+                this.hasMore = false;
+            }
+        } catch (error) {
+            console.error('[Progressive Load] Error loading conversations:', error);
+            this.hasMore = false;
+        } finally {
+            this.isLoading = false;
+            this.hideLoadingSpinner();
+        }
     }
 
     /**
