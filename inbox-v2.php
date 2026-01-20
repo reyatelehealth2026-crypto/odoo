@@ -1682,12 +1682,13 @@ function formatThaiDateTime($datetime) {
                     $chatStatus = $user['chat_status'] ?? '';
                     $statusBadge = $chatStatusBadges[$chatStatus] ?? null;
                 ?>
-                <a href="?user=<?= $user['id'] ?>" class="user-item block p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 <?= ($selectedUser && $selectedUser['id'] == $user['id']) ? 'active' : '' ?> <?= $hasSlaWarning ? 'sla-warning' : '' ?>" 
+                <a href="?user=<?= $user['id'] ?>" class="user-item block p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50 <?= ($selectedUser && $selectedUser['id'] == $user['id']) ? 'active' : '' ?> <?= $hasSlaWarning ? 'sla-warning' : '' ?>"
                    data-user-id="<?= $user['id'] ?>"
                    data-name="<?= strtolower($user['display_name']) ?>"
                    data-chat-status="<?= htmlspecialchars($chatStatus) ?>"
                    data-tags="<?= implode(',', $userTagIds) ?>"
                    data-assigned="<?= count($assignees) > 0 ? '1' : '0' ?>"
+                   data-assignees="<?= implode(',', array_column($assignees, 'admin_id')) ?>"
                    tabindex="0">
                     <div class="flex items-center gap-3">
                         <div class="relative flex-shrink-0">
@@ -5911,13 +5912,21 @@ function applyFilters() {
         // Filter by assignee
         if (assignee) {
             const userId = item.dataset.userId;
+            const isAssigned = item.dataset.assigned === '1';
+            const itemAssignees = item.dataset.assignees ? item.dataset.assignees.split(',') : [];
+
             if (assignee === 'me') {
-                show = show && checkIfAssignedToMe(userId, currentAdminId);
+                // Check if assigned to current admin
+                const assignedToMe = itemAssignees.includes(String(currentAdminId)) ||
+                                     checkIfAssignedToMe(userId, currentAdminId);
+                show = show && assignedToMe;
             } else if (assignee === 'unassigned') {
-                const isAssigned = item.dataset.assigned === '1';
                 show = show && !isAssigned;
             } else {
-                show = show && checkIfAssignedToAdmin(userId, assignee);
+                // Check if assigned to specific admin
+                const assignedToAdmin = itemAssignees.includes(String(assignee)) ||
+                                        checkIfAssignedToAdmin(userId, assignee);
+                show = show && assignedToAdmin;
             }
         }
 
@@ -8919,6 +8928,9 @@ class ConversationLoader {
         const tags = conv.tags || [];
         const tagIds = tags.map(t => t.id || t).join(',');
 
+        // Extract assignee IDs
+        const assigneeIds = assignees.map(a => typeof a === 'object' ? (a.admin_id || a) : a);
+
         const element = document.createElement('a');
         element.href = `?user=${userId}`;
         element.className = 'user-item block p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50';
@@ -8927,11 +8939,12 @@ class ConversationLoader {
         element.dataset.chatStatus = chatStatus;
         element.dataset.tags = tagIds;
         element.dataset.assigned = assignees.length > 0 ? '1' : '0';
+        element.dataset.assignees = assigneeIds.join(',');
         element.tabIndex = 0;
 
-        // Store assignees for filter
+        // Store assignees for filter (legacy support)
         if (!window.conversationAssignees) window.conversationAssignees = {};
-        window.conversationAssignees[userId] = assignees.map(a => typeof a === 'object' ? a.admin_id || a : a);
+        window.conversationAssignees[userId] = assigneeIds;
 
         // Chat status badge HTML
         const statusBadges = {
