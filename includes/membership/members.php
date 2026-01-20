@@ -220,9 +220,12 @@ try {
                         </td>
                         <td class="px-4 py-3">
                             <?php
+                            // Calculate tier from points using TierService (not stored member_tier)
+                            $memberPoints = $hasPoints ? (int)($member['points'] ?? 0) : 0;
+                            $calculatedTier = $tierService->calculateTier($memberPoints);
+                            $t = strtolower($calculatedTier['tier_code']);
                             $tierIcons = ['bronze' => '🥉', 'silver' => '🥈', 'gold' => '🥇', 'platinum' => '💎', 'vip' => '👑'];
                             $tierColors = ['bronze' => 'bg-amber-100 text-amber-700', 'silver' => 'bg-gray-100 text-gray-700', 'gold' => 'bg-yellow-100 text-yellow-700', 'platinum' => 'bg-purple-100 text-purple-700', 'vip' => 'bg-pink-100 text-pink-700'];
-                            $t = $hasMemberTier ? ($member['member_tier'] ?? 'bronze') : 'bronze';
                             ?>
                             <span class="px-2 py-1 rounded-full text-xs font-medium <?= $tierColors[$t] ?? '' ?>">
                                 <?= $tierIcons[$t] ?? '' ?>     <?= ucfirst($t) ?>
