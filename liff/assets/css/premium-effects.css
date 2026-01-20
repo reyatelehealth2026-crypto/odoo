@@ -1,0 +1,587 @@
+/**
+ * Premium UX/UI Enhancements
+ * Advanced animations, glassmorphism, and micro-interactions
+ * 
+ * Adds premium feel to LIFF app with:
+ * - Glassmorphism effects
+ * - Advanced animations
+ * - Micro-interactions
+ * - Floating elements
+ * - Glow effects
+ */
+
+/* ==================== CSS Variables - Premium Additions ==================== */
+:root {
+    /* Glassmorphism */
+    --glass-light: rgba(255, 255, 255, 0.25);
+    --glass-dark: rgba(0, 0, 0, 0.1);
+    --glass-blur: 20px;
+    --glass-border: rgba(255, 255, 255, 0.18);
+    
+    /* Glow Effects */
+    --glow-primary: 0 0 20px rgba(17, 176, 166, 0.4);
+    --glow-gold: 0 0 25px rgba(255, 215, 0, 0.5);
+    --glow-platinum: 0 0 25px rgba(99, 102, 241, 0.5);
+    
+    /* Premium Transitions */
+    --transition-premium: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: 500ms cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    --transition-elastic: 600ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+/* ==================== Glassmorphism Components ==================== */
+
+/* Glass Card */
+.glass-card {
+    background: var(--glass-light);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+/* Glass Button */
+.btn-glass {
+    background: var(--glass-light);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.btn-glass:active {
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* ==================== Premium Animations ==================== */
+
+/* Fade In Up */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Scale In */
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Slide In Right */
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.animate-slide-in-right {
+    animation: slideInRight 0.5s ease-out forwards;
+}
+
+/* Float Animation */
+@keyframes floatUp {
+    0%, 100% {
+        transform: translateY(0);
+    }
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+.animate-float {
+    animation: floatUp 3s ease-in-out infinite;
+}
+
+/* Pulse Glow */
+@keyframes pulseGlow {
+    0%, 100% {
+        box-shadow: 0 0 10px rgba(17, 176, 166, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 25px rgba(17, 176, 166, 0.6);
+    }
+}
+
+.animate-pulse-glow {
+    animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* Shimmer Effect */
+@keyframes shimmerPremium {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
+    }
+}
+
+.animate-shimmer {
+    background: linear-gradient(
+        90deg,
+        transparent 25%,
+        rgba(255, 255, 255, 0.3) 50%,
+        transparent 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmerPremium 2s infinite;
+}
+
+/* Gradient Shift */
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.animate-gradient {
+    background-size: 200% 200%;
+    animation: gradientShift 3s ease infinite;
+}
+
+/* ==================== Enhanced Member Card ==================== */
+
+/* Premium Member Card */
+.member-card-premium {
+    position: relative;
+    overflow: hidden;
+}
+
+.member-card-premium::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.1) 50%,
+        transparent 70%
+    );
+    transform: rotate(45deg);
+    animation: shimmerPremium 4s infinite;
+    pointer-events: none;
+}
+
+/* Tier Glow Effects */
+.member-card[style*="gold"] {
+    box-shadow: 0 10px 40px rgba(255, 215, 0, 0.3);
+}
+
+.member-card[style*="platinum"] {
+    box-shadow: 0 10px 40px rgba(51, 65, 85, 0.4);
+}
+
+.member-card[style*="silver"] {
+    box-shadow: 0 10px 40px rgba(192, 192, 192, 0.3);
+}
+
+/* Card Hover/Active Effects */
+.member-card:hover {
+    transform: translateY(-4px) scale(1.01);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+
+/* ==================== Enhanced Service Grid ==================== */
+
+/* Premium Service Icon */
+.service-icon-premium {
+    position: relative;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    box-shadow: 0 8px 20px rgba(17, 176, 166, 0.3);
+    transition: all var(--transition-premium);
+}
+
+.service-icon-premium::after {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    background: linear-gradient(135deg, rgba(255,255,255,0.5), transparent);
+    border-radius: inherit;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.service-item:active .service-icon-premium {
+    transform: scale(0.95);
+    box-shadow: 0 4px 10px rgba(17, 176, 166, 0.4);
+}
+
+.service-item:active .service-icon-premium::after {
+    opacity: 1;
+}
+
+/* Staggered Animation for Service Items */
+.service-item:nth-child(1) { animation-delay: 0ms; }
+.service-item:nth-child(2) { animation-delay: 50ms; }
+.service-item:nth-child(3) { animation-delay: 100ms; }
+.service-item:nth-child(4) { animation-delay: 150ms; }
+.service-item:nth-child(5) { animation-delay: 200ms; }
+.service-item:nth-child(6) { animation-delay: 250ms; }
+
+.service-item.animate-fade-in-up {
+    animation-fill-mode: both;
+}
+
+/* ==================== Enhanced AI Assistant Card ==================== */
+
+.ai-assistant-card-premium {
+    position: relative;
+    background: linear-gradient(135deg, #8B5CF6 0%, #7C3AED 50%, #6D28D9 100%);
+    background-size: 200% 200%;
+    animation: gradientShift 4s ease infinite;
+    overflow: hidden;
+}
+
+.ai-assistant-card-premium::before {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: -100%;
+    width: 300%;
+    height: 300%;
+    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 50%);
+    animation: floatUp 8s ease-in-out infinite;
+}
+
+.ai-assistant-icon-premium {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    animation: pulseGlow 3s ease-in-out infinite;
+    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+}
+
+/* ==================== Enhanced Bottom Navigation ==================== */
+
+.bottom-nav-premium {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.nav-item-premium {
+    position: relative;
+    transition: all var(--transition-fast);
+}
+
+.nav-item-premium.active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 3px;
+    background: var(--primary);
+    border-radius: 0 0 4px 4px;
+    animation: scaleIn 0.3s ease-out;
+}
+
+.nav-item-premium.active {
+    color: var(--primary);
+    transform: translateY(-2px);
+}
+
+.nav-item-premium i {
+    transition: transform var(--transition-bounce);
+}
+
+.nav-item-premium:active i {
+    transform: scale(0.85);
+}
+
+/* ==================== Enhanced Points Display ==================== */
+
+.points-display-premium {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3) var(--space-4);
+    color: #78350F;
+    font-weight: 700;
+    box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);
+    animation: pulseGlow 2.5s ease-in-out infinite;
+}
+
+.points-value-animate {
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+.points-value-animate.increment {
+    animation: pointsIncrement 0.5s ease-out;
+}
+
+@keyframes pointsIncrement {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); color: #10B981; }
+    100% { transform: scale(1); }
+}
+
+/* ==================== Toast Notifications Premium ==================== */
+
+.toast-premium {
+    background: rgba(31, 41, 55, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: toastSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes toastSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.toast-premium.success {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4);
+}
+
+.toast-premium i {
+    animation: toastIconPop 0.5s ease-out 0.2s both;
+}
+
+@keyframes toastIconPop {
+    from { transform: scale(0); }
+    to { transform: scale(1); }
+}
+
+/* ==================== Loading States Premium ==================== */
+
+.loading-spinner-premium {
+    width: 48px;
+    height: 48px;
+    border: 3px solid var(--bg-gray);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    box-shadow: 0 0 15px rgba(17, 176, 166, 0.3);
+}
+
+.loading-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.loading-dots span {
+    width: 10px;
+    height: 10px;
+    background: var(--primary);
+    border-radius: 50%;
+    animation: loadingDotBounce 1.4s ease-in-out infinite;
+}
+
+.loading-dots span:nth-child(1) { animation-delay: 0s; }
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes loadingDotBounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* ==================== Button Premium Effects ==================== */
+
+.btn-premium {
+    position: relative;
+    overflow: hidden;
+    transition: all var(--transition-premium);
+}
+
+.btn-premium::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.btn-premium:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn-primary-premium {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    box-shadow: 0 4px 15px rgba(17, 176, 166, 0.3);
+}
+
+.btn-primary-premium:hover {
+    box-shadow: 0 6px 20px rgba(17, 176, 166, 0.4);
+    transform: translateY(-2px);
+}
+
+.btn-primary-premium:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(17, 176, 166, 0.3);
+}
+
+/* ==================== Profile Avatar Premium ==================== */
+
+.avatar-premium {
+    position: relative;
+    border: 3px solid var(--primary);
+    box-shadow: 0 0 0 4px var(--primary-light);
+}
+
+.avatar-premium.online::after {
+    content: '';
+    position: absolute;
+    bottom: 2px;
+    right: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--success);
+    border: 3px solid white;
+    border-radius: 50%;
+    animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* ==================== Onboarding Welcome Animation ==================== */
+
+.welcome-premium {
+    position: relative;
+    text-align: center;
+    padding: var(--space-8);
+}
+
+.welcome-premium-icon {
+    width: 80px;
+    height: 80px;
+    background: linear-gradient(135deg, var(--primary) 0%, #6EE7B7 100%);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-4);
+    font-size: 36px;
+    color: white;
+    animation: welcomeIconPop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) 0.3s both;
+    box-shadow: 0 10px 30px rgba(17, 176, 166, 0.3);
+}
+
+@keyframes welcomeIconPop {
+    from {
+        transform: scale(0) rotate(-180deg);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1) rotate(0);
+        opacity: 1;
+    }
+}
+
+.welcome-premium-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 var(--space-2);
+    animation: fadeInUp 0.5s ease-out 0.5s both;
+}
+
+.welcome-premium-subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 var(--space-6);
+    animation: fadeInUp 0.5s ease-out 0.7s both;
+}
+
+.welcome-premium-points {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+    color: #78350F;
+    padding: var(--space-3) var(--space-5);
+    border-radius: var(--radius-full);
+    font-weight: 700;
+    font-size: 16px;
+    box-shadow: 0 4px 20px rgba(255, 215, 0, 0.4);
+    animation: fadeInUp 0.5s ease-out 0.9s both, pulseGlow 2s ease-in-out 1.4s infinite;
+}
+
+/* ==================== Confetti Animation (for welcome) ==================== */
+
+.confetti-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.confetti {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    opacity: 0;
+    animation: confettiFall 3s ease-out forwards;
+}
+
+@keyframes confettiFall {
+    0% {
+        opacity: 1;
+        transform: translateY(-100vh) rotate(0deg);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(100vh) rotate(720deg);
+    }
+}
+
+/* ==================== Reduced Motion Support ==================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

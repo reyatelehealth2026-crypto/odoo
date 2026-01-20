@@ -272,12 +272,14 @@ function handleRegister($db, $data)
 }
 
 /**
- * ตรวจสอบสถานะสมาชิก
+ * ตรวจสอบสถานะสมาชิก - Auto-register if not member
  */
 function handleCheck($db)
 {
  $lineUserId = $_GET['line_user_id'] ?? '';
  $lineAccountId = $_GET['line_account_id'] ?? 1;
+ $displayName = $_GET['display_name'] ?? '';
+ $pictureUrl = $_GET['picture_url'] ?? '';
 
  if (empty($lineUserId)) {
   jsonResponse(false, 'Missing line_user_id');
@@ -285,7 +287,7 @@ function handleCheck($db)
 
  // Try exact match first - use only columns that definitely exist
  $stmt = $db->prepare("
-        SELECT id, member_id, is_registered, first_name, last_name, points
+        SELECT id, member_id, is_registered, first_name, last_name, points, display_name
         FROM users
         WHERE line_user_id = ? AND line_account_id = ?
     ");
@@ -295,7 +297,7 @@ function handleCheck($db)
  // If not found, try without account filter
  if (!$user) {
   $stmt = $db->prepare("
-            SELECT id, member_id, is_registered, first_name, last_name, points
+            SELECT id, member_id, is_registered, first_name, last_name, points, display_name
             FROM users
             WHERE line_user_id = ?
         ");
@@ -303,9 +305,16 @@ function handleCheck($db)
   $user = $stmt->fetch(PDO::FETCH_ASSOC);
  }
 
+ // AUTO-REGISTER: If user not found, create new member automatically
  if (!$user) {
-  error_log("check: User not found for line_user_id=$lineUserId");
-  jsonResponse(true, 'User not found', ['is_registered' => false, 'exists' => false]);
+  error_log("check: User not found, auto-registering for line_user_id=$lineUserId");
+  $user = autoRegisterMember($db, $lineUserId, $lineAccountId, $displayName, $pictureUrl);
+ }
+
+ // AUTO-UPGRADE: If user exists but not registered, upgrade to member
+ if ($user && !$user['is_registered']) {
+  error_log("check: User exists but not registered, auto-upgrading id={$user['id']}");
+  $user = autoUpgradeMember($db, $user['id'], $lineAccountId);
  }
 
  error_log("check: Found user id={$user['id']}, is_registered={$user['is_registered']}, member_id={$user['member_id']}");
@@ -325,10 +334,122 @@ function handleCheck($db)
   'member_id' => $user['member_id'] ?? null,
   'first_name' => $user['first_name'] ?? null,
   'last_name' => $user['last_name'] ?? null,
+  'display_name' => $user['display_name'] ?? null,
   'tier' => $tierInfo['tier_code'],
   'tier_name' => $tierInfo['tier_name'],
-  'points' => (int) ($user['points'] ?? 0)
+  'points' => (int) ($user['points'] ?? 0),
+  'auto_registered' => true
  ]);
+}
+
+/**
+ * Auto-register new member from LINE login
+ */
+function autoRegisterMember($db, $lineUserId, $lineAccountId, $displayName = '', $pictureUrl = '')
+{
+ // Generate member ID
+ $memberId = generateMemberId($db, $lineAccountId);
+
+ // Check which columns exist
+ $existingColumns = [];
+ try {
+  $cols = $db->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+  $existingColumns = array_flip($cols);
+ } catch (Exception $e) {}
+
+ // Build insert query
+ $columns = ['line_account_id', 'line_user_id', 'display_name', 'picture_url', 'member_id', 'is_registered', 'registered_at', 'created_at'];
+ $placeholders = ['?', '?', '?', '?', '?', '1', 'NOW()', 'NOW()'];
+ $values = [$lineAccountId, $lineUserId, $displayName ?: null, $pictureUrl ?: null, $memberId];
+
+ if (isset($existingColumns['member_tier'])) {
+  $columns[] = 'member_tier';
+  $placeholders[] = '?';
+  $values[] = 'bronze';
+ }
+
+ if (isset($existingColumns['points'])) {
+  $columns[] = 'points';
+  $placeholders[] = '?';
+  $values[] = 50; // Welcome bonus
+ }
+
+ $sql = "INSERT INTO users (" . implode(', ', $columns) . ") VALUES (" . implode(', ', $placeholders) . ")";
+ $stmt = $db->prepare($sql);
+ $stmt->execute($values);
+ $userId = $db->lastInsertId();
+
+ // Log welcome bonus points
+ try {
+  $stmt = $db->prepare("
+   INSERT INTO points_history (line_account_id, user_id, points, type, description, balance_after)
+   VALUES (?, ?, ?, 'bonus', 'โบนัสต้อนรับสมาชิกใหม่ (Auto-Register)', ?)
+  ");
+  $stmt->execute([$lineAccountId, $userId, 50, 50]);
+ } catch (Exception $e) {
+  error_log("points_history insert error: " . $e->getMessage());
+ }
+
+ error_log("autoRegisterMember: Created new member id=$userId, member_id=$memberId");
+
+ return [
+  'id' => $userId,
+  'member_id' => $memberId,
+  'is_registered' => 1,
+  'first_name' => null,
+  'last_name' => null,
+  'display_name' => $displayName,
+  'points' => 50
+ ];
+}
+
+/**
+ * Auto-upgrade existing user to member
+ */
+function autoUpgradeMember($db, $userId, $lineAccountId)
+{
+ $memberId = generateMemberId($db, $lineAccountId);
+
+ // Check which columns exist
+ $existingColumns = [];
+ try {
+  $cols = $db->query("SHOW COLUMNS FROM users")->fetchAll(PDO::FETCH_COLUMN);
+  $existingColumns = array_flip($cols);
+ } catch (Exception $e) {}
+
+ $updates = ['member_id = ?', 'is_registered = 1', 'registered_at = NOW()'];
+ $params = [$memberId];
+
+ if (isset($existingColumns['member_tier'])) {
+  $updates[] = "member_tier = 'bronze'";
+ }
+
+ if (isset($existingColumns['points'])) {
+  $updates[] = 'points = COALESCE(points, 0) + 50';
+ }
+
+ $params[] = $userId;
+ $sql = "UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?";
+ $stmt = $db->prepare($sql);
+ $stmt->execute($params);
+
+ // Log welcome bonus
+ try {
+  $stmt = $db->prepare("
+   INSERT INTO points_history (line_account_id, user_id, points, type, description, balance_after)
+   VALUES (?, ?, ?, 'bonus', 'โบนัสต้อนรับสมาชิก (Auto-Upgrade)', (SELECT COALESCE(points, 50) FROM users WHERE id = ?))
+  ");
+  $stmt->execute([$lineAccountId, $userId, 50, $userId]);
+ } catch (Exception $e) {
+  error_log("points_history insert error: " . $e->getMessage());
+ }
+
+ error_log("autoUpgradeMember: Upgraded user id=$userId to member_id=$memberId");
+
+ // Fetch updated user
+ $stmt = $db->prepare("SELECT id, member_id, is_registered, first_name, last_name, display_name, points FROM users WHERE id = ?");
+ $stmt->execute([$userId]);
+ return $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 /**

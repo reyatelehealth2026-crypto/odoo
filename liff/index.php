@@ -156,6 +156,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
 
     <!-- App Styles -->
     <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=202601200220">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/premium-effects.css?v=202601210600">
 </head>
 
 <body>

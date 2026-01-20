@@ -159,25 +159,52 @@ class LiffApp {
     }
 
     /**
-     * Load member data from API
+     * Load member data from API - Auto-register on first check
      */
     async loadMemberData() {
         if (!this.profile?.userId) return;
 
         try {
-            const url = `${this.config.BASE_URL}/api/member.php?action=get_card&line_user_id=${this.profile.userId}&line_account_id=${this.config.ACCOUNT_ID}`;
+            // First, call check API to auto-register if needed
+            const displayName = encodeURIComponent(this.profile.displayName || '');
+            const pictureUrl = encodeURIComponent(this.profile.pictureUrl || '');
 
-            const response = await this.fetchWithRetry(url);
-            const data = await response.json();
+            const checkUrl = `${this.config.BASE_URL}/api/member.php?action=check&line_user_id=${this.profile.userId}&line_account_id=${this.config.ACCOUNT_ID}&display_name=${displayName}&picture_url=${pictureUrl}`;
 
-            if (data.success && data.member) {
-                console.log('💳 Member data loaded:', data.member.member_id);
+            const checkResponse = await this.fetchWithRetry(checkUrl);
+            const checkData = await checkResponse.json();
 
-                if (window.store) {
-                    window.store.setMemberData(data);
+            if (checkData.success && checkData.is_registered) {
+                console.log('✅ User is registered, loading member card...');
+
+                // Check if this was an auto-registration (new member)
+                const isNewMember = checkData.auto_registered === true;
+
+                // Now load full member card data
+                const cardUrl = `${this.config.BASE_URL}/api/member.php?action=get_card&line_user_id=${this.profile.userId}&line_account_id=${this.config.ACCOUNT_ID}`;
+                const cardResponse = await this.fetchWithRetry(cardUrl);
+                const cardData = await cardResponse.json();
+
+                if (cardData.success && cardData.member) {
+                    console.log('💳 Member data loaded:', cardData.member.member_id);
+                    if (window.store) {
+                        window.store.setMemberData(cardData);
+                    }
+
+                    // Show welcome modal for newly auto-registered members
+                    if (isNewMember) {
+                        console.log('🎉 New member detected, showing welcome modal...');
+                        // Delay to let the page render first
+                        setTimeout(() => {
+                            this.showWelcomeModal(
+                                cardData.member.display_name || cardData.member.first_name || this.profile.displayName,
+                                checkData.points || 50
+                            );
+                        }, 1500);
+                    }
                 }
             } else {
-                console.log('📝 User not registered as member');
+                console.log('📝 Check response:', checkData);
             }
 
         } catch (error) {
@@ -185,6 +212,7 @@ class LiffApp {
             // Continue without member data
         }
     }
+
 
     /**
      * Initialize router
@@ -502,6 +530,169 @@ class LiffApp {
     }
 
     /**
+     * Show welcome modal for new members with confetti effect
+     */
+    showWelcomeModal(memberName, bonusPoints = 50) {
+        // Create modal overlay
+        const modalOverlay = document.createElement('div');
+        modalOverlay.className = 'welcome-modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="welcome-modal welcome-premium">
+                <div class="confetti-container">
+                    ${Array(50).fill().map((_, i) => `<div class="confetti" style="--delay: ${Math.random() * 3}s; --x: ${Math.random() * 100}vw; --rotation: ${Math.random() * 360}deg; --color: ${['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'][i % 6]}"></div>`).join('')}
+                </div>
+                <div class="welcome-icon">🎉</div>
+                <h2 class="welcome-title">ยินดีต้อนรับ!</h2>
+                <p class="welcome-name">${memberName || 'สมาชิกใหม่'}</p>
+                <div class="welcome-bonus">
+                    <span class="bonus-icon">🎁</span>
+                    <span class="bonus-text">คุณได้รับ <strong>${bonusPoints} พอยท์</strong> ต้อนรับ!</span>
+                </div>
+                <p class="welcome-message">ขอบคุณที่เป็นส่วนหนึ่งของเรา<br>สะสมพอยท์แลกของรางวัลสุดพิเศษได้เลย</p>
+                <button class="welcome-btn" onclick="this.closest('.welcome-modal-overlay').remove()">
+                    เริ่มต้นใช้งาน
+                </button>
+            </div>
+        `;
+
+        // Add styles if not already present
+        if (!document.getElementById('welcome-modal-styles')) {
+            const styles = document.createElement('style');
+            styles.id = 'welcome-modal-styles';
+            styles.textContent = `
+                .welcome-modal-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: rgba(0, 0, 0, 0.7);
+                    backdrop-filter: blur(8px);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10000;
+                    animation: fadeIn 0.3s ease;
+                }
+                .welcome-modal {
+                    background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(255,255,255,0.85));
+                    border-radius: 24px;
+                    padding: 40px 32px;
+                    text-align: center;
+                    max-width: 340px;
+                    width: 90%;
+                    position: relative;
+                    overflow: hidden;
+                    box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+                    animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+                }
+                .welcome-icon {
+                    font-size: 64px;
+                    margin-bottom: 16px;
+                    animation: bounce 1s ease infinite;
+                }
+                .welcome-title {
+                    font-size: 28px;
+                    font-weight: 700;
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    margin: 0 0 8px 0;
+                }
+                .welcome-name {
+                    font-size: 20px;
+                    color: #333;
+                    margin: 0 0 20px 0;
+                }
+                .welcome-bonus {
+                    background: linear-gradient(135deg, #FFD700, #FFA500);
+                    border-radius: 16px;
+                    padding: 16px 24px;
+                    margin: 20px 0;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    animation: pulseGlow 2s ease infinite;
+                }
+                .bonus-icon { font-size: 28px; }
+                .bonus-text {
+                    font-size: 16px;
+                    color: #333;
+                }
+                .bonus-text strong {
+                    font-size: 20px;
+                    color: #8B4513;
+                }
+                .welcome-message {
+                    color: #666;
+                    font-size: 14px;
+                    line-height: 1.6;
+                    margin: 16px 0 24px 0;
+                }
+                .welcome-btn {
+                    background: linear-gradient(135deg, #667eea, #764ba2);
+                    color: white;
+                    border: none;
+                    padding: 14px 48px;
+                    border-radius: 50px;
+                    font-size: 16px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+                }
+                .welcome-btn:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+                }
+                .confetti-container {
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    pointer-events: none;
+                    overflow: hidden;
+                }
+                .confetti {
+                    position: absolute;
+                    width: 10px;
+                    height: 10px;
+                    background: var(--color);
+                    top: -20px;
+                    left: var(--x);
+                    transform: rotate(var(--rotation));
+                    animation: confettiFall 3s ease-out var(--delay) forwards;
+                }
+                @keyframes confettiFall {
+                    0% { top: -20px; opacity: 1; }
+                    100% { top: 110%; opacity: 0; transform: rotate(720deg); }
+                }
+                @keyframes bounce {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-10px); }
+                }
+                @keyframes pulseGlow {
+                    0%, 100% { box-shadow: 0 0 20px rgba(255, 215, 0, 0.3); }
+                    50% { box-shadow: 0 0 30px rgba(255, 215, 0, 0.6); }
+                }
+            `;
+            document.head.appendChild(styles);
+        }
+
+        document.body.appendChild(modalOverlay);
+
+        // Auto close after 8 seconds
+        setTimeout(() => {
+            if (modalOverlay.parentNode) {
+                modalOverlay.style.animation = 'fadeOut 0.3s ease forwards';
+                setTimeout(() => modalOverlay.remove(), 300);
+            }
+        }, 8000);
+    }
+
+    /**
      * Fetch with retry logic
      */
     async fetchWithRetry(url, options = {}, retries = 3) {
@@ -687,19 +878,17 @@ class LiffApp {
         }
 
         if (!member) {
+            // Auto-registration is in progress or user is loading
             return `
                 <div class="member-card member-card-guest">
                     <div class="member-card-decor"></div>
                     <div class="member-card-content">
                         <div class="member-card-guest-content">
                             <div class="member-card-guest-icon">
-                                <i class="fas fa-id-card"></i>
+                                <i class="fas fa-spinner fa-spin"></i>
                             </div>
-                            <h3 class="member-card-guest-title">ลงทะเบียนเป็นสมาชิก</h3>
-                            <p class="member-card-guest-desc">รับสิทธิพิเศษและสะสมแต้มได้ทันที</p>
-                            <button class="btn btn-white" onclick="window.router.navigate('/register')">
-                                <i class="fas fa-user-plus"></i> ลงทะเบียนเลย
-                            </button>
+                            <h3 class="member-card-guest-title">กำลังโหลดข้อมูลสมาชิก...</h3>
+                            <p class="member-card-guest-desc">กรุณารอสักครู่</p>
                         </div>
                     </div>
                 </div>
