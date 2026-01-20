@@ -50,6 +50,9 @@ class LiffApp {
             // Setup event listeners
             this.setupEventListeners();
 
+            // Check and show onboarding for first-time visitors
+            this.checkAndShowOnboarding();
+
             console.log('✅ LiffApp initialized successfully');
 
         } catch (error) {
@@ -690,6 +693,292 @@ class LiffApp {
                 setTimeout(() => modalOverlay.remove(), 300);
             }
         }, 8000);
+    }
+
+    /**
+     * Check and show onboarding for first-time visitors
+     */
+    checkAndShowOnboarding() {
+        const onboardingKey = `liff_onboarding_seen_${this.config.ACCOUNT_ID || 0}`;
+        const hasSeenOnboarding = localStorage.getItem(onboardingKey);
+
+        if (!hasSeenOnboarding) {
+            // Small delay to let the page render first
+            setTimeout(() => {
+                this.showOnboarding();
+            }, 1000);
+        }
+    }
+
+    /**
+     * Show onboarding slides for first-time visitors
+     */
+    showOnboarding() {
+        const onboardingKey = `liff_onboarding_seen_${this.config.ACCOUNT_ID || 0}`;
+
+        const slides = [
+            {
+                icon: '👋',
+                title: 'ยินดีต้อนรับ!',
+                description: 'ขอบคุณที่เลือกใช้บริการร้านยาของเรา<br>มาทำความรู้จักกับฟีเจอร์ต่างๆ กันเถอะ'
+            },
+            {
+                icon: '💳',
+                title: 'บัตรสมาชิก',
+                description: 'สะสมพอยท์จากการซื้อสินค้า<br>แลกรับส่วนลดและของรางวัลพิเศษ'
+            },
+            {
+                icon: '💬',
+                title: 'ปรึกษาเภสัชกร',
+                description: 'พูดคุยกับเภสัชกรผู้เชี่ยวชาญ<br>ตอบทุกคำถามเรื่องสุขภาพและยา'
+            },
+            {
+                icon: '🛒',
+                title: 'สั่งซื้อสินค้า',
+                description: 'เลือกซื้อยาและผลิตภัณฑ์สุขภาพ<br>จัดส่งถึงบ้านอย่างสะดวก'
+            },
+            {
+                icon: '📋',
+                title: 'ข้อมูลสุขภาพ',
+                description: 'บันทึกประวัติการแพทย์และยาที่ใช้<br>เพื่อรับคำแนะนำที่เหมาะกับคุณ'
+            }
+        ];
+
+        let currentSlide = 0;
+
+        const updateSlide = () => {
+            const slide = slides[currentSlide];
+            const dots = container.querySelectorAll('.onboarding-dot');
+            const slideContent = container.querySelector('.onboarding-slide-content');
+
+            // Update content with animation
+            slideContent.style.opacity = '0';
+            slideContent.style.transform = 'translateX(20px)';
+
+            setTimeout(() => {
+                slideContent.innerHTML = `
+                    <div class="onboarding-icon">${slide.icon}</div>
+                    <h2 class="onboarding-title">${slide.title}</h2>
+                    <p class="onboarding-desc">${slide.description}</p>
+                `;
+                slideContent.style.opacity = '1';
+                slideContent.style.transform = 'translateX(0)';
+            }, 150);
+
+            // Update dots
+            dots.forEach((dot, i) => {
+                dot.classList.toggle('active', i === currentSlide);
+            });
+
+            // Update button text
+            const nextBtn = container.querySelector('.onboarding-next');
+            if (currentSlide === slides.length - 1) {
+                nextBtn.innerHTML = '<span>เริ่มใช้งาน</span> <i class="fas fa-check"></i>';
+            } else {
+                nextBtn.innerHTML = '<span>ถัดไป</span> <i class="fas fa-arrow-right"></i>';
+            }
+        };
+
+        const container = document.createElement('div');
+        container.className = 'onboarding-overlay';
+        container.innerHTML = `
+            <div class="onboarding-modal">
+                <button class="onboarding-skip" onclick="this.closest('.onboarding-overlay').remove(); localStorage.setItem('${onboardingKey}', 'true');">
+                    ข้าม
+                </button>
+                <div class="onboarding-slide-content">
+                    <div class="onboarding-icon">${slides[0].icon}</div>
+                    <h2 class="onboarding-title">${slides[0].title}</h2>
+                    <p class="onboarding-desc">${slides[0].description}</p>
+                </div>
+                <div class="onboarding-dots">
+                    ${slides.map((_, i) => `<div class="onboarding-dot ${i === 0 ? 'active' : ''}"></div>`).join('')}
+                </div>
+                <div class="onboarding-actions">
+                    <button class="onboarding-prev" style="visibility: hidden;">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <button class="onboarding-next">
+                        <span>ถัดไป</span> <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Add styles
+        if (!document.getElementById('onboarding-styles')) {
+            const styles = document.createElement('style');
+            styles.id = 'onboarding-styles';
+            styles.textContent = `
+                .onboarding-overlay {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    right: 0;
+                    bottom: 0;
+                    background: linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(6, 95, 70, 0.95));
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    z-index: 10001;
+                    animation: fadeIn 0.4s ease;
+                }
+                .onboarding-modal {
+                    background: white;
+                    border-radius: 24px;
+                    padding: 40px 32px;
+                    text-align: center;
+                    max-width: 340px;
+                    width: 90%;
+                    position: relative;
+                    box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+                    animation: scaleIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+                }
+                .onboarding-skip {
+                    position: absolute;
+                    top: 16px;
+                    right: 16px;
+                    background: transparent;
+                    border: none;
+                    color: #9CA3AF;
+                    font-size: 14px;
+                    cursor: pointer;
+                    padding: 8px 12px;
+                }
+                .onboarding-skip:hover {
+                    color: #6B7280;
+                }
+                .onboarding-slide-content {
+                    transition: all 0.3s ease;
+                    min-height: 200px;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                }
+                .onboarding-icon {
+                    font-size: 72px;
+                    margin-bottom: 20px;
+                    animation: bounceIn 0.6s ease;
+                }
+                .onboarding-title {
+                    font-size: 24px;
+                    font-weight: 700;
+                    color: #1F2937;
+                    margin: 0 0 12px 0;
+                }
+                .onboarding-desc {
+                    font-size: 15px;
+                    color: #6B7280;
+                    line-height: 1.6;
+                    margin: 0;
+                }
+                .onboarding-dots {
+                    display: flex;
+                    justify-content: center;
+                    gap: 8px;
+                    margin: 32px 0 24px 0;
+                }
+                .onboarding-dot {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 50%;
+                    background: #E5E7EB;
+                    transition: all 0.3s ease;
+                }
+                .onboarding-dot.active {
+                    width: 24px;
+                    border-radius: 4px;
+                    background: linear-gradient(135deg, #10B981, #059669);
+                }
+                .onboarding-actions {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    gap: 16px;
+                }
+                .onboarding-prev, .onboarding-next {
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 8px;
+                    padding: 14px 24px;
+                    border-radius: 50px;
+                    font-size: 15px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    border: none;
+                }
+                .onboarding-prev {
+                    background: #F3F4F6;
+                    color: #6B7280;
+                }
+                .onboarding-prev:hover {
+                    background: #E5E7EB;
+                }
+                .onboarding-next {
+                    background: linear-gradient(135deg, #10B981, #059669);
+                    color: white;
+                    flex: 1;
+                    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+                }
+                .onboarding-next:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+                }
+                @keyframes bounceIn {
+                    0% { transform: scale(0.3); opacity: 0; }
+                    50% { transform: scale(1.05); }
+                    70% { transform: scale(0.9); }
+                    100% { transform: scale(1); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(styles);
+        }
+
+        // Event handlers
+        const handleNext = () => {
+            if (currentSlide < slides.length - 1) {
+                currentSlide++;
+                container.querySelector('.onboarding-prev').style.visibility = 'visible';
+                updateSlide();
+            } else {
+                // Complete onboarding
+                localStorage.setItem(onboardingKey, 'true');
+                container.style.animation = 'fadeOut 0.3s ease forwards';
+                setTimeout(() => container.remove(), 300);
+            }
+        };
+
+        const handlePrev = () => {
+            if (currentSlide > 0) {
+                currentSlide--;
+                if (currentSlide === 0) {
+                    container.querySelector('.onboarding-prev').style.visibility = 'hidden';
+                }
+                updateSlide();
+            }
+        };
+
+        document.body.appendChild(container);
+
+        container.querySelector('.onboarding-next').addEventListener('click', handleNext);
+        container.querySelector('.onboarding-prev').addEventListener('click', handlePrev);
+
+        // Swipe support for mobile
+        let touchStartX = 0;
+        container.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+        });
+        container.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const diff = touchStartX - touchEndX;
+            if (Math.abs(diff) > 50) {
+                if (diff > 0) handleNext();
+                else handlePrev();
+            }
+        });
     }
 
     /**
