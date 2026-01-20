@@ -49,13 +49,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($points != 0) {
             try {
                 require_once 'classes/LoyaltyPoints.php';
+                require_once 'classes/TierService.php';
                 $loyalty = new LoyaltyPoints($db, $currentBotId ?? 1);
+
                 if ($points > 0) {
-                    $loyalty->addPoints($userId, $points, 'admin', $description);
+                    $loyalty->addPoints($userId, $points, 'admin', null, $description);
                 } else {
-                    $loyalty->usePoints($userId, abs($points), 'admin_deduct', $description);
+                    $loyalty->deductPoints($userId, abs($points), 'admin_deduct', null, $description);
                 }
+
+                // Update user tier after points change
+                $tierService = new TierService($db, $currentBotId ?? 1);
+                $tierService->updateUserTier($userId);
+
             } catch (Exception $e) {
+                error_log("Points adjustment error: " . $e->getMessage());
             }
         }
         header("Location: user-detail.php?id={$userId}&points_updated=1");
@@ -203,9 +211,11 @@ try {
                 </div>
                 <div>
                     <h2 class="text-lg font-bold text-gray-800">
-                        <?= htmlspecialchars($user['display_name'] ?: 'Unknown') ?></h2>
+                        <?= htmlspecialchars($user['display_name'] ?: 'Unknown') ?>
+                    </h2>
                     <p class="text-sm font-semibold" style="color: <?= $tier['color'] ?>"><?= $tier['icon'] ?>
-                        <?= $tier['name'] ?></p>
+                        <?= $tier['name'] ?>
+                    </p>
                     <p class="text-xs text-gray-500">ID: <?= str_pad($userId, 6, '0', STR_PAD_LEFT) ?></p>
                 </div>
             </div>
@@ -228,7 +238,8 @@ try {
                 </div>
 
                 <p class="text-xs text-gray-400 text-center mt-3">สมาชิกตั้งแต่:
-                    <?= date('d/m/Y', strtotime($user['created_at'])) ?></p>
+                    <?= date('d/m/Y', strtotime($user['created_at'])) ?>
+                </p>
             </div>
         </div>
 
@@ -265,7 +276,7 @@ try {
                                 <p class="text-xs text-gray-400"><?= date('d/m H:i', strtotime($h['created_at'])) ?></p>
                             </div>
                             <span class="font-bold <?= $h['type'] === 'earn' ? 'text-green-600' : 'text-red-500' ?>">
-                                <?= $h['type'] === 'earn' ? '+' : '-' ?>        <?= number_format(abs($h['points'])) ?>
+                                <?= $h['type'] === 'earn' ? '+' : '-' ?>         <?= number_format(abs($h['points'])) ?>
                             </span>
                         </div>
                     <?php endforeach; ?>
@@ -421,12 +432,14 @@ try {
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div class="p-4 bg-blue-50 rounded-xl text-center">
                         <p class="text-2xl font-bold text-blue-600">
-                            <?= $user['weight'] ? number_format($user['weight'], 1) : '-' ?></p>
+                            <?= $user['weight'] ? number_format($user['weight'], 1) : '-' ?>
+                        </p>
                         <p class="text-xs text-gray-500">น้ำหนัก (กก.)</p>
                     </div>
                     <div class="p-4 bg-green-50 rounded-xl text-center">
                         <p class="text-2xl font-bold text-green-600">
-                            <?= $user['height'] ? number_format($user['height'], 1) : '-' ?></p>
+                            <?= $user['height'] ? number_format($user['height'], 1) : '-' ?>
+                        </p>
                         <p class="text-xs text-gray-500">ส่วนสูง (ซม.)</p>
                     </div>
                     <div class="p-4 bg-purple-50 rounded-xl text-center">
@@ -529,7 +542,8 @@ try {
                                     <p class="font-semibold text-gray-800">
                                         #<?= htmlspecialchars($order['order_number'] ?? $order['id']) ?></p>
                                     <p class="text-xs text-gray-500 mt-1">
-                                        <?= date('d/m/Y H:i', strtotime($order['created_at'])) ?></p>
+                                        <?= date('d/m/Y H:i', strtotime($order['created_at'])) ?>
+                                    </p>
                                     <?php if (!empty($order['shipping_name'])): ?>
                                         <p class="text-xs text-gray-500 mt-1">
                                             <i class="fas fa-user mr-1"></i><?= htmlspecialchars($order['shipping_name']) ?>
