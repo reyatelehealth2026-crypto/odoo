@@ -65,6 +65,7 @@ const HUDMode = {
     allTags: [],
     userTags: [],
     collapsedSections: {}, // Store collapsed state
+    crmDataLoaded: null,   // Track which user's CRM data is loaded (for lazy loading)
 
     init() {
         // Default to 'crm' for first time users
@@ -272,6 +273,18 @@ const HUDMode = {
             return;
         }
 
+        // Lazy load: Only load if HUD is visible (performance optimization)
+        const hud = document.getElementById('hudDashboard');
+        if (hud && hud.classList.contains('collapsed')) {
+            console.log('[HUDMode] CRM data lazy load skipped - HUD is collapsed');
+            return;
+        }
+
+        // Skip if already loaded for this user
+        if (this.crmDataLoaded === userId) {
+            return;
+        }
+
         try {
             const url = `api/inbox-v2.php?action=customer_crm&user_id=${userId}&line_account_id=${window.currentBotId || 1}`;
             const response = await fetch(url);
@@ -279,6 +292,7 @@ const HUDMode = {
 
             if (result.success && result.data) {
                 this.renderCRMData(result.data);
+                this.crmDataLoaded = userId; // Mark as loaded for this user
             } else {
                 console.error('[HUDMode] CRM data error:', result.error);
             }

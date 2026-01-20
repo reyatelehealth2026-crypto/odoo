@@ -13,16 +13,16 @@
  *   InboxRealtime.stop();
  */
 
-const InboxRealtime = (function() {
+const InboxRealtime = (function () {
     // Configuration
     const config = {
-        pollInterval: 3000,        // Poll every 3 seconds
+        pollInterval: 5000,        // Poll every 5 seconds (optimized for performance)
         apiEndpoint: 'api/inbox-realtime.php',
         enableSound: true,
         enableDesktopNotification: true,
         maxRetries: 3
     };
-    
+
     // State
     let state = {
         isRunning: false,
@@ -36,10 +36,10 @@ const InboxRealtime = (function() {
         onConversationUpdate: null,
         onError: null
     };
-    
+
     // Audio for notification
     let notificationSound = null;
-    
+
     /**
      * Initialize the real-time module
      * @param {object} options - Configuration options
@@ -51,24 +51,24 @@ const InboxRealtime = (function() {
         state.onConversationUpdate = options.onConversationUpdate || null;
         state.onError = options.onError || null;
         state.lastCheck = new Date().toISOString().slice(0, 19).replace('T', ' ');
-        
+
         // Override config
         if (options.pollInterval) config.pollInterval = options.pollInterval;
         if (options.enableSound !== undefined) config.enableSound = options.enableSound;
-        
+
         // Initialize notification sound
         if (config.enableSound) {
             initSound();
         }
-        
+
         // Request notification permission
         if (config.enableDesktopNotification && 'Notification' in window) {
             Notification.requestPermission();
         }
-        
+
         console.log('[InboxRealtime] Initialized', { userId: state.currentUserId, lineAccountId: state.lineAccountId });
     }
-    
+
     /**
      * Initialize notification sound
      */
@@ -77,19 +77,19 @@ const InboxRealtime = (function() {
             // Create a simple beep sound using Web Audio API
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
             notificationSound = {
-                play: function() {
+                play: function () {
                     const oscillator = audioContext.createOscillator();
                     const gainNode = audioContext.createGain();
-                    
+
                     oscillator.connect(gainNode);
                     gainNode.connect(audioContext.destination);
-                    
+
                     oscillator.frequency.value = 800;
                     oscillator.type = 'sine';
-                    
+
                     gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
                     gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
-                    
+
                     oscillator.start(audioContext.currentTime);
                     oscillator.stop(audioContext.currentTime + 0.3);
                 }
@@ -98,18 +98,18 @@ const InboxRealtime = (function() {
             console.warn('[InboxRealtime] Could not initialize sound:', e);
         }
     }
-    
+
     /**
      * Start polling for updates
      */
     function start() {
         if (state.isRunning) return;
-        
+
         state.isRunning = true;
         state.retryCount = 0;
         poll();
     }
-    
+
     /**
      * Stop polling
      */
@@ -120,7 +120,7 @@ const InboxRealtime = (function() {
             state.pollTimer = null;
         }
     }
-    
+
     /**
      * Set current user (when switching conversations)
      * @param {number} userId
@@ -128,59 +128,59 @@ const InboxRealtime = (function() {
     function setCurrentUser(userId) {
         state.currentUserId = userId;
     }
-    
+
     /**
      * Main polling function
      */
     async function poll() {
         if (!state.isRunning) return;
-        
+
         try {
             // Save lastCheck before updating (for loading new messages)
             const previousCheck = state.lastCheck;
-            
+
             const params = new URLSearchParams({
                 action: 'check_new',
                 last_check: state.lastCheck,
                 current_user: state.currentUserId || 0
             });
-            
+
             // Add line_account_id if available
             if (state.lineAccountId) {
                 params.append('line_account_id', state.lineAccountId);
             }
-            
+
             const response = await fetch(`${config.apiEndpoint}?${params}`);
             const data = await response.json();
-            
+
             if (data.success) {
                 state.retryCount = 0;
                 state.lastCheck = data.server_time;
-                
+
                 // Handle new messages
                 if (data.has_new) {
                     handleNewMessages(data);
                 }
-                
+
                 // Update conversation list
                 if (data.conversations && state.onConversationUpdate) {
                     state.onConversationUpdate(data.conversations);
                 }
-                
+
                 // Load new messages for current chat (use previousCheck as since)
                 if (data.has_new_for_current && state.currentUserId) {
                     loadNewMessagesForCurrentUser(previousCheck);
                 }
             }
-            
+
         } catch (error) {
             console.error('[InboxRealtime] Poll error:', error);
             state.retryCount++;
-            
+
             if (state.onError) {
                 state.onError(error);
             }
-            
+
             // Stop after max retries
             if (state.retryCount >= config.maxRetries) {
                 console.error('[InboxRealtime] Max retries reached, stopping');
@@ -188,13 +188,13 @@ const InboxRealtime = (function() {
                 return;
             }
         }
-        
+
         // Schedule next poll
         if (state.isRunning) {
             state.pollTimer = setTimeout(poll, config.pollInterval);
         }
     }
-    
+
     /**
      * Handle new messages notification
      * @param {object} data
@@ -204,87 +204,87 @@ const InboxRealtime = (function() {
         if (config.enableSound && notificationSound) {
             try {
                 notificationSound.play();
-            } catch (e) {}
+            } catch (e) { }
         }
-        
+
         // Show desktop notification
-        if (config.enableDesktopNotification && 
-            'Notification' in window && 
+        if (config.enableDesktopNotification &&
+            'Notification' in window &&
             Notification.permission === 'granted' &&
             document.hidden) {
-            
+
             new Notification('ข้อความใหม่', {
                 body: `คุณมี ${data.new_count} ข้อความใหม่`,
                 icon: '/icon.svg',
                 tag: 'inbox-new-message'
             });
         }
-        
+
         // Update page title
         updatePageTitle(data.new_count);
-        
+
         // Callback
         if (state.onNewMessage) {
             state.onNewMessage(data);
         }
     }
-    
+
     /**
      * Load new messages for current user
      * @param {string} sinceTime - Timestamp to get messages since
      */
     async function loadNewMessagesForCurrentUser(sinceTime) {
         if (!state.currentUserId) return;
-        
+
         try {
             const params = new URLSearchParams({
                 action: 'get_new_messages',
                 user_id: state.currentUserId,
                 since: sinceTime || state.lastCheck
             });
-            
+
             const response = await fetch(`${config.apiEndpoint}?${params}`);
             const data = await response.json();
-            
+
             if (data.success && data.messages.length > 0) {
                 // Append messages to chat
                 data.messages.forEach(msg => {
                     appendMessageToChat(msg);
                 });
-                
+
                 // Scroll to bottom
                 scrollChatToBottom();
             }
-            
+
         } catch (error) {
             console.error('[InboxRealtime] Error loading new messages:', error);
         }
     }
-    
+
     /**
      * Append a message to the chat container
      * @param {object} msg
      */
     function appendMessageToChat(msg) {
-        const chatContainer = document.getElementById('chatBox') || 
-                             document.getElementById('chatMessages') ||
-                             document.querySelector('.chat-messages');
+        const chatContainer = document.getElementById('chatBox') ||
+            document.getElementById('chatMessages') ||
+            document.querySelector('.chat-messages');
         if (!chatContainer) {
             console.warn('[InboxRealtime] Chat container not found');
             return;
         }
-        
+
         // Check if message already exists (use data-msg-id to match inbox-v2.php)
         if (document.querySelector(`[data-msg-id="${msg.id}"]`)) {
             return;
         }
-        
+
         const isIncoming = msg.direction === 'incoming';
         const messageHtml = createMessageHtml(msg, isIncoming);
-        
+
         chatContainer.insertAdjacentHTML('beforeend', messageHtml);
     }
-    
+
     /**
      * Create HTML for a message
      * @param {object} msg
@@ -295,9 +295,9 @@ const InboxRealtime = (function() {
         const alignClass = isIncoming ? 'justify-start' : 'justify-end';
         const bgClass = isIncoming ? 'bg-white' : 'bg-emerald-500 text-white';
         const roundedClass = isIncoming ? 'rounded-tl-none' : 'rounded-tr-none';
-        
+
         let content = '';
-        
+
         switch (msg.type) {
             case 'image':
                 content = `<img src="${escapeHtml(msg.content)}" class="max-w-[200px] rounded-lg cursor-pointer" onclick="window.open('${escapeHtml(msg.content)}', '_blank')">`;
@@ -318,7 +318,7 @@ const InboxRealtime = (function() {
             default:
                 content = `<div class="whitespace-pre-wrap break-words">${escapeHtml(msg.content)}</div>`;
         }
-        
+
         return `
             <div class="flex ${alignClass} mb-3 animate-fadeIn" data-msg-id="${msg.id}">
                 <div class="max-w-[70%] ${bgClass} rounded-2xl ${roundedClass} px-4 py-2 shadow-sm">
@@ -331,19 +331,19 @@ const InboxRealtime = (function() {
             </div>
         `;
     }
-    
+
     /**
      * Scroll chat to bottom
      */
     function scrollChatToBottom() {
-        const chatContainer = document.getElementById('chatBox') || 
-                             document.getElementById('chatMessages') ||
-                             document.querySelector('.chat-messages');
+        const chatContainer = document.getElementById('chatBox') ||
+            document.getElementById('chatMessages') ||
+            document.querySelector('.chat-messages');
         if (chatContainer) {
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
     }
-    
+
     /**
      * Update page title with unread count
      * @param {number} count
@@ -356,7 +356,7 @@ const InboxRealtime = (function() {
             document.title = baseTitle;
         }
     }
-    
+
     /**
      * Escape HTML to prevent XSS
      * @param {string} str
@@ -368,24 +368,24 @@ const InboxRealtime = (function() {
         div.textContent = str;
         return div.innerHTML;
     }
-    
+
     /**
      * Update conversation list in UI
      * @param {array} conversations
      */
     function updateConversationList(conversations) {
-        const container = document.getElementById('userList') || 
-                         document.getElementById('conversationList') ||
-                         document.querySelector('.conversation-list');
+        const container = document.getElementById('userList') ||
+            document.getElementById('conversationList') ||
+            document.querySelector('.conversation-list');
         if (!container) return;
-        
+
         conversations.forEach((conv, index) => {
             const existingItem = container.querySelector(`[data-user-id="${conv.id}"]`);
-            
+
             if (existingItem) {
                 // Update existing item
                 updateConversationItem(existingItem, conv);
-                
+
                 // Move to correct position if needed
                 const currentIndex = Array.from(container.children).indexOf(existingItem);
                 if (currentIndex !== index) {
@@ -399,7 +399,7 @@ const InboxRealtime = (function() {
             }
         });
     }
-    
+
     /**
      * Update a single conversation item
      * @param {HTMLElement} item
@@ -412,13 +412,13 @@ const InboxRealtime = (function() {
             const prefix = conv.last_direction === 'outgoing' ? 'คุณ: ' : '';
             lastMsgEl.textContent = prefix + conv.last_message;
         }
-        
+
         // Update time
         const timeEl = item.querySelector('.last-time');
         if (timeEl) {
             timeEl.textContent = conv.last_time_formatted;
         }
-        
+
         // Update unread badge
         const badgeEl = item.querySelector('.unread-badge');
         if (badgeEl) {
@@ -439,7 +439,7 @@ const InboxRealtime = (function() {
             }
         }
     }
-    
+
     // Public API
     return {
         init,
@@ -453,7 +453,7 @@ const InboxRealtime = (function() {
 })();
 
 // CSS for animations (inject into page)
-(function() {
+(function () {
     const style = document.createElement('style');
     style.textContent = `
         @keyframes fadeIn {
