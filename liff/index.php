@@ -155,8 +155,8 @@ $currentPage = $pages[$page] ?? $pages['home'];
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- App Styles -->
-    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=202601200220">
-    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/premium-effects.css?v=202601210600">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=202601210630">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/premium-effects.css?v=202601210630">
 </head>
 
 <body>
