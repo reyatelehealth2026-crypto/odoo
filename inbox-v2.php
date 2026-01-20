@@ -5446,13 +5446,13 @@ function displayAutocompleteResults(conversations) {
 function selectAutocompleteResult(userId) {
     const autocompleteDiv = document.getElementById('searchAutocomplete');
     autocompleteDiv.classList.add('hidden');
-    
+
     // Clear search input
     document.getElementById('userSearch').value = '';
     searchState.query = '';
-    
-    // Load the conversation
-    loadConversation(userId);
+
+    // Navigate to the conversation
+    window.location.href = `?user=${userId}`;
 }
 
 // Close autocomplete when clicking outside
@@ -5865,6 +5865,8 @@ function applyFilters() {
     const assignee = document.getElementById('filterAssignee')?.value || '';
     const currentAdminId = <?= $_SESSION['admin_id'] ?? 0 ?>;
 
+    console.log('[Filter] Applying filters:', { status, tag, chatStatus, assignee });
+
     // Check if there's an active search - if so, re-run search with new filters
     const searchInput = document.getElementById('userSearch');
     const hasActiveSearch = searchInput && searchInput.value.trim().length > 0;
@@ -5875,10 +5877,13 @@ function applyFilters() {
         return;
     }
 
-    // No active search - just apply filters
-    const userItems = document.querySelectorAll('#userList .user-item:not(.search-result-server)');
+    // No active search - just apply filters to ALL user items
+    const userItems = document.querySelectorAll('#userList .user-item');
+    let showCount = 0;
+    let totalCount = 0;
 
     userItems.forEach(item => {
+        totalCount++;
         let show = true;
 
         // Filter by read/assigned status
@@ -5893,7 +5898,8 @@ function applyFilters() {
         // Filter by tag
         if (tag) {
             const itemTags = (item.dataset.tags || '').split(',').filter(t => t);
-            show = show && itemTags.includes(tag);
+            const hasTag = itemTags.includes(tag);
+            show = show && hasTag;
         }
 
         // Filter by chat status (work status)
@@ -5916,7 +5922,10 @@ function applyFilters() {
         }
 
         item.style.display = show ? 'block' : 'none';
+        if (show) showCount++;
     });
+
+    console.log(`[Filter] Showing ${showCount} of ${totalCount} conversations`);
 
     // Remove any server search results when just filtering (no search)
     document.querySelectorAll('#userList .search-result-server').forEach(item => {
