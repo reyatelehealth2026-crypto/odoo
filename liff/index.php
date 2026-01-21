@@ -29,6 +29,7 @@ $liffId = '';
 $shopName = 'ร้านค้า';
 $shopLogo = '';
 $companyName = 'MedCare';
+$v = '202601210733'; // Global Cache Buster defined at top
 
 // Build LIFF ID to Account mapping for JavaScript
 $liffToAccountMap = [];
@@ -155,8 +156,8 @@ $currentPage = $pages[$page] ?? $pages['home'];
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- App Styles -->
-    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=202601210701">
-    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/premium-effects.css?v=202601210701">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/liff-app.css?v=<?= $v ?>">
+    <link rel="stylesheet" href="<?= $baseUrl ?>/liff/assets/css/premium-effects.css?v=<?= $v ?>">
 </head>
 
 <body>
@@ -264,7 +265,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
     </script>
 
     <!-- App Scripts -->
-    <?php $v = '202601210530'; // Cache bust version - Fix tier color consistency ?>
+    <?php // Cache bust version defined at top ?>
     <script>window.debugLog('Loading scripts...', 'info');</script>
     <script src="<?= $baseUrl ?>/liff/assets/js/store.js?v=<?= $v ?>"
         onerror="window.debugLog('FAILED: store.js', 'error')"></script>
@@ -300,7 +301,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
     <script src="<?= $baseUrl ?>/liff/assets/js/components/rewards-catalog.js?v=<?= $v ?>"
         onerror="window.debugLog('FAILED: rewards-catalog.js', 'error')"></script>
     <script>window.debugLog('rewards-catalog.js loaded', 'success');</script>
-    <script src="<?= $baseUrl ?>/liff/assets/js/liff-app.js?v=202601210701"
+    <script src="<?= $baseUrl ?>/liff/assets/js/liff-app.js?v=<?= $v ?>"
         onerror="window.debugLog('FAILED: liff-app.js', 'error')"></script>
     <script>window.debugLog('All scripts loaded!', 'success');</script>
 </body>
