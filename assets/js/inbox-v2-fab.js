@@ -267,7 +267,7 @@ const HUDMode = {
         }
     },
 
-    async loadCRMData() {
+    async loadCRMData(force = false) {
         const userId = window.ghostDraftState?.userId;
         if (!userId) {
             return;
@@ -280,8 +280,8 @@ const HUDMode = {
             return;
         }
 
-        // Skip if already loaded for this user
-        if (this.crmDataLoaded === userId) {
+        // Skip if already loaded for this user (unless forced)
+        if (!force && this.crmDataLoaded === userId) {
             return;
         }
 
@@ -523,7 +523,7 @@ const HUDMode = {
 
             if (result.success) {
                 this.hideTagSelector();
-                this.loadCRMData();
+                this.loadCRMData(true); // Force reload to show new tag immediately
                 showNotification && showNotification('✓ เพิ่ม Tag สำเร็จ', 'success');
             }
         } catch (error) {
@@ -551,7 +551,7 @@ const HUDMode = {
 
             if (result.success) {
                 this.hideTagSelector();
-                this.loadCRMData();
+                this.loadCRMData(true); // Force reload to show new tag immediately
                 showNotification && showNotification('✓ เพิ่ม Tag สำเร็จ', 'success');
             }
         } catch (error) {
@@ -574,7 +574,7 @@ const HUDMode = {
             const result = await response.json();
 
             if (result.success) {
-                this.loadCRMData();
+                this.loadCRMData(true); // Force reload to remove tag immediately
             }
         } catch (error) {
             console.error('Remove tag error:', error);
