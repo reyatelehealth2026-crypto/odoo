@@ -155,7 +155,7 @@ const HUDMode = {
     async loadTemplates() {
         if (this.templatesLoaded && this.templates.length > 0) {
             this.renderTemplates();
-            return;
+            // Don't return, allow background refresh
         }
 
         const listContainer = document.getElementById('templateList');
@@ -218,12 +218,22 @@ const HUDMode = {
             html += `<div class="mb-3">
                 <div class="text-xs font-medium text-gray-500 mb-2 px-1">${escapeHtml(category)}</div>
                 ${items.map(t => `
-                    <div class="template-item bg-white border rounded-lg p-3 mb-2 cursor-pointer hover:bg-gray-50 hover:border-teal-300 transition" data-template-id="${t.id}">
-                        <div class="flex items-center gap-2 mb-1">
-                            ${t.quick_reply ? `<span class="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded font-mono">${escapeHtml(t.quick_reply)}</span>` : ''}
-                            <span class="text-sm font-medium text-gray-800 truncate">${escapeHtml(t.name)}</span>
+                    <div class="template-item bg-white border rounded-lg p-3 mb-2 hover:bg-gray-50 hover:border-teal-300 transition group relative">
+                        <div class="cursor-pointer" onclick="HUDMode.useTemplate(${t.id})">
+                            <div class="flex items-center gap-2 mb-1">
+                                ${t.quick_reply ? `<span class="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded font-mono">${escapeHtml(t.quick_reply)}</span>` : ''}
+                                <span class="text-sm font-medium text-gray-800 truncate flex-1">${escapeHtml(t.name)}</span>
+                            </div>
+                            <p class="text-xs text-gray-500 line-clamp-2">${escapeHtml(t.content.substring(0, 100))}${t.content.length > 100 ? '...' : ''}</p>
                         </div>
-                        <p class="text-xs text-gray-500 line-clamp-2">${escapeHtml(t.content.substring(0, 100))}${t.content.length > 100 ? '...' : ''}</p>
+                        <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition flex gap-1 bg-white/80 rounded">
+                            <button onclick="event.stopPropagation(); HUDMode.showTemplateModal(${t.id})" class="p-1 text-gray-400 hover:text-blue-600" title="แก้ไข">
+                                <i class="fas fa-pen"></i>
+                            </button>
+                            <button onclick="event.stopPropagation(); HUDMode.deleteTemplate(${t.id})" class="p-1 text-gray-400 hover:text-red-600" title="ลบ">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
                     </div>
                 `).join('')}
             </div>`;
@@ -231,13 +241,7 @@ const HUDMode = {
 
         listContainer.innerHTML = html;
 
-        // Add click event listeners
-        listContainer.querySelectorAll('.template-item[data-template-id]').forEach(item => {
-            item.addEventListener('click', () => {
-                const id = parseInt(item.dataset.templateId, 10);
-                this.useTemplate(id);
-            });
-        });
+        listContainer.innerHTML = html;
     },
 
     useTemplate(id) {
@@ -256,10 +260,100 @@ const HUDMode = {
             messageInput.focus();
             messageInput.dispatchEvent(new Event('input'));
 
-            // Show notification
             if (typeof showNotification === 'function') {
-                showNotification('✓ ใส่เทมเพลตแล้ว', 'success');
+                showNotification('✓ นำข้อความลงช่องแชทแล้ว', 'success');
             }
+        }
+    },
+
+    showTemplateModal(id = null) {
+        const modal = document.getElementById('templateModal');
+        const title = document.getElementById('templateModalTitle');
+        const idInput = document.getElementById('templateId');
+        const nameInput = document.getElementById('templateName');
+        const contentInput = document.getElementById('templateContent');
+        const categoryInput = document.getElementById('templateCategory');
+        const quickReplyInput = document.getElementById('templateQuickReply');
+
+        if (id) {
+            const t = this.templates.find(x => x.id === id);
+            if (!t) return;
+            title.textContent = 'แก้ไขเทมเพลต';
+            idInput.value = t.id;
+            nameInput.value = t.name;
+            contentInput.value = t.content;
+            categoryInput.value = t.category || '';
+            quickReplyInput.value = t.quick_reply || '';
+        } else {
+            title.textContent = 'เพิ่มเทมเพลต';
+            idInput.value = '';
+            nameInput.value = '';
+            contentInput.value = '';
+            categoryInput.value = '';
+            quickReplyInput.value = '';
+        }
+
+        modal.classList.remove('hidden');
+    },
+
+    async saveTemplate() {
+        const id = document.getElementById('templateId').value;
+        const name = document.getElementById('templateName').value.trim();
+        const content = document.getElementById('templateContent').value.trim();
+        const category = document.getElementById('templateCategory').value.trim();
+        const quickReply = document.getElementById('templateQuickReply').value.trim();
+
+        if (!name || !content) {
+            alert('กรุณาระบุชื่อและเนื้อหา');
+            return;
+        }
+
+        const action = id ? 'update_template' : 'create_template';
+        const formData = new FormData();
+        formData.append('action', action);
+        if (id) formData.append('id', id);
+        formData.append('name', name);
+        formData.append('content', content);
+        formData.append('category', category);
+        formData.append('quick_reply', quickReply);
+        formData.append('line_account_id', window.currentBotId || 1);
+
+        try {
+            const response = await fetch('api/inbox.php', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (result.success) {
+                document.getElementById('templateModal').classList.add('hidden');
+                this.loadTemplates(); // Reload list
+                showNotification && showNotification('✓ บันทึกสำเร็จ', 'success');
+            } else {
+                alert('Error: ' + (result.error || result.message));
+            }
+        } catch (error) {
+            console.error('Save template error:', error);
+            alert('บันทึกไม่สำเร็จ');
+        }
+    },
+
+    async deleteTemplate(id) {
+        if (!confirm('ต้องการลบเทมเพลตนี้?')) return;
+
+        const formData = new FormData();
+        formData.append('action', 'delete_template');
+        formData.append('id', id);
+
+        try {
+            const response = await fetch('api/inbox.php', { method: 'POST', body: formData });
+            const result = await response.json();
+
+            if (result.success) {
+                this.loadTemplates(); // Reload list
+                showNotification && showNotification('✓ ลบสำเร็จ', 'success');
+            } else {
+                alert('Error: ' + (result.error || result.message));
+            }
+        } catch (error) {
+            console.error('Delete template error:', error);
         }
     },
 
@@ -1058,3 +1152,72 @@ document.addEventListener('DOMContentLoaded', function () {
     FAB.init();
     HUDMode.init();
 });
+
+/* Slash Command & Input Helpers */
+window.autoResize = function (textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+};
+
+window.openQuickReplyModal = function () {
+    const list = document.getElementById('slashCommandList');
+    const container = document.getElementById('slashCommandAutocomplete');
+    if (!list || !container) return;
+
+    // Ensure templates are loaded
+    if (!HUDMode.templatesLoaded) {
+        HUDMode.loadTemplates().then(() => window.openQuickReplyModal());
+        return;
+    }
+
+    // Prepare list
+    const templates = HUDMode.templates || [];
+
+    if (templates.length === 0) {
+        list.innerHTML = '<div class="p-3 text-sm text-gray-500 text-center">ไม่พบเทมเพลต</div>';
+    } else {
+        list.innerHTML = templates.map(t => {
+            const name = escapeHtml(t.name);
+            const content = escapeHtml(t.content);
+            const quickReply = t.quick_reply ? '<span class="text-xs px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded font-mono border border-indigo-100">/' + escapeHtml(t.quick_reply) + '</span>' : '';
+
+            return `
+            <div class="p-3 hover:bg-teal-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors duration-150 group" 
+                 onclick="window.insertSlashTemplate(${t.id})">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="font-semibold text-sm text-gray-800 group-hover:text-teal-700">${name}</span>
+                    ${quickReply}
+                </div>
+                <div class="text-xs text-gray-500 truncate font-light">${content}</div>
+            </div>
+            `;
+        }).join('');
+    }
+
+    container.classList.remove('hidden');
+
+    // Add click outside listener
+    setTimeout(() => {
+        document.addEventListener('click', window.closeSlashOnClickOutside);
+    }, 0);
+};
+
+window.closeQuickReplyModal = function () {
+    const container = document.getElementById('slashCommandAutocomplete');
+    if (container) container.classList.add('hidden');
+    document.removeEventListener('click', window.closeSlashOnClickOutside);
+};
+
+window.closeSlashOnClickOutside = function (e) {
+    const container = document.getElementById('slashCommandAutocomplete');
+    const input = document.getElementById('messageInput');
+    // If click is NOT in container AND NOT in input
+    if (container && !container.contains(e.target) && e.target !== input) {
+        window.closeQuickReplyModal();
+    }
+};
+
+window.insertSlashTemplate = function (id) {
+    HUDMode.useTemplate(id);
+    window.closeQuickReplyModal();
+};
