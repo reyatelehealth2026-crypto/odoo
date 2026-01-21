@@ -68,9 +68,19 @@ const HUDMode = {
     crmDataLoaded: null,   // Track which user's CRM data is loaded (for lazy loading)
 
     init() {
-        // Default to 'crm' for first time users
-        const savedMode = localStorage.getItem('hudMode') || 'crm';
-        this.switchMode(savedMode, false);
+        // Check URL params for direct link
+        const urlParams = new URLSearchParams(window.location.search);
+        const tab = urlParams.get('tab');
+
+        // Determine initial mode
+        let initialMode = 'crm';
+        if (tab === 'templates') {
+            initialMode = 'templates';
+        } else {
+            initialMode = localStorage.getItem('hudMode') || 'crm';
+        }
+
+        this.switchMode(initialMode, false);
 
         // Load collapsed sections from localStorage
         this.loadCollapsedSections();
