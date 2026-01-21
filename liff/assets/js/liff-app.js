@@ -536,6 +536,13 @@ class LiffApp {
      * Show welcome modal for new members with confetti effect
      */
     showWelcomeModal(memberName, bonusPoints = 50) {
+        // Fix: Check if welcome bonus already received to prevent loop
+        if (localStorage.getItem('welcome_bonus_received')) {
+            // Check onboarding immediately if welcome modal is skipped
+            this.checkAndShowOnboarding();
+            return;
+        }
+
         // Create modal overlay
         const modalOverlay = document.createElement('div');
         modalOverlay.className = 'welcome-modal-overlay';
@@ -552,7 +559,7 @@ class LiffApp {
                     <span class="bonus-text">คุณได้รับ <strong>${bonusPoints} พอยท์</strong> ต้อนรับ!</span>
                 </div>
                 <p class="welcome-message">ขอบคุณที่เป็นส่วนหนึ่งของเรา<br>สะสมพอยท์แลกของรางวัลสุดพิเศษได้เลย</p>
-                <button class="welcome-btn" onclick="this.closest('.welcome-modal-overlay').remove()">
+                <button class="welcome-btn" onclick="window.liffApp.closeWelcomeModal()">
                     เริ่มต้นใช้งาน
                 </button>
             </div>
@@ -686,13 +693,31 @@ class LiffApp {
 
         document.body.appendChild(modalOverlay);
 
-        // Auto close after 8 seconds
+        // Auto close after 10 seconds (increased from 8) and trigger onboarding
         setTimeout(() => {
-            if (modalOverlay.parentNode) {
-                modalOverlay.style.animation = 'fadeOut 0.3s ease forwards';
-                setTimeout(() => modalOverlay.remove(), 300);
+            if (document.body.contains(modalOverlay)) {
+                this.closeWelcomeModal();
             }
-        }, 8000);
+        }, 10000);
+    }
+
+    /**
+     * Close welcome modal and start onboarding
+     */
+    closeWelcomeModal() {
+        const overlay = document.querySelector('.welcome-modal-overlay');
+        if (overlay) {
+            overlay.style.opacity = '0';
+            setTimeout(() => {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            }, 300);
+        }
+
+        // Save state to prevent showing again
+        localStorage.setItem('welcome_bonus_received', 'true');
+
+        // Start Onboarding Tour
+        this.checkAndShowOnboarding();
     }
     /**
      * Check and show onboarding for visitors
