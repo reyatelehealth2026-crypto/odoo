@@ -12,7 +12,7 @@ $db = Database::getInstance()->getConnection();
 echo "<h1>Status Column Migration</h1>";
 
 try {
-    $sqlFile = __DIR__ . '/../database/migration_update_transactions_status.sql';
+    $sqlFile = __DIR__ . '/database/migration_update_transactions_status.sql';
     if (!file_exists($sqlFile)) {
         throw new Exception("Migration file not found: $sqlFile");
     }
