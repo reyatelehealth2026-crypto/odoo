@@ -2492,14 +2492,14 @@ try {
                     sendError('LINE account not configured');
                 }
 
-                // Get unread messages with mark_as_read_token
+                // Get messages with mark_as_read_token that haven't been marked on LINE yet
+                // Note: Don't check is_read because local read status is updated before this API runs
                 $stmt = $db->prepare("
                     SELECT id, mark_as_read_token 
                     FROM messages 
                     WHERE user_id = ? 
                     AND line_account_id = ? 
                     AND direction = 'incoming' 
-                    AND is_read = 0 
                     AND mark_as_read_token IS NOT NULL 
                     AND (is_read_on_line = 0 OR is_read_on_line IS NULL)
                     ORDER BY created_at DESC
