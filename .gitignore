@@ -1,6 +1,9 @@
 # Configuration (contains sensitive data)
 config/config.php
 config/installed.lock
+.env
+.env.local
+.env.*.local
 
 # Uploads
 uploads/*
@@ -12,32 +15,39 @@ uploads/*
 *.log
 logs/
 
-# IDE
+# IDE & Editor
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
 
+# AI Tools
+.claude/
+.kiro/
+.gemini/
+
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
-# Composer (if used)
+# Dependencies
 vendor/
 composer.lock
-
-# Node (if used)
 node_modules/
+package-lock.json
 
-# Test files
+# Test & Cache
 test*.php
-!test/
+!tests/
+.phpunit.result.cache
+phpunit.xml.bak
+cache/
 
 # Temporary files
 *.tmp
 *.temp
-cache/
 
 # Composer
 composer.phar
@@ -52,13 +62,43 @@ id_ed25519
 *.ppk
 
 # Sensitive Files
-.env.local
 config/config.local.php
 *.secret
 
-# Backup Files
+# Backup Files & Archives
 *.bak
 *.backup
 *.old
 *_backup
 *_old
+*.zip
+*.tar.gz
+*.rar
+backup/
+
+# Cleanup & Reports
+.cleanup/
+
+# Deploy scripts (optional - uncomment if needed)
+# deploy-*.sh
+
+# Large documentation (keep only essential ones)
+ANALYSIS_REPORT.md
+CLEANUP_REPORT_*.md
+CRM_WORKFLOW_COMPLETE.md
+CRMWorkflow&Architecture.html
+DEPLOYMENT_SUCCESS.md
+LIFF_*.md
+OPTIMIZATION_REPORT.md
+PROJECT_FLOW_DOCUMENTATION.md
+REWARDS_*.md
+TESTING_*.md
+USER_MANUAL.md
+WEBSOCKET_SERVER_README.md
+Roadmapv2.md
+MULTI_ASSIGNEE_FEATURE.md
+
+# Database SQL files (sensitive - keep only schema)
+database/*.sql
+!database/schema_complete.sql
+!database/install_thai.sql
