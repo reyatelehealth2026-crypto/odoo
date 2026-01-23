@@ -3125,15 +3125,55 @@ try {
                             $dbRecords[] = ['type' => 'image', 'content' => $msg['originalContentUrl']];
                         }
                     } elseif ($type === 'file') {
-                        // LINE doesn't support file message type in Push API directly except as text link or Imagemap
-                        // But typically we send as text link for simple files
+                        // Use Flex Message for file attachments to look like native files
                         if (!empty($msg['originalContentUrl'])) {
                             $fileName = $msg['fileName'] ?? 'File';
-                            // Send as text message with link
-                            $text = "📄 {$fileName}\n🔗 {$msg['originalContentUrl']}";
-                            $lineMessages[] = ['type' => 'text', 'text' => $text];
-                            // Store as file in DB if we want, or text. Let's store as file type for history
-                            $fileContent = json_encode(['url' => $msg['originalContentUrl'], 'name' => $fileName], JSON_UNESCAPED_UNICODE);
+                            $fileUrl = $msg['originalContentUrl'];
+
+                            $lineMessages[] = [
+                                'type' => 'flex',
+                                'altText' => "Sent a file: {$fileName}",
+                                'contents' => [
+                                    'type' => 'bubble',
+                                    'size' => 'kilo',
+                                    'body' => [
+                                        'type' => 'box',
+                                        'layout' => 'horizontal',
+                                        'contents' => [
+                                            [
+                                                'type' => 'text',
+                                                'text' => '📄',
+                                                'size' => 'xxl',
+                                                'flex' => 0
+                                            ],
+                                            [
+                                                'type' => 'text',
+                                                'text' => $fileName,
+                                                'weight' => 'bold',
+                                                'size' => 'sm',
+                                                'color' => '#111111',
+                                                'flex' => 1,
+                                                'wrap' => true,
+                                                'margin' => 'md',
+                                                'gravity' => 'center',
+                                                'action' => [
+                                                    'type' => 'uri',
+                                                    'label' => 'Open File',
+                                                    'uri' => $fileUrl
+                                                ]
+                                            ]
+                                        ],
+                                        'action' => [
+                                            'type' => 'uri',
+                                            'label' => 'Open File',
+                                            'uri' => $fileUrl
+                                        ]
+                                    ]
+                                ]
+                            ];
+
+                            // Store as file in DB
+                            $fileContent = json_encode(['url' => $fileUrl, 'name' => $fileName], JSON_UNESCAPED_UNICODE);
                             $dbRecords[] = ['type' => 'file', 'content' => $fileContent];
                         }
                     }
