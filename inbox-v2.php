@@ -4515,122 +4515,122 @@ function formatThaiDateTime($datetime)
          */
         async function markMessagesAsReadOnLine(userId) {
             console.log('[MarkAsRead] Called with userId:', userId);
-                if (!userId) {
-                    console.log('[MarkAsRead] No userId, returning');
-                    return;
-                }
-
-                try {
-                    const formData = new FormData();
-                    formData.append('action', 'mark_as_read_on_line');
-                    formData.append('user_id', userId);
-                    formData.append('line_account_id', window.currentBotId || <?= $currentBotId ?>);
-
-                    console.log('[MarkAsRead] Calling API...');
-                    const response = await fetch('api/inbox-v2.php', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    const result = await response.json();
-                    console.log('[MarkAsRead] API Result:', result);
-                } catch (error) {
-                    console.error('[MarkAsRead] Error:', error);
-                }
+            if (!userId) {
+                console.log('[MarkAsRead] No userId, returning');
+                return;
             }
 
-            // ============================================
-            // QUICK REPLY MODAL FUNCTIONS
-            // ============================================
+            try {
+                const formData = new FormData();
+                formData.append('action', 'mark_as_read_on_line');
+                formData.append('user_id', userId);
+                formData.append('line_account_id', window.currentBotId || <?= $currentBotId ?>);
 
-            let quickReplySelectedIndex = 0;
-            let quickReplyFilteredList = [];
+                console.log('[MarkAsRead] Calling API...');
+                const response = await fetch('api/inbox-v2.php', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            /**
-             * Open quick reply modal
-             */
-            async function openQuickReplyModal() {
-                const modal = document.getElementById('quickReplyModal');
-                if (!modal) return;
+                const result = await response.json();
+                console.log('[MarkAsRead] API Result:', result);
+            } catch (error) {
+                console.error('[MarkAsRead] Error:', error);
+            }
+        }
 
-                modal.classList.remove('hidden');
+        // ============================================
+        // QUICK REPLY MODAL FUNCTIONS
+        // ============================================
 
-                // Load templates if not loaded
-                if (!HUDMode.templatesLoaded || HUDMode.templates.length === 0) {
-                    await HUDMode.loadTemplates();
+        let quickReplySelectedIndex = 0;
+        let quickReplyFilteredList = [];
+
+        /**
+         * Open quick reply modal
+         */
+        async function openQuickReplyModal() {
+            const modal = document.getElementById('quickReplyModal');
+            if (!modal) return;
+
+            modal.classList.remove('hidden');
+
+            // Load templates if not loaded
+            if (!HUDMode.templatesLoaded || HUDMode.templates.length === 0) {
+                await HUDMode.loadTemplates();
+            }
+
+            // Reset filter
+            quickReplyFilteredList = [...HUDMode.templates];
+            quickReplySelectedIndex = 0;
+            renderQuickReplyList();
+
+            // Focus search input
+            setTimeout(() => {
+                const searchInput = document.getElementById('quickReplySearch');
+                if (searchInput) {
+                    searchInput.value = '';
+                    searchInput.focus();
                 }
+            }, 50);
 
-                // Reset filter
+            // Clear the "/" from message input
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput && messageInput.value.endsWith('/')) {
+                messageInput.value = messageInput.value.slice(0, -1);
+            }
+        }
+
+        /**
+         * Close quick reply modal
+         */
+        function closeQuickReplyModal() {
+            const modal = document.getElementById('quickReplyModal');
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+
+            // Return focus to message input
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.focus();
+            }
+        }
+
+        /**
+         * Filter quick replies based on search query
+         */
+        function filterQuickReplies(query) {
+            const q = query.toLowerCase().trim();
+
+            if (!q) {
                 quickReplyFilteredList = [...HUDMode.templates];
-                quickReplySelectedIndex = 0;
-                renderQuickReplyList();
-
-                // Focus search input
-                setTimeout(() => {
-                    const searchInput = document.getElementById('quickReplySearch');
-                    if (searchInput) {
-                        searchInput.value = '';
-                        searchInput.focus();
-                    }
-                }, 50);
-
-                // Clear the "/" from message input
-                const messageInput = document.getElementById('messageInput');
-                if (messageInput && messageInput.value.endsWith('/')) {
-                    messageInput.value = messageInput.value.slice(0, -1);
-                }
+            } else {
+                quickReplyFilteredList = HUDMode.templates.filter(t =>
+                    t.name.toLowerCase().includes(q) ||
+                    t.content.toLowerCase().includes(q) ||
+                    (t.category && t.category.toLowerCase().includes(q)) ||
+                    (t.quick_reply && t.quick_reply.toLowerCase().includes(q))
+                );
             }
 
-            /**
-             * Close quick reply modal
-             */
-            function closeQuickReplyModal() {
-                const modal = document.getElementById('quickReplyModal');
-                if (modal) {
-                    modal.classList.add('hidden');
-                }
+            quickReplySelectedIndex = 0;
+            renderQuickReplyList();
+        }
 
-                // Return focus to message input
-                const messageInput = document.getElementById('messageInput');
-                if (messageInput) {
-                    messageInput.focus();
-                }
+        /**
+         * Render quick reply list
+         */
+        function renderQuickReplyList() {
+            const listContainer = document.getElementById('quickReplyList');
+            if (!listContainer) return;
+
+            if (quickReplyFilteredList.length === 0) {
+                listContainer.innerHTML = '<div class="quick-reply-empty">ไม่พบเทมเพลต</div>';
+                return;
             }
 
-            /**
-             * Filter quick replies based on search query
-             */
-            function filterQuickReplies(query) {
-                const q = query.toLowerCase().trim();
-
-                if (!q) {
-                    quickReplyFilteredList = [...HUDMode.templates];
-                } else {
-                    quickReplyFilteredList = HUDMode.templates.filter(t =>
-                        t.name.toLowerCase().includes(q) ||
-                        t.content.toLowerCase().includes(q) ||
-                        (t.category && t.category.toLowerCase().includes(q)) ||
-                        (t.quick_reply && t.quick_reply.toLowerCase().includes(q))
-                    );
-                }
-
-                quickReplySelectedIndex = 0;
-                renderQuickReplyList();
-            }
-
-            /**
-             * Render quick reply list
-             */
-            function renderQuickReplyList() {
-                const listContainer = document.getElementById('quickReplyList');
-                if (!listContainer) return;
-
-                if (quickReplyFilteredList.length === 0) {
-                    listContainer.innerHTML = '<div class="quick-reply-empty">ไม่พบเทมเพลต</div>';
-                    return;
-                }
-
-                listContainer.innerHTML = quickReplyFilteredList.map((t, index) => `
+            listContainer.innerHTML = quickReplyFilteredList.map((t, index) => `
         <div class="quick-reply-item ${index === quickReplySelectedIndex ? 'selected' : ''}" 
              onclick="selectQuickReply(${index})" 
              data-index="${index}">
@@ -4642,334 +4642,334 @@ function formatThaiDateTime($datetime)
         </div>
     `).join('');
 
-                // Scroll selected item into view
-                const selectedItem = listContainer.querySelector('.quick-reply-item.selected');
-                if (selectedItem) {
-                    selectedItem.scrollIntoView({ block: 'nearest' });
-                }
+            // Scroll selected item into view
+            const selectedItem = listContainer.querySelector('.quick-reply-item.selected');
+            if (selectedItem) {
+                selectedItem.scrollIntoView({ block: 'nearest' });
             }
+        }
 
-            /**
-             * Select quick reply by index
-             */
-            function selectQuickReply(index) {
-                if (index >= 0 && index < quickReplyFilteredList.length) {
-                    const template = quickReplyFilteredList[index];
-                    HUDMode.useTemplate(template.id);
-                    closeQuickReplyModal();
-                }
+        /**
+         * Select quick reply by index
+         */
+        function selectQuickReply(index) {
+            if (index >= 0 && index < quickReplyFilteredList.length) {
+                const template = quickReplyFilteredList[index];
+                HUDMode.useTemplate(template.id);
+                closeQuickReplyModal();
             }
+        }
 
-            /**
-             * Handle keyboard navigation in quick reply modal
-             */
-            function handleQuickReplyKeydown(event) {
-                if (event.key === 'ArrowDown') {
-                    event.preventDefault();
-                    quickReplySelectedIndex = Math.min(quickReplySelectedIndex + 1, quickReplyFilteredList.length - 1);
-                    renderQuickReplyList();
-                } else if (event.key === 'ArrowUp') {
-                    event.preventDefault();
-                    quickReplySelectedIndex = Math.max(quickReplySelectedIndex - 1, 0);
-                    renderQuickReplyList();
-                } else if (event.key === 'Enter') {
-                    event.preventDefault();
-                    selectQuickReply(quickReplySelectedIndex);
-                } else if (event.key === 'Escape') {
-                    event.preventDefault();
-                    closeQuickReplyModal();
-                }
+        /**
+         * Handle keyboard navigation in quick reply modal
+         */
+        function handleQuickReplyKeydown(event) {
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                quickReplySelectedIndex = Math.min(quickReplySelectedIndex + 1, quickReplyFilteredList.length - 1);
+                renderQuickReplyList();
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                quickReplySelectedIndex = Math.max(quickReplySelectedIndex - 1, 0);
+                renderQuickReplyList();
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                selectQuickReply(quickReplySelectedIndex);
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                closeQuickReplyModal();
             }
+        }
 
-            /**
-             * Show notification toast
-             * @param {string} message
-             * @param {string} type success|error|warning|info
-             */
-            function showNotification(message, type = 'info') {
-                const container = document.getElementById('notificationContainer');
-                if (!container) return;
+        /**
+         * Show notification toast
+         * @param {string} message
+         * @param {string} type success|error|warning|info
+         */
+        function showNotification(message, type = 'info') {
+            const container = document.getElementById('notificationContainer');
+            if (!container) return;
 
-                const colors = {
-                    success: '#10B981',
-                    error: '#EF4444',
-                    warning: '#F59E0B',
-                    info: '#8B5CF6'
-                };
+            const colors = {
+                success: '#10B981',
+                error: '#EF4444',
+                warning: '#F59E0B',
+                info: '#8B5CF6'
+            };
 
-                const icons = {
-                    success: 'fa-check-circle',
-                    error: 'fa-exclamation-circle',
-                    warning: 'fa-exclamation-triangle',
-                    info: 'fa-info-circle'
-                };
+            const icons = {
+                success: 'fa-check-circle',
+                error: 'fa-exclamation-circle',
+                warning: 'fa-exclamation-triangle',
+                info: 'fa-info-circle'
+            };
 
-                const toast = document.createElement('div');
-                toast.className = 'notification-toast';
-                toast.style.borderLeftColor = colors[type] || colors.info;
-                toast.innerHTML = `
+            const toast = document.createElement('div');
+            toast.className = 'notification-toast';
+            toast.style.borderLeftColor = colors[type] || colors.info;
+            toast.innerHTML = `
         <i class="fas ${icons[type] || icons.info}" style="color: ${colors[type] || colors.info}"></i>
         <span class="text-sm text-gray-700">${escapeHtml(message)}</span>
     `;
 
-                container.appendChild(toast);
+            container.appendChild(toast);
 
-                // Auto remove after 4 seconds
-                setTimeout(() => {
-                    toast.style.animation = 'slideIn 0.3s ease-out reverse';
-                    setTimeout(() => toast.remove(), 300);
-                }, 4000);
+            // Auto remove after 4 seconds
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 4000);
 
-                // Click to dismiss
-                toast.onclick = () => toast.remove();
-            }
+            // Click to dismiss
+            toast.onclick = () => toast.remove();
+        }
 
-            /**
-             * HUD Dashboard Functions - Vibe Selling OS v2
-             * 
-             * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
-             * - 4.1: Symptom keyword triggers drug widget
-             * - 4.2: Drug name triggers info widget
-             * - 4.3: Drug interactions widget
-             * - 4.4: Pregnancy-safe drugs widget
-             * - 4.5: Allergy warning widget
-             * - 4.6: Smooth widget transitions (300ms)
-             */
+        /**
+         * HUD Dashboard Functions - Vibe Selling OS v2
+         * 
+         * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6
+         * - 4.1: Symptom keyword triggers drug widget
+         * - 4.2: Drug name triggers info widget
+         * - 4.3: Drug interactions widget
+         * - 4.4: Pregnancy-safe drugs widget
+         * - 4.5: Allergy warning widget
+         * - 4.6: Smooth widget transitions (300ms)
+         */
 
-            // HUD State Management
-            const hudState = {
-                isVisible: true,
-                isRefreshing: false,
-                lastMessage: '',
-                lastRefresh: null,
-                activeWidgets: [],
-                widgetCache: new Map(),
-                autoUpdateEnabled: true,
-                refreshDebounceTimer: null
-            };
+        // HUD State Management
+        const hudState = {
+            isVisible: true,
+            isRefreshing: false,
+            lastMessage: '',
+            lastRefresh: null,
+            activeWidgets: [],
+            widgetCache: new Map(),
+            autoUpdateEnabled: true,
+            refreshDebounceTimer: null
+        };
 
-            /**
-             * Toggle HUD Dashboard visibility
-             * Requirements: 4.6 - Smooth transitions
-             */
-            function toggleHUD() {
-                const hud = document.getElementById('hudDashboard');
-                const chatArea = document.getElementById('chatArea');
+        /**
+         * Toggle HUD Dashboard visibility
+         * Requirements: 4.6 - Smooth transitions
+         */
+        function toggleHUD() {
+            const hud = document.getElementById('hudDashboard');
+            const chatArea = document.getElementById('chatArea');
 
-                if (hud) {
-                    hud.classList.toggle('collapsed');
-                    hudState.isVisible = !hud.classList.contains('collapsed');
+            if (hud) {
+                hud.classList.toggle('collapsed');
+                hudState.isVisible = !hud.classList.contains('collapsed');
 
-                    // Adjust chat area margin
-                    if (chatArea) {
-                        if (hud.classList.contains('collapsed')) {
-                            chatArea.classList.add('hud-hidden');
-                        } else {
-                            chatArea.classList.remove('hud-hidden');
-                        }
-                    }
-
-                    // On mobile, toggle mobile-visible class
-                    if (window.innerWidth <= 768) {
-                        hud.classList.toggle('mobile-visible');
-                    }
-
-                    // If becoming visible, refresh widgets
-                    if (hudState.isVisible && ghostDraftState.userId) {
-                        refreshHUD();
-                    }
-                }
-            }
-
-            /**
-             * Refresh HUD Dashboard - Fetch all widget data from API
-             * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
-             */
-            async function refreshHUD() {
-                if (!ghostDraftState.userId || hudState.isRefreshing) {
-                    return;
-                }
-
-                hudState.isRefreshing = true;
-                const refreshBtn = document.querySelector('#hudDashboard .fa-sync-alt');
-
-                // Show loading state
-                if (refreshBtn) {
-                    refreshBtn.classList.add('fa-spin');
-                }
-
-                try {
-                    // Get last customer message for context
-                    const lastMessage = getLastCustomerMessage() || '';
-
-                    // Fetch context-aware widgets from API
-                    const params = new URLSearchParams({
-                        action: 'context_widgets',
-                        user_id: ghostDraftState.userId,
-                        message: lastMessage,
-                        line_account_id: <?= $currentBotId ?>
-                    });
-
-                    const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
-                    const result = await response.json();
-
-                    if (result.success && result.data) {
-                        hudState.activeWidgets = result.data.widgets || [];
-                        hudState.lastRefresh = new Date();
-                        hudState.lastMessage = lastMessage;
-
-                        // Update widgets with smooth transitions - Requirements: 4.6
-                        await updateHUDWidgets(result.data.widgets);
-
-                        showNotification('HUD อัพเดทแล้ว', 'success');
+                // Adjust chat area margin
+                if (chatArea) {
+                    if (hud.classList.contains('collapsed')) {
+                        chatArea.classList.add('hud-hidden');
                     } else {
-                        throw new Error(result.error || 'Failed to refresh HUD');
-                    }
-                } catch (error) {
-                    console.error('Refresh HUD error:', error);
-                    showNotification('ไม่สามารถรีเฟรช HUD ได้', 'error');
-                } finally {
-                    hudState.isRefreshing = false;
-                    if (refreshBtn) {
-                        refreshBtn.classList.remove('fa-spin');
+                        chatArea.classList.remove('hud-hidden');
                     }
                 }
-            }
 
-            /**
-             * Update HUD widgets with data from API
-             * Requirements: 4.6 - Smooth widget transitions within 300ms
-             * @param {Array} widgets Widget data from API
-             */
-            async function updateHUDWidgets(widgets) {
-                const hudWidgetsContainer = document.getElementById('hudWidgets');
-                if (!hudWidgetsContainer) return;
+                // On mobile, toggle mobile-visible class
+                if (window.innerWidth <= 768) {
+                    hud.classList.toggle('mobile-visible');
+                }
 
-                // Process each widget type
-                for (const widget of widgets) {
-                    await updateWidgetByType(widget);
+                // If becoming visible, refresh widgets
+                if (hudState.isVisible && ghostDraftState.userId) {
+                    refreshHUD();
                 }
             }
+        }
 
-            /**
-             * Update specific widget by type
-             * @param {Object} widget Widget data
-             */
-            async function updateWidgetByType(widget) {
-                switch (widget.type) {
-                    case 'symptom':
-                        updateSymptomWidget(widget);
-                        break;
-                    case 'drug_info':
-                        updateDrugInfoWidget(widget);
-                        break;
-                    case 'interaction':
-                        updateInteractionWidget(widget);
-                        break;
-                    case 'allergy':
-                        updateAllergyWidget(widget);
-                        break;
-                    case 'pricing':
-                        updatePricingWidget(widget);
-                        break;
-                    case 'pregnancy':
-                        updatePregnancyWidget(widget);
-                        break;
-                }
+        /**
+         * Refresh HUD Dashboard - Fetch all widget data from API
+         * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
+         */
+        async function refreshHUD() {
+            if (!ghostDraftState.userId || hudState.isRefreshing) {
+                return;
             }
 
-            /**
-             * Update Symptom Widget - Wholesale Mode
-             * Focus on product name detection from customer message
-             * Shows products in same format as Drug Recommendations widget
-             * @param {Object} data Widget data
-             */
-            function updateSymptomWidget(data) {
-                const content = document.getElementById('symptomContent');
-                if (!content) return;
+            hudState.isRefreshing = true;
+            const refreshBtn = document.querySelector('#hudDashboard .fa-sync-alt');
 
-                // Fade out animation
-                content.style.opacity = '0';
-                content.style.transition = 'opacity 0.15s ease';
+            // Show loading state
+            if (refreshBtn) {
+                refreshBtn.classList.add('fa-spin');
+            }
 
-                setTimeout(() => {
-                    if (data.recommendations && data.recommendations.length > 0) {
-                        const recommendations = data.recommendations;
-                        const dataType = data.type || 'unknown';
-                        const found = recommendations.filter(d => d.stock > 0);
-                        const notFound = recommendations.filter(d => d.stock <= 0);
+            try {
+                // Get last customer message for context
+                const lastMessage = getLastCustomerMessage() || '';
 
-                        // Helper function to get match badge based on score and type
-                        const getMatchBadge = (drug) => {
-                            const matchType = drug.matchType || 'partial';
-                            const score = drug.matchScore || 0;
+                // Fetch context-aware widgets from API
+                const params = new URLSearchParams({
+                    action: 'context_widgets',
+                    user_id: ghostDraftState.userId,
+                    message: lastMessage,
+                    line_account_id: <?= $currentBotId ?>
+                });
 
-                            if (matchType === 'exact' || score >= 200) {
-                                return `<span class="text-[9px] bg-green-500 text-white px-1 rounded font-medium">✓ ตรงเป๊ะ</span>`;
-                            } else if (matchType === 'recent' || score >= 100) {
-                                return `<span class="text-[9px] bg-blue-500 text-white px-1 rounded">🕐 ล่าสุด</span>`;
-                            } else if (score >= 50) {
-                                return `<span class="text-[9px] bg-green-100 text-green-600 px-1 rounded">ตรงกัน</span>`;
-                            } else if (score >= 20) {
-                                return `<span class="text-[9px] bg-gray-100 text-gray-500 px-1 rounded">คล้าย</span>`;
-                            }
-                            return '';
-                        };
+                const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
+                const result = await response.json();
 
-                        // Get border class based on match score
-                        const getBorderClass = (drug) => {
-                            const matchType = drug.matchType || 'partial';
-                            const score = drug.matchScore || 0;
+                if (result.success && result.data) {
+                    hudState.activeWidgets = result.data.widgets || [];
+                    hudState.lastRefresh = new Date();
+                    hudState.lastMessage = lastMessage;
 
-                            if (matchType === 'exact' || score >= 200) return 'border-l-4 border-green-500 bg-green-50';
-                            if (matchType === 'recent' || score >= 100) return 'border-l-4 border-blue-400 bg-blue-50';
-                            if (score >= 50) return 'border-l-4 border-green-300 bg-green-50';
-                            return 'border-l-4 border-gray-200 bg-gray-50';
-                        };
+                    // Update widgets with smooth transitions - Requirements: 4.6
+                    await updateHUDWidgets(result.data.widgets);
 
-                        // Get source label
-                        const getSourceLabel = () => {
-                            if (dataType === 'chat_history') return '📝 จากประวัติแชท';
-                            if (dataType === 'message_search') return '💬 จากข้อความ';
-                            if (dataType === 'context') return '💬 จากข้อความล่าสุด';
-                            return '📊 ยอดนิยม';
-                        };
+                    showNotification('HUD อัพเดทแล้ว', 'success');
+                } else {
+                    throw new Error(result.error || 'Failed to refresh HUD');
+                }
+            } catch (error) {
+                console.error('Refresh HUD error:', error);
+                showNotification('ไม่สามารถรีเฟรช HUD ได้', 'error');
+            } finally {
+                hudState.isRefreshing = false;
+                if (refreshBtn) {
+                    refreshBtn.classList.remove('fa-spin');
+                }
+            }
+        }
 
-                        // Extract customer request keywords from message
-                        const customerRequest = data.customerRequest || data.searchTerms || [];
+        /**
+         * Update HUD widgets with data from API
+         * Requirements: 4.6 - Smooth widget transitions within 300ms
+         * @param {Array} widgets Widget data from API
+         */
+        async function updateHUDWidgets(widgets) {
+            const hudWidgetsContainer = document.getElementById('hudWidgets');
+            if (!hudWidgetsContainer) return;
 
-                        let html = '';
+            // Process each widget type
+            for (const widget of widgets) {
+                await updateWidgetByType(widget);
+            }
+        }
 
-                        // Show customer request summary if available
-                        if (customerRequest.length > 0 || data.originalMessage) {
-                            html += `
+        /**
+         * Update specific widget by type
+         * @param {Object} widget Widget data
+         */
+        async function updateWidgetByType(widget) {
+            switch (widget.type) {
+                case 'symptom':
+                    updateSymptomWidget(widget);
+                    break;
+                case 'drug_info':
+                    updateDrugInfoWidget(widget);
+                    break;
+                case 'interaction':
+                    updateInteractionWidget(widget);
+                    break;
+                case 'allergy':
+                    updateAllergyWidget(widget);
+                    break;
+                case 'pricing':
+                    updatePricingWidget(widget);
+                    break;
+                case 'pregnancy':
+                    updatePregnancyWidget(widget);
+                    break;
+            }
+        }
+
+        /**
+         * Update Symptom Widget - Wholesale Mode
+         * Focus on product name detection from customer message
+         * Shows products in same format as Drug Recommendations widget
+         * @param {Object} data Widget data
+         */
+        function updateSymptomWidget(data) {
+            const content = document.getElementById('symptomContent');
+            if (!content) return;
+
+            // Fade out animation
+            content.style.opacity = '0';
+            content.style.transition = 'opacity 0.15s ease';
+
+            setTimeout(() => {
+                if (data.recommendations && data.recommendations.length > 0) {
+                    const recommendations = data.recommendations;
+                    const dataType = data.type || 'unknown';
+                    const found = recommendations.filter(d => d.stock > 0);
+                    const notFound = recommendations.filter(d => d.stock <= 0);
+
+                    // Helper function to get match badge based on score and type
+                    const getMatchBadge = (drug) => {
+                        const matchType = drug.matchType || 'partial';
+                        const score = drug.matchScore || 0;
+
+                        if (matchType === 'exact' || score >= 200) {
+                            return `<span class="text-[9px] bg-green-500 text-white px-1 rounded font-medium">✓ ตรงเป๊ะ</span>`;
+                        } else if (matchType === 'recent' || score >= 100) {
+                            return `<span class="text-[9px] bg-blue-500 text-white px-1 rounded">🕐 ล่าสุด</span>`;
+                        } else if (score >= 50) {
+                            return `<span class="text-[9px] bg-green-100 text-green-600 px-1 rounded">ตรงกัน</span>`;
+                        } else if (score >= 20) {
+                            return `<span class="text-[9px] bg-gray-100 text-gray-500 px-1 rounded">คล้าย</span>`;
+                        }
+                        return '';
+                    };
+
+                    // Get border class based on match score
+                    const getBorderClass = (drug) => {
+                        const matchType = drug.matchType || 'partial';
+                        const score = drug.matchScore || 0;
+
+                        if (matchType === 'exact' || score >= 200) return 'border-l-4 border-green-500 bg-green-50';
+                        if (matchType === 'recent' || score >= 100) return 'border-l-4 border-blue-400 bg-blue-50';
+                        if (score >= 50) return 'border-l-4 border-green-300 bg-green-50';
+                        return 'border-l-4 border-gray-200 bg-gray-50';
+                    };
+
+                    // Get source label
+                    const getSourceLabel = () => {
+                        if (dataType === 'chat_history') return '📝 จากประวัติแชท';
+                        if (dataType === 'message_search') return '💬 จากข้อความ';
+                        if (dataType === 'context') return '💬 จากข้อความล่าสุด';
+                        return '📊 ยอดนิยม';
+                    };
+
+                    // Extract customer request keywords from message
+                    const customerRequest = data.customerRequest || data.searchTerms || [];
+
+                    let html = '';
+
+                    // Show customer request summary if available
+                    if (customerRequest.length > 0 || data.originalMessage) {
+                        html += `
                     <div class="mb-2 p-2 bg-blue-50 border border-blue-100 rounded-lg">
                         <div class="text-[10px] text-blue-600 font-medium mb-1">📋 ลูกค้าต้องการ:</div>
                         <div class="text-xs text-blue-800">${customerRequest.length > 0 ? customerRequest.join(', ') : (data.originalMessage || '-')}</div>
                     </div>
                 `;
-                        }
+                    }
 
-                        html += `
+                    html += `
                 <div class="text-[10px] text-gray-400 mb-2 flex items-center justify-between">
                     <span>${getSourceLabel()}</span>
                     <span class="text-emerald-500 font-medium">${found.length} พบ${notFound.length > 0 ? ` / ${notFound.length} หมด` : ''}</span>
                 </div>
             `;
 
-                        // Show found items with checkboxes (default unchecked)
-                        if (found.length > 0) {
-                            html += `<div class="space-y-1.5 max-h-64 overflow-y-auto" id="detectedProductsList">`;
-                            found.slice(0, 10).forEach((drug, index) => {
-                                const drugId = drug.id || drug.drugId || 0;
-                                const drugNameSafe = escapeAttr(drug.name || '');
-                                const drugPriceSafe = drug.price || 0;
-                                const matchBadge = getMatchBadge(drug);
-                                const borderClass = getBorderClass(drug);
-                                const stockClass = drug.stock > 10 ? 'text-green-500' : 'text-yellow-500';
-                                const subText = drug.sku || drug.nameEn || drug.category || '';
+                    // Show found items with checkboxes (default unchecked)
+                    if (found.length > 0) {
+                        html += `<div class="space-y-1.5 max-h-64 overflow-y-auto" id="detectedProductsList">`;
+                        found.slice(0, 10).forEach((drug, index) => {
+                            const drugId = drug.id || drug.drugId || 0;
+                            const drugNameSafe = escapeAttr(drug.name || '');
+                            const drugPriceSafe = drug.price || 0;
+                            const matchBadge = getMatchBadge(drug);
+                            const borderClass = getBorderClass(drug);
+                            const stockClass = drug.stock > 10 ? 'text-green-500' : 'text-yellow-500';
+                            const subText = drug.sku || drug.nameEn || drug.category || '';
 
-                                html += `
+                            html += `
                         <div class="flex items-center p-2 rounded hover:bg-gray-100 ${borderClass}">
                             <input type="checkbox" 
                                    id="drug_check_${drugId}" 
@@ -4992,25 +4992,25 @@ function formatThaiDateTime($datetime)
                             </div>
                         </div>
                     `;
-                            });
-                            html += `</div>`;
-                            if (found.length > 10) {
-                                html += `<div class="text-center text-[10px] text-gray-400 mt-1">แสดง 10 จาก ${found.length} รายการ</div>`;
-                            }
+                        });
+                        html += `</div>`;
+                        if (found.length > 10) {
+                            html += `<div class="text-center text-[10px] text-gray-400 mt-1">แสดง 10 จาก ${found.length} รายการ</div>`;
                         }
+                    }
 
-                        // Show not found items
-                        if (notFound.length > 0) {
-                            html += `
+                    // Show not found items
+                    if (notFound.length > 0) {
+                        html += `
                     <div class="mt-2 p-2 bg-red-50 border border-red-100 rounded-lg">
                         <div class="text-[10px] text-red-600 font-medium">❌ ไม่พบ/หมด: ${notFound.map(d => d.name).join(', ')}</div>
                     </div>
                 `;
-                        }
+                    }
 
-                        // Add selected to order button
-                        if (found.length > 0) {
-                            html += `
+                    // Add selected to order button
+                    if (found.length > 0) {
+                        html += `
                     <div class="mt-2 p-2 bg-gray-50 rounded-lg">
                         <div class="flex justify-between items-center mb-2">
                             <label class="flex items-center text-[10px] text-gray-600 cursor-pointer">
@@ -5024,12 +5024,12 @@ function formatThaiDateTime($datetime)
                         </button>
                     </div>
                 `;
-                            // Store detected drugs for adding to order
-                            window.detectedDrugs = found;
-                        }
+                        // Store detected drugs for adding to order
+                        window.detectedDrugs = found;
+                    }
 
-                        // Search box
-                        html += `
+                    // Search box
+                    html += `
                 <div class="mt-2 pt-2 border-t border-gray-100">
                     <div class="flex gap-1">
                         <input type="text" id="drugSearchInput" placeholder="🔍 ค้นหาสินค้าเพิ่ม..." 
@@ -5043,10 +5043,10 @@ function formatThaiDateTime($datetime)
                 </div>
             `;
 
-                        content.innerHTML = html;
-                    } else {
-                        // No products detected - show search
-                        content.innerHTML = `
+                    content.innerHTML = html;
+                } else {
+                    // No products detected - show search
+                    content.innerHTML = `
                 <div class="text-center text-gray-400 text-xs py-2">
                     <i class="fas fa-box-open text-2xl mb-2"></i>
                     <p>รอตรวจจับชื่อสินค้าจากข้อความ</p>
@@ -5063,150 +5063,150 @@ function formatThaiDateTime($datetime)
                     <div id="manualSearchResults" class="mt-2 hidden"></div>
                 </div>
             `;
-                    }
-
-                    content.style.opacity = '1';
-                }, 150);
-            }
-
-            /**
-             * Add all detected drugs to order
-             */
-            function addDetectedToOrder() {
-                const drugs = window.detectedDrugs || [];
-                if (drugs.length === 0) {
-                    showNotification('ไม่มีสินค้าที่ตรวจจับได้', 'warning');
-                    return;
                 }
 
-                drugs.forEach(drug => {
-                    const drugId = drug.id || drug.drugId || 0;
-                    const drugName = drug.name || '';
-                    const drugPrice = drug.price || 0;
-                    if (drugId && drugName) {
-                        addDrugToOrder(drugId, drugName, drugPrice);
-                    }
-                });
+                content.style.opacity = '1';
+            }, 150);
+        }
 
-                showNotification(`เพิ่ม ${drugs.length} รายการในออเดอร์แล้ว`, 'success');
+        /**
+         * Add all detected drugs to order
+         */
+        function addDetectedToOrder() {
+            const drugs = window.detectedDrugs || [];
+            if (drugs.length === 0) {
+                showNotification('ไม่มีสินค้าที่ตรวจจับได้', 'warning');
+                return;
             }
 
-            /**
-             * Add selected (checked) items to order
-             */
-            function addSelectedToOrder() {
-                const checkboxes = document.querySelectorAll('.detected-drug-checkbox:checked');
-
-                if (checkboxes.length === 0) {
-                    showNotification('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ', 'warning');
-                    return;
+            drugs.forEach(drug => {
+                const drugId = drug.id || drug.drugId || 0;
+                const drugName = drug.name || '';
+                const drugPrice = drug.price || 0;
+                if (drugId && drugName) {
+                    addDrugToOrder(drugId, drugName, drugPrice);
                 }
+            });
 
-                checkboxes.forEach(cb => {
-                    const drugId = parseInt(cb.dataset.drugId);
-                    const drugName = cb.dataset.drugName;
-                    const drugPrice = parseFloat(cb.dataset.drugPrice);
+            showNotification(`เพิ่ม ${drugs.length} รายการในออเดอร์แล้ว`, 'success');
+        }
 
-                    if (drugId && drugName) {
-                        addDrugToOrder(drugId, drugName, drugPrice);
-                    }
-                });
+        /**
+         * Add selected (checked) items to order
+         */
+        function addSelectedToOrder() {
+            const checkboxes = document.querySelectorAll('.detected-drug-checkbox:checked');
 
-                showNotification(`เพิ่ม ${checkboxes.length} รายการในออเดอร์แล้ว`, 'success');
+            if (checkboxes.length === 0) {
+                showNotification('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ', 'warning');
+                return;
             }
 
-            /**
-             * Toggle select all checkboxes
-             */
-            function toggleSelectAll(masterCheckbox) {
-                const checkboxes = document.querySelectorAll('.detected-drug-checkbox');
-                checkboxes.forEach(cb => {
-                    cb.checked = masterCheckbox.checked;
-                });
-                updateSelectedTotal();
+            checkboxes.forEach(cb => {
+                const drugId = parseInt(cb.dataset.drugId);
+                const drugName = cb.dataset.drugName;
+                const drugPrice = parseFloat(cb.dataset.drugPrice);
+
+                if (drugId && drugName) {
+                    addDrugToOrder(drugId, drugName, drugPrice);
+                }
+            });
+
+            showNotification(`เพิ่ม ${checkboxes.length} รายการในออเดอร์แล้ว`, 'success');
+        }
+
+        /**
+         * Toggle select all checkboxes
+         */
+        function toggleSelectAll(masterCheckbox) {
+            const checkboxes = document.querySelectorAll('.detected-drug-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = masterCheckbox.checked;
+            });
+            updateSelectedTotal();
+        }
+
+        /**
+         * Update selected total display
+         */
+        function updateSelectedTotal() {
+            const checkboxes = document.querySelectorAll('.detected-drug-checkbox:checked');
+            let total = 0;
+            let count = 0;
+
+            checkboxes.forEach(cb => {
+                total += parseFloat(cb.dataset.drugPrice) || 0;
+                count++;
+            });
+
+            const totalEl = document.getElementById('selectedTotal');
+            if (totalEl) {
+                totalEl.textContent = `${count} รายการ | ฿${total.toLocaleString()}`;
             }
 
-            /**
-             * Update selected total display
-             */
-            function updateSelectedTotal() {
-                const checkboxes = document.querySelectorAll('.detected-drug-checkbox:checked');
-                let total = 0;
-                let count = 0;
+            // Update select all checkbox state
+            const allCheckboxes = document.querySelectorAll('.detected-drug-checkbox');
+            const selectAllEl = document.getElementById('selectAllProducts');
+            if (selectAllEl && allCheckboxes.length > 0) {
+                selectAllEl.checked = checkboxes.length === allCheckboxes.length;
+                selectAllEl.indeterminate = checkboxes.length > 0 && checkboxes.length < allCheckboxes.length;
+            }
+        }
 
-                checkboxes.forEach(cb => {
-                    total += parseFloat(cb.dataset.drugPrice) || 0;
-                    count++;
-                });
+        /**
+         * Add all checked items to order (legacy function)
+         */
+        function addAllCheckedToOrder() {
+            const checkboxes = document.querySelectorAll('.drug-want-checkbox:checked');
 
-                const totalEl = document.getElementById('selectedTotal');
-                if (totalEl) {
-                    totalEl.textContent = `${count} รายการ | ฿${total.toLocaleString()}`;
-                }
-
-                // Update select all checkbox state
-                const allCheckboxes = document.querySelectorAll('.detected-drug-checkbox');
-                const selectAllEl = document.getElementById('selectAllProducts');
-                if (selectAllEl && allCheckboxes.length > 0) {
-                    selectAllEl.checked = checkboxes.length === allCheckboxes.length;
-                    selectAllEl.indeterminate = checkboxes.length > 0 && checkboxes.length < allCheckboxes.length;
-                }
+            if (checkboxes.length === 0) {
+                showNotification('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ', 'warning');
+                return;
             }
 
-            /**
-             * Add all checked items to order (legacy function)
-             */
-            function addAllCheckedToOrder() {
-                const checkboxes = document.querySelectorAll('.drug-want-checkbox:checked');
+            checkboxes.forEach(cb => {
+                const drugId = parseInt(cb.dataset.drugId);
+                const drugName = cb.dataset.drugName;
+                const drugPrice = parseFloat(cb.dataset.drugPrice);
 
-                if (checkboxes.length === 0) {
-                    showNotification('กรุณาเลือกสินค้าอย่างน้อย 1 รายการ', 'warning');
-                    return;
+                if (drugId && drugName) {
+                    addDrugToOrder(drugId, drugName, drugPrice);
                 }
+            });
 
-                checkboxes.forEach(cb => {
-                    const drugId = parseInt(cb.dataset.drugId);
-                    const drugName = cb.dataset.drugName;
-                    const drugPrice = parseFloat(cb.dataset.drugPrice);
+            showNotification(`เพิ่ม ${checkboxes.length} รายการในออเดอร์แล้ว`, 'success');
+        }
 
-                    if (drugId && drugName) {
-                        addDrugToOrder(drugId, drugName, drugPrice);
-                    }
-                });
+        /**
+         * Manual drug search by admin
+         */
+        async function searchDrugManual() {
+            const input = document.getElementById('drugSearchInput');
+            const resultsDiv = document.getElementById('manualSearchResults');
+            if (!input || !resultsDiv) return;
 
-                showNotification(`เพิ่ม ${checkboxes.length} รายการในออเดอร์แล้ว`, 'success');
+            const query = input.value.trim();
+            if (!query || query.length < 2) {
+                showNotification('กรุณาพิมพ์อย่างน้อย 2 ตัวอักษร', 'warning');
+                return;
             }
 
-            /**
-             * Manual drug search by admin
-             */
-            async function searchDrugManual() {
-                const input = document.getElementById('drugSearchInput');
-                const resultsDiv = document.getElementById('manualSearchResults');
-                if (!input || !resultsDiv) return;
+            resultsDiv.innerHTML = '<div class="text-center text-gray-400 text-xs py-2"><i class="fas fa-spinner fa-spin"></i> กำลังค้นหา...</div>';
+            resultsDiv.classList.remove('hidden');
 
-                const query = input.value.trim();
-                if (!query || query.length < 2) {
-                    showNotification('กรุณาพิมพ์อย่างน้อย 2 ตัวอักษร', 'warning');
-                    return;
-                }
+            try {
+                const response = await fetch(`api/inbox-v2.php?action=search_drugs&query=${encodeURIComponent(query)}&line_account_id=<?= $currentBotId ?>`);
+                const result = await response.json();
 
-                resultsDiv.innerHTML = '<div class="text-center text-gray-400 text-xs py-2"><i class="fas fa-spinner fa-spin"></i> กำลังค้นหา...</div>';
-                resultsDiv.classList.remove('hidden');
+                if (result.success && result.data && result.data.length > 0) {
+                    let html = '<div class="space-y-1">';
+                    result.data.slice(0, 5).forEach(drug => {
+                        const stockClass = drug.stock > 0 ? 'in-stock' : 'out-of-stock';
+                        const stockText = drug.stock > 0 ? `มี ${drug.stock}` : 'หมด';
+                        const drugId = drug.id || 0;
+                        const drugNameSafe = escapeAttr(drug.name || '');
 
-                try {
-                    const response = await fetch(`api/inbox-v2.php?action=search_drugs&query=${encodeURIComponent(query)}&line_account_id=<?= $currentBotId ?>`);
-                    const result = await response.json();
-
-                    if (result.success && result.data && result.data.length > 0) {
-                        let html = '<div class="space-y-1">';
-                        result.data.slice(0, 5).forEach(drug => {
-                            const stockClass = drug.stock > 0 ? 'in-stock' : 'out-of-stock';
-                            const stockText = drug.stock > 0 ? `มี ${drug.stock}` : 'หมด';
-                            const drugId = drug.id || 0;
-                            const drugNameSafe = escapeAttr(drug.name || '');
-
-                            html += `
+                        html += `
                     <div class="flex items-center justify-between p-1.5 bg-gray-50 rounded hover:bg-gray-100 cursor-pointer" 
                          onclick="selectDrugForInfo(${drugId}, '${drugNameSafe}')">
                         <div class="flex-1">
@@ -5219,37 +5219,37 @@ function formatThaiDateTime($datetime)
                         </div>
                     </div>
                 `;
-                        });
-                        html += '</div>';
-                        resultsDiv.innerHTML = html;
-                    } else {
-                        resultsDiv.innerHTML = '<div class="text-center text-gray-400 text-xs py-2">❌ ไม่พบสินค้า</div>';
-                    }
-                } catch (error) {
-                    console.error('Search error:', error);
-                    resultsDiv.innerHTML = '<div class="text-center text-red-400 text-xs py-2">เกิดข้อผิดพลาด</div>';
+                    });
+                    html += '</div>';
+                    resultsDiv.innerHTML = html;
+                } else {
+                    resultsDiv.innerHTML = '<div class="text-center text-gray-400 text-xs py-2">❌ ไม่พบสินค้า</div>';
                 }
+            } catch (error) {
+                console.error('Search error:', error);
+                resultsDiv.innerHTML = '<div class="text-center text-red-400 text-xs py-2">เกิดข้อผิดพลาด</div>';
             }
+        }
 
-            /**
-             * Update Drug Info Widget - Requirements: 4.2
-             * @param {Object} data Widget data
-             */
-            function updateDrugInfoWidget(data) {
-                const content = document.getElementById('drugInfoContent');
-                if (!content) return;
+        /**
+         * Update Drug Info Widget - Requirements: 4.2
+         * @param {Object} data Widget data
+         */
+        function updateDrugInfoWidget(data) {
+            const content = document.getElementById('drugInfoContent');
+            if (!content) return;
 
-                // Fade out animation
-                content.style.opacity = '0';
-                content.style.transition = 'opacity 0.15s ease';
+            // Fade out animation
+            content.style.opacity = '0';
+            content.style.transition = 'opacity 0.15s ease';
 
-                setTimeout(() => {
-                    if (data.drug) {
-                        const drug = data.drug;
-                        const stockClass = drug.stock > 10 ? 'in-stock' : (drug.stock > 0 ? 'low-stock' : 'out-of-stock');
-                        const stockText = drug.stock > 10 ? 'มีสินค้า' : (drug.stock > 0 ? `เหลือ ${drug.stock}` : 'หมด');
+            setTimeout(() => {
+                if (data.drug) {
+                    const drug = data.drug;
+                    const stockClass = drug.stock > 10 ? 'in-stock' : (drug.stock > 0 ? 'low-stock' : 'out-of-stock');
+                    const stockText = drug.stock > 10 ? 'มีสินค้า' : (drug.stock > 0 ? `เหลือ ${drug.stock}` : 'หมด');
 
-                        content.innerHTML = `
+                    content.innerHTML = `
                 <div class="space-y-3">
                     <div class="flex justify-between items-start">
                         <div>
@@ -5283,117 +5283,117 @@ function formatThaiDateTime($datetime)
                     </div>
                 </div>
             `;
-                    } else {
-                        content.innerHTML = `
+                } else {
+                    content.innerHTML = `
                 <div class="text-center text-gray-400 text-xs py-4">
                     <i class="fas fa-search mb-2"></i>
                     <p>พิมพ์ชื่อยาในแชทเพื่อดูข้อมูล</p>
                 </div>
             `;
-                    }
+                }
 
-                    // Fade in animation
-                    content.style.opacity = '1';
-                }, 150);
-            }
+                // Fade in animation
+                content.style.opacity = '1';
+            }, 150);
+        }
 
-            /**
-             * Update Interaction Widget - Requirements: 4.3
-             * @param {Object} data Widget data
-             */
-            function updateInteractionWidget(data) {
-                const content = document.getElementById('interactionContent');
-                if (!content) return;
+        /**
+         * Update Interaction Widget - Requirements: 4.3
+         * @param {Object} data Widget data
+         */
+        function updateInteractionWidget(data) {
+            const content = document.getElementById('interactionContent');
+            if (!content) return;
 
-                content.style.opacity = '0';
-                content.style.transition = 'opacity 0.15s ease';
+            content.style.opacity = '0';
+            content.style.transition = 'opacity 0.15s ease';
 
-                setTimeout(() => {
-                    if (data.interactions && data.interactions.length > 0) {
-                        let html = '<div class="space-y-2">';
+            setTimeout(() => {
+                if (data.interactions && data.interactions.length > 0) {
+                    let html = '<div class="space-y-2">';
 
-                        data.interactions.forEach(interaction => {
-                            const severityClass = interaction.severity === 'severe' ? 'severe' :
-                                (interaction.severity === 'moderate' ? 'moderate' : 'mild');
-                            const severityIcon = interaction.severity === 'severe' ? '🚨' :
-                                (interaction.severity === 'moderate' ? '⚠️' : 'ℹ️');
+                    data.interactions.forEach(interaction => {
+                        const severityClass = interaction.severity === 'severe' ? 'severe' :
+                            (interaction.severity === 'moderate' ? 'moderate' : 'mild');
+                        const severityIcon = interaction.severity === 'severe' ? '🚨' :
+                            (interaction.severity === 'moderate' ? '⚠️' : 'ℹ️');
 
-                            html += `
+                        html += `
                     <div class="interaction-item ${severityClass}">
                         <div class="font-medium">${severityIcon} ${escapeHtml(interaction.drug1 || '')} + ${escapeHtml(interaction.drug2 || '')}</div>
                         <div class="text-[10px] mt-1">${escapeHtml(interaction.description || interaction.effect || '')}</div>
                     </div>
                 `;
-                        });
+                    });
 
-                        html += '</div>';
-                        content.innerHTML = html;
-                    } else {
-                        content.innerHTML = `
+                    html += '</div>';
+                    content.innerHTML = html;
+                } else {
+                    content.innerHTML = `
                 <div class="text-center text-gray-400 text-xs py-4">
                     <i class="fas fa-check-circle text-green-400 text-2xl mb-2"></i>
                     <p>ไม่พบปฏิกิริยาระหว่างยา</p>
                 </div>
             `;
-                    }
+                }
 
-                    content.style.opacity = '1';
-                }, 150);
-            }
+                content.style.opacity = '1';
+            }, 150);
+        }
 
-            /**
-             * Update Allergy Widget - Requirements: 4.5
-             * @param {Object} data Widget data
-             */
-            function updateAllergyWidget(data) {
-                const widget = document.getElementById('allergyWidget');
-                if (!widget) return;
+        /**
+         * Update Allergy Widget - Requirements: 4.5
+         * @param {Object} data Widget data
+         */
+        function updateAllergyWidget(data) {
+            const widget = document.getElementById('allergyWidget');
+            if (!widget) return;
 
-                const body = widget.querySelector('.hud-widget-body');
-                if (!body) return;
+            const body = widget.querySelector('.hud-widget-body');
+            if (!body) return;
 
-                body.style.opacity = '0';
-                body.style.transition = 'opacity 0.15s ease';
+            body.style.opacity = '0';
+            body.style.transition = 'opacity 0.15s ease';
 
-                setTimeout(() => {
-                    if (data.allergies && data.allergies.length > 0) {
-                        let html = '';
-                        data.allergies.forEach(allergy => {
-                            html += `
+            setTimeout(() => {
+                if (data.allergies && data.allergies.length > 0) {
+                    let html = '';
+                    data.allergies.forEach(allergy => {
+                        html += `
                     <div class="allergy-item">
                         <i class="fas fa-ban"></i>
                         ${escapeHtml(allergy.name || allergy)}
                     </div>
                 `;
-                        });
-                        body.innerHTML = html;
-                        widget.style.display = '';
-                    } else {
-                        widget.style.display = 'none';
-                    }
+                    });
+                    body.innerHTML = html;
+                    widget.style.display = '';
+                } else {
+                    widget.style.display = 'none';
+                }
 
-                    body.style.opacity = '1';
-                }, 150);
-            }
+                body.style.opacity = '1';
+            }, 150);
+        }
 
-            /**
-             * Update Pricing Widget - Requirements: 3.1-3.5
-             * @param {Object} data Widget data
-             */
-            function updatePricingWidget(data) {
-                const content = document.getElementById('pricingContent');
-                if (!content) return;
+        /**
+         * Update Pricing Widget - Requirements: 3.1-3.5
+         * @param {Object} data Widget data
+         */
+        function updatePricingWidget(data) {
+            const content = document.getElementById('pricingContent');
+            if (!content) return;
 
-                content.style.opacity = '0';
-                content.style.transition = 'opacity 0.15s ease';
+            content.style.opacity = '0';
+            content.style.transition = 'opacity 0.15s ease';
 
-                setTimeout(() => {
-                    if (data.pricing) {
-                        const pricing = data.pricing;
-                        const marginClass = pricing.marginPercent >= 20 ? 'margin-good' :
-                            (pricing.marginPercent >= 10 ? 'margin-warning' : 'margin-danger');
+            setTimeout(() => {
+                if (data.pricing) {
+                    const pricing = data.pricing;
+                    const marginClass = pricing.marginPercent >= 20 ? 'margin-good' :
+                        (pricing.marginPercent >= 10 ? 'margin-warning' : 'margin-danger');
 
-                        content.innerHTML = `
+                    content.innerHTML = `
                 <div class="space-y-1">
                     <div class="price-row">
                         <span class="text-gray-500">ต้นทุน</span>
@@ -5419,30 +5419,30 @@ function formatThaiDateTime($datetime)
                     ` : ''}
                 </div>
             `;
-                    } else {
-                        content.innerHTML = `
+                } else {
+                    content.innerHTML = `
                 <div class="text-center text-gray-400 text-xs py-4">
                     <i class="fas fa-tag mb-2"></i>
                     <p>เลือกยาเพื่อดูราคาและกำไร</p>
                 </div>
             `;
-                    }
+                }
 
-                    content.style.opacity = '1';
-                }, 150);
-            }
+                content.style.opacity = '1';
+            }, 150);
+        }
 
-            /**
-             * Update Pregnancy Widget - Requirements: 4.4
-             * @param {Object} data Widget data
-             */
-            function updatePregnancyWidget(data) {
-                // Create pregnancy widget if it doesn't exist
-                let widget = document.getElementById('pregnancyWidget');
-                const hudWidgets = document.getElementById('hudWidgets');
+        /**
+         * Update Pregnancy Widget - Requirements: 4.4
+         * @param {Object} data Widget data
+         */
+        function updatePregnancyWidget(data) {
+            // Create pregnancy widget if it doesn't exist
+            let widget = document.getElementById('pregnancyWidget');
+            const hudWidgets = document.getElementById('hudWidgets');
 
-                if (!widget && hudWidgets && data.show) {
-                    const widgetHtml = `
+            if (!widget && hudWidgets && data.show) {
+                const widgetHtml = `
             <div class="hud-widget" id="pregnancyWidget" style="background: linear-gradient(135deg, #FCE7F3 0%, #FBCFE8 100%); border: 2px solid #F472B6;">
                 <div class="hud-widget-header" onclick="toggleWidget('pregnancyWidget')" style="background: #EC4899; color: white; border-bottom: none;">
                     <h4 style="color: white;"><i class="fas fa-baby"></i> ยาปลอดภัยสำหรับคุณแม่</h4>
@@ -5457,487 +5457,487 @@ function formatThaiDateTime($datetime)
             </div>
         `;
 
-                    // Insert after allergy widget or at the beginning
-                    const allergyWidget = document.getElementById('allergyWidget');
-                    if (allergyWidget) {
-                        allergyWidget.insertAdjacentHTML('afterend', widgetHtml);
-                    } else {
-                        hudWidgets.insertAdjacentHTML('afterbegin', widgetHtml);
-                    }
-
-                    widget = document.getElementById('pregnancyWidget');
+                // Insert after allergy widget or at the beginning
+                const allergyWidget = document.getElementById('allergyWidget');
+                if (allergyWidget) {
+                    allergyWidget.insertAdjacentHTML('afterend', widgetHtml);
+                } else {
+                    hudWidgets.insertAdjacentHTML('afterbegin', widgetHtml);
                 }
 
-                if (widget) {
-                    widget.style.display = data.show ? '' : 'none';
+                widget = document.getElementById('pregnancyWidget');
+            }
 
-                    if (data.safeDrugs && data.safeDrugs.length > 0) {
-                        const content = document.getElementById('pregnancyContent');
-                        if (content) {
-                            let html = '<div class="space-y-2">';
-                            data.safeDrugs.forEach(drug => {
-                                html += `
+            if (widget) {
+                widget.style.display = data.show ? '' : 'none';
+
+                if (data.safeDrugs && data.safeDrugs.length > 0) {
+                    const content = document.getElementById('pregnancyContent');
+                    if (content) {
+                        let html = '<div class="space-y-2">';
+                        data.safeDrugs.forEach(drug => {
+                            html += `
                         <div class="bg-white rounded-lg p-2 text-xs">
                             <div class="font-medium text-pink-700">${escapeHtml(drug.name)}</div>
                             <div class="text-pink-500 text-[10px]">${escapeHtml(drug.note || 'ปลอดภัยสำหรับคุณแม่')}</div>
                         </div>
                     `;
-                            });
-                            html += '</div>';
-                            content.innerHTML = html;
-                        }
+                        });
+                        html += '</div>';
+                        content.innerHTML = html;
                     }
                 }
             }
+        }
 
-            /**
-             * Toggle widget collapse state with animation
-             * Requirements: 4.6 - Smooth transitions within 300ms
-             * @param {string} widgetId Widget element ID
-             */
-            function toggleWidget(widgetId) {
-                const widget = document.getElementById(widgetId);
-                if (!widget) return;
+        /**
+         * Toggle widget collapse state with animation
+         * Requirements: 4.6 - Smooth transitions within 300ms
+         * @param {string} widgetId Widget element ID
+         */
+        function toggleWidget(widgetId) {
+            const widget = document.getElementById(widgetId);
+            if (!widget) return;
 
-                const body = widget.querySelector('.hud-widget-body');
-                const chevron = widget.querySelector('.fa-chevron-down, .fa-chevron-up');
+            const body = widget.querySelector('.hud-widget-body');
+            const chevron = widget.querySelector('.fa-chevron-down, .fa-chevron-up');
 
-                if (body) {
-                    // Smooth collapse/expand animation - Requirements: 4.6
-                    if (widget.classList.contains('collapsed')) {
-                        // Expanding
-                        body.style.display = 'block';
-                        body.style.maxHeight = '0';
-                        body.style.overflow = 'hidden';
-                        body.style.transition = 'max-height 0.3s ease, opacity 0.3s ease';
-                        body.style.opacity = '0';
+            if (body) {
+                // Smooth collapse/expand animation - Requirements: 4.6
+                if (widget.classList.contains('collapsed')) {
+                    // Expanding
+                    body.style.display = 'block';
+                    body.style.maxHeight = '0';
+                    body.style.overflow = 'hidden';
+                    body.style.transition = 'max-height 0.3s ease, opacity 0.3s ease';
+                    body.style.opacity = '0';
 
-                        // Trigger reflow
-                        body.offsetHeight;
+                    // Trigger reflow
+                    body.offsetHeight;
 
-                        body.style.maxHeight = body.scrollHeight + 'px';
-                        body.style.opacity = '1';
+                    body.style.maxHeight = body.scrollHeight + 'px';
+                    body.style.opacity = '1';
 
-                        setTimeout(() => {
-                            body.style.maxHeight = '';
-                            body.style.overflow = '';
-                        }, 300);
+                    setTimeout(() => {
+                        body.style.maxHeight = '';
+                        body.style.overflow = '';
+                    }, 300);
 
-                        widget.classList.remove('collapsed');
-                    } else {
-                        // Collapsing
-                        body.style.maxHeight = body.scrollHeight + 'px';
-                        body.style.overflow = 'hidden';
-                        body.style.transition = 'max-height 0.3s ease, opacity 0.3s ease';
-
-                        // Trigger reflow
-                        body.offsetHeight;
-
-                        body.style.maxHeight = '0';
-                        body.style.opacity = '0';
-
-                        setTimeout(() => {
-                            body.style.display = 'none';
-                            widget.classList.add('collapsed');
-                        }, 300);
-                    }
+                    widget.classList.remove('collapsed');
                 } else {
-                    widget.classList.toggle('collapsed');
-                }
+                    // Collapsing
+                    body.style.maxHeight = body.scrollHeight + 'px';
+                    body.style.overflow = 'hidden';
+                    body.style.transition = 'max-height 0.3s ease, opacity 0.3s ease';
 
-                // Toggle chevron icon
-                if (chevron) {
-                    chevron.classList.toggle('fa-chevron-down');
-                    chevron.classList.toggle('fa-chevron-up');
+                    // Trigger reflow
+                    body.offsetHeight;
+
+                    body.style.maxHeight = '0';
+                    body.style.opacity = '0';
+
+                    setTimeout(() => {
+                        body.style.display = 'none';
+                        widget.classList.add('collapsed');
+                    }, 300);
                 }
+            } else {
+                widget.classList.toggle('collapsed');
             }
 
-            /**
-             * Toggle customer info panel (alias for toggleHUD)
-             */
-            function togglePanel() {
-                toggleHUD();
+            // Toggle chevron icon
+            if (chevron) {
+                chevron.classList.toggle('fa-chevron-down');
+                chevron.classList.toggle('fa-chevron-up');
+            }
+        }
+
+        /**
+         * Toggle customer info panel (alias for toggleHUD)
+         */
+        function togglePanel() {
+            toggleHUD();
+        }
+
+        /**
+         * Auto-update HUD widgets based on message context
+         * Called when new messages are received or sent
+         * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
+         * @param {string} message The message to analyze for context
+         */
+        async function autoUpdateHUDWidgets(message) {
+            if (!hudState.autoUpdateEnabled || !ghostDraftState.userId || !message) {
+                return;
             }
 
-            /**
-             * Auto-update HUD widgets based on message context
-             * Called when new messages are received or sent
-             * Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
-             * @param {string} message The message to analyze for context
-             */
-            async function autoUpdateHUDWidgets(message) {
-                if (!hudState.autoUpdateEnabled || !ghostDraftState.userId || !message) {
+            // Update customer emotion immediately (no API call needed)
+            updateCustomerEmotion(message);
+
+            // Debounce to avoid too many API calls
+            if (hudState.refreshDebounceTimer) {
+                clearTimeout(hudState.refreshDebounceTimer);
+            }
+
+            hudState.refreshDebounceTimer = setTimeout(async () => {
+                // Skip if message hasn't changed significantly
+                if (message === hudState.lastMessage) {
                     return;
                 }
 
-                // Update customer emotion immediately (no API call needed)
-                updateCustomerEmotion(message);
-
-                // Debounce to avoid too many API calls
-                if (hudState.refreshDebounceTimer) {
-                    clearTimeout(hudState.refreshDebounceTimer);
-                }
-
-                hudState.refreshDebounceTimer = setTimeout(async () => {
-                    // Skip if message hasn't changed significantly
-                    if (message === hudState.lastMessage) {
-                        return;
-                    }
-
-                    try {
-                        // Fetch context widgets
-                        const params = new URLSearchParams({
-                            action: 'context_widgets',
-                            user_id: ghostDraftState.userId,
-                            message: message,
-                            line_account_id: <?= $currentBotId ?>
-                        });
-
-                        const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
-                        const result = await response.json();
-
-                        if (result.success && result.data && result.data.widgets) {
-                            hudState.lastMessage = message;
-
-                            // Only update if we got new widgets
-                            if (result.data.widgets.length > 0) {
-                                await updateHUDWidgets(result.data.widgets);
-                            }
-                        }
-
-                        // Also fetch drug recommendations based on message
-                        const recsParams = new URLSearchParams({
-                            action: 'recommendations',
-                            user_id: ghostDraftState.userId,
-                            type: 'context',
-                            line_account_id: <?= $currentBotId ?>,
-                            message: message
-                        });
-
-                        const recsResponse = await fetch(`api/inbox-v2.php?${recsParams.toString()}`);
-                        const recsResult = await recsResponse.json();
-
-                        if (recsResult.success && recsResult.data && recsResult.data.recommendations && recsResult.data.recommendations.length > 0) {
-                            // Send recommendations to symptom widget (product detection)
-                            updateSymptomWidget(recsResult.data);
-                        }
-
-                    } catch (error) {
-                        console.error('Auto-update HUD error:', error);
-                    }
-                }, 500); // 500ms debounce
-            }
-
-            /**
-             * Select drug for info display
-             * @param {number} drugId Drug ID
-             * @param {string} drugName Drug name
-             */
-            async function selectDrugForInfo(drugId, drugName) {
-                if (!drugId && !drugName) return;
-
                 try {
+                    // Fetch context widgets
                     const params = new URLSearchParams({
-                        action: 'drug_info',
-                        id: drugId || '',
-                        name: drugName || '',
+                        action: 'context_widgets',
+                        user_id: ghostDraftState.userId,
+                        message: message,
                         line_account_id: <?= $currentBotId ?>
                     });
 
                     const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
                     const result = await response.json();
 
-                    if (result.success && result.data) {
-                        updateDrugInfoWidget({ drug: result.data });
+                    if (result.success && result.data && result.data.widgets) {
+                        hudState.lastMessage = message;
 
-                        // Also fetch and update pricing widget
-                        if (drugId) {
-                            await loadDrugPricing(drugId);
-                        }
-
-                        // Expand drug info widget if collapsed
-                        const drugWidget = document.getElementById('drugInfoWidget');
-                        if (drugWidget && drugWidget.classList.contains('collapsed')) {
-                            toggleWidget('drugInfoWidget');
-                        }
-
-                        // Expand pricing widget if collapsed
-                        const pricingWidget = document.getElementById('pricingWidget');
-                        if (pricingWidget && pricingWidget.classList.contains('collapsed')) {
-                            toggleWidget('pricingWidget');
+                        // Only update if we got new widgets
+                        if (result.data.widgets.length > 0) {
+                            await updateHUDWidgets(result.data.widgets);
                         }
                     }
+
+                    // Also fetch drug recommendations based on message
+                    const recsParams = new URLSearchParams({
+                        action: 'recommendations',
+                        user_id: ghostDraftState.userId,
+                        type: 'context',
+                        line_account_id: <?= $currentBotId ?>,
+                        message: message
+                    });
+
+                    const recsResponse = await fetch(`api/inbox-v2.php?${recsParams.toString()}`);
+                    const recsResult = await recsResponse.json();
+
+                    if (recsResult.success && recsResult.data && recsResult.data.recommendations && recsResult.data.recommendations.length > 0) {
+                        // Send recommendations to symptom widget (product detection)
+                        updateSymptomWidget(recsResult.data);
+                    }
+
                 } catch (error) {
-                    console.error('Select drug error:', error);
-                    showNotification('ไม่สามารถโหลดข้อมูลยาได้', 'error');
+                    console.error('Auto-update HUD error:', error);
                 }
-            }
+            }, 500); // 500ms debounce
+        }
 
-            /**
-             * Load drug pricing and update widget
-             * @param {number} drugId Drug ID
-             */
-            async function loadDrugPricing(drugId) {
-                if (!drugId) return;
+        /**
+         * Select drug for info display
+         * @param {number} drugId Drug ID
+         * @param {string} drugName Drug name
+         */
+        async function selectDrugForInfo(drugId, drugName) {
+            if (!drugId && !drugName) return;
 
-                try {
-                    const params = new URLSearchParams({
-                        action: 'drug_pricing',
-                        id: drugId,
-                        line_account_id: <?= $currentBotId ?>
-                    });
+            try {
+                const params = new URLSearchParams({
+                    action: 'drug_info',
+                    id: drugId || '',
+                    name: drugName || '',
+                    line_account_id: <?= $currentBotId ?>
+                });
 
-                    const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
-                    const result = await response.json();
+                const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
+                const result = await response.json();
 
-                    if (result.success && result.data) {
-                        updatePricingWidget({ pricing: result.data });
-                    }
-                } catch (error) {
-                    console.error('Load pricing error:', error);
-                }
-            }
+                if (result.success && result.data) {
+                    updateDrugInfoWidget({ drug: result.data });
 
-            /**
-             * Insert drug info into message composer
-             * @param {number} drugId Drug ID
-             */
-            async function insertDrugToMessage(drugId) {
-                if (!drugId) return;
-
-                try {
-                    const params = new URLSearchParams({
-                        action: 'drug_info',
-                        id: drugId,
-                        line_account_id: <?= $currentBotId ?>
-                    });
-
-                    const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
-                    const result = await response.json();
-
-                    if (result.success && result.data) {
-                        const drug = result.data;
-                        const messageInput = document.getElementById('messageInput');
-
-                        if (messageInput) {
-                            // Build detailed drug text
-                            let drugLines = [];
-
-                            // ชื่อสินค้า (Thai name)
-                            drugLines.push(`💊 ${drug.name}`);
-
-                            // ชื่อภาษาอังกฤษ (English name) - if available
-                            if (drug.nameEn) {
-                                drugLines.push(`   ${drug.nameEn}`);
-                            }
-
-                            // ชื่อสามัญ / Generic Name - if available
-                            if (drug.genericName) {
-                                drugLines.push(`📋 ชื่อสามัญ: ${drug.genericName}`);
-                            }
-
-                            // ผู้ผลิต (Manufacturer) - if available
-                            if (drug.manufacturer) {
-                                drugLines.push(`🏭 ผู้ผลิต: ${drug.manufacturer}`);
-                            }
-
-                            // หน่วย และ จำนวนคงเหลือ
-                            const unit = drug.unit || 'ชิ้น';
-                            const stock = drug.stock || 0;
-                            drugLines.push(`📦 หน่วย: ${unit} | คงเหลือ: ${stock} ${unit}`);
-
-                            // ราคา
-                            const price = drug.effectivePrice || drug.salePrice || drug.price || 0;
-                            drugLines.push(`💰 ราคา: ฿${price.toLocaleString()}`);
-
-                            // คำเตือนยาตามใบสั่งแพทย์
-                            if (drug.isPrescription) {
-                                drugLines.push(`⚠️ ยาตามใบสั่งแพทย์`);
-                            }
-
-                            const drugText = drugLines.join('\n');
-
-                            // Append to existing text or replace
-                            if (messageInput.value.trim()) {
-                                messageInput.value += '\n\n' + drugText;
-                            } else {
-                                messageInput.value = drugText;
-                            }
-
-                            autoResize(messageInput);
-                            messageInput.focus();
-                            showNotification('เพิ่มข้อมูลยาในข้อความแล้ว', 'success');
-                        }
-                    }
-                } catch (error) {
-                    console.error('Insert drug error:', error);
-                    showNotification('ไม่สามารถเพิ่มข้อมูลยาได้', 'error');
-                }
-            }
-
-            /**
-             * Check drug interactions for a specific drug
-             * @param {number} drugId Drug ID to check
-             */
-            async function checkDrugInteractions(drugId) {
-                if (!drugId || !ghostDraftState.userId) return;
-
-                try {
-                    // Get drug name first
-                    const infoParams = new URLSearchParams({
-                        action: 'drug_info',
-                        id: drugId,
-                        line_account_id: <?= $currentBotId ?>
-                    });
-
-                    const infoResponse = await fetch(`api/inbox-v2.php?${infoParams.toString()}`);
-                    const infoResult = await infoResponse.json();
-
-                    if (!infoResult.success || !infoResult.data) {
-                        throw new Error('Drug not found');
+                    // Also fetch and update pricing widget
+                    if (drugId) {
+                        await loadDrugPricing(drugId);
                     }
 
-                    const drugName = infoResult.data.name;
+                    // Expand drug info widget if collapsed
+                    const drugWidget = document.getElementById('drugInfoWidget');
+                    if (drugWidget && drugWidget.classList.contains('collapsed')) {
+                        toggleWidget('drugInfoWidget');
+                    }
 
-                    // Check interactions
-                    const formData = new FormData();
-                    formData.append('action', 'check_interactions');
-                    formData.append('drugs', JSON.stringify([drugName]));
-                    formData.append('user_id', ghostDraftState.userId);
+                    // Expand pricing widget if collapsed
+                    const pricingWidget = document.getElementById('pricingWidget');
+                    if (pricingWidget && pricingWidget.classList.contains('collapsed')) {
+                        toggleWidget('pricingWidget');
+                    }
+                }
+            } catch (error) {
+                console.error('Select drug error:', error);
+                showNotification('ไม่สามารถโหลดข้อมูลยาได้', 'error');
+            }
+        }
 
-                    const response = await fetch('api/inbox-v2.php', {
-                        method: 'POST',
-                        body: formData
-                    });
+        /**
+         * Load drug pricing and update widget
+         * @param {number} drugId Drug ID
+         */
+        async function loadDrugPricing(drugId) {
+            if (!drugId) return;
 
-                    const result = await response.json();
+            try {
+                const params = new URLSearchParams({
+                    action: 'drug_pricing',
+                    id: drugId,
+                    line_account_id: <?= $currentBotId ?>
+                });
 
-                    if (result.success && result.data) {
-                        updateInteractionWidget(result.data);
+                const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
+                const result = await response.json();
 
-                        // Expand interaction widget
-                        const interactionWidget = document.getElementById('interactionWidget');
-                        if (interactionWidget && interactionWidget.classList.contains('collapsed')) {
-                            toggleWidget('interactionWidget');
+                if (result.success && result.data) {
+                    updatePricingWidget({ pricing: result.data });
+                }
+            } catch (error) {
+                console.error('Load pricing error:', error);
+            }
+        }
+
+        /**
+         * Insert drug info into message composer
+         * @param {number} drugId Drug ID
+         */
+        async function insertDrugToMessage(drugId) {
+            if (!drugId) return;
+
+            try {
+                const params = new URLSearchParams({
+                    action: 'drug_info',
+                    id: drugId,
+                    line_account_id: <?= $currentBotId ?>
+                });
+
+                const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
+                const result = await response.json();
+
+                if (result.success && result.data) {
+                    const drug = result.data;
+                    const messageInput = document.getElementById('messageInput');
+
+                    if (messageInput) {
+                        // Build detailed drug text
+                        let drugLines = [];
+
+                        // ชื่อสินค้า (Thai name)
+                        drugLines.push(`💊 ${drug.name}`);
+
+                        // ชื่อภาษาอังกฤษ (English name) - if available
+                        if (drug.nameEn) {
+                            drugLines.push(`   ${drug.nameEn}`);
                         }
 
-                        if (result.data.hasInteractions) {
-                            showNotification('⚠️ พบปฏิกิริยาระหว่างยา', 'warning');
+                        // ชื่อสามัญ / Generic Name - if available
+                        if (drug.genericName) {
+                            drugLines.push(`📋 ชื่อสามัญ: ${drug.genericName}`);
+                        }
+
+                        // ผู้ผลิต (Manufacturer) - if available
+                        if (drug.manufacturer) {
+                            drugLines.push(`🏭 ผู้ผลิต: ${drug.manufacturer}`);
+                        }
+
+                        // หน่วย และ จำนวนคงเหลือ
+                        const unit = drug.unit || 'ชิ้น';
+                        const stock = drug.stock || 0;
+                        drugLines.push(`📦 หน่วย: ${unit} | คงเหลือ: ${stock} ${unit}`);
+
+                        // ราคา
+                        const price = drug.effectivePrice || drug.salePrice || drug.price || 0;
+                        drugLines.push(`💰 ราคา: ฿${price.toLocaleString()}`);
+
+                        // คำเตือนยาตามใบสั่งแพทย์
+                        if (drug.isPrescription) {
+                            drugLines.push(`⚠️ ยาตามใบสั่งแพทย์`);
+                        }
+
+                        const drugText = drugLines.join('\n');
+
+                        // Append to existing text or replace
+                        if (messageInput.value.trim()) {
+                            messageInput.value += '\n\n' + drugText;
                         } else {
-                            showNotification('✓ ไม่พบปฏิกิริยาระหว่างยา', 'success');
+                            messageInput.value = drugText;
                         }
-                    }
-                } catch (error) {
-                    console.error('Check interactions error:', error);
-                    showNotification('ไม่สามารถตรวจสอบยาตีกันได้', 'error');
-                }
-            }
 
-            /**
-             * Hook into message input to auto-update HUD
-             * Called from handleMessageInput
-             */
-            function onMessageInputChange(message) {
-                // Auto-update HUD based on message content
-                if (message && message.length > 2) {
-                    autoUpdateHUDWidgets(message);
-                }
-            }
-
-            /**
-             * Hook into conversation updates
-             * Called after sending/receiving messages
-             */
-            function onConversationUpdateHUD() {
-                const lastMessage = getLastCustomerMessage();
-                if (lastMessage) {
-                    autoUpdateHUDWidgets(lastMessage);
-                }
-            }
-
-            // Image handling functions
-            let selectedImageFile = null;
-
-            function handleImageSelect(input) {
-                if (input.files && input.files[0]) {
-                    selectedImageFile = input.files[0];
-
-                    const preview = document.getElementById('imagePreview');
-                    const previewImg = document.getElementById('previewImg');
-                    const previewName = document.getElementById('previewName');
-                    const previewSize = document.getElementById('previewSize');
-
-                    if (preview && previewImg) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => {
-                            previewImg.src = e.target.result;
-                        };
-                        reader.readAsDataURL(selectedImageFile);
-
-                        previewName.textContent = selectedImageFile.name;
-                        previewSize.textContent = formatFileSize(selectedImageFile.size);
-                        preview.classList.remove('hidden');
+                        autoResize(messageInput);
+                        messageInput.focus();
+                        showNotification('เพิ่มข้อมูลยาในข้อความแล้ว', 'success');
                     }
                 }
+            } catch (error) {
+                console.error('Insert drug error:', error);
+                showNotification('ไม่สามารถเพิ่มข้อมูลยาได้', 'error');
             }
+        }
 
-            function cancelImageUpload() {
-                selectedImageFile = null;
-                const preview = document.getElementById('imagePreview');
-                const input = document.getElementById('imageInput');
+        /**
+         * Check drug interactions for a specific drug
+         * @param {number} drugId Drug ID to check
+         */
+        async function checkDrugInteractions(drugId) {
+            if (!drugId || !ghostDraftState.userId) return;
 
-                if (preview) preview.classList.add('hidden');
-                if (input) input.value = '';
-            }
+            try {
+                // Get drug name first
+                const infoParams = new URLSearchParams({
+                    action: 'drug_info',
+                    id: drugId,
+                    line_account_id: <?= $currentBotId ?>
+                });
 
-            async function sendImage() {
-                if (!selectedImageFile || !ghostDraftState.userId) return;
+                const infoResponse = await fetch(`api/inbox-v2.php?${infoParams.toString()}`);
+                const infoResult = await infoResponse.json();
 
+                if (!infoResult.success || !infoResult.data) {
+                    throw new Error('Drug not found');
+                }
+
+                const drugName = infoResult.data.name;
+
+                // Check interactions
                 const formData = new FormData();
-                formData.append('action', 'send_image');
+                formData.append('action', 'check_interactions');
+                formData.append('drugs', JSON.stringify([drugName]));
                 formData.append('user_id', ghostDraftState.userId);
-                formData.append('image', selectedImageFile);
 
-                try {
-                    const response = await fetch('inbox-v2.php', {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
+                const response = await fetch('api/inbox-v2.php', {
+                    method: 'POST',
+                    body: formData
+                });
 
-                    const result = await response.json();
+                const result = await response.json();
 
-                    if (result.success) {
-                        // Add image to chat
-                        appendImageMessage(result.image_url, result.time, result.sent_by);
-                        cancelImageUpload();
-                        scrollToBottom();
-                        showNotification('ส่งรูปภาพสำเร็จ', 'success');
-                    } else {
-                        throw new Error(result.error || 'ส่งรูปภาพไม่สำเร็จ');
+                if (result.success && result.data) {
+                    updateInteractionWidget(result.data);
+
+                    // Expand interaction widget
+                    const interactionWidget = document.getElementById('interactionWidget');
+                    if (interactionWidget && interactionWidget.classList.contains('collapsed')) {
+                        toggleWidget('interactionWidget');
                     }
-                } catch (error) {
-                    console.error('Send image error:', error);
-                    showNotification(error.message, 'error');
+
+                    if (result.data.hasInteractions) {
+                        showNotification('⚠️ พบปฏิกิริยาระหว่างยา', 'warning');
+                    } else {
+                        showNotification('✓ ไม่พบปฏิกิริยาระหว่างยา', 'success');
+                    }
+                }
+            } catch (error) {
+                console.error('Check interactions error:', error);
+                showNotification('ไม่สามารถตรวจสอบยาตีกันได้', 'error');
+            }
+        }
+
+        /**
+         * Hook into message input to auto-update HUD
+         * Called from handleMessageInput
+         */
+        function onMessageInputChange(message) {
+            // Auto-update HUD based on message content
+            if (message && message.length > 2) {
+                autoUpdateHUDWidgets(message);
+            }
+        }
+
+        /**
+         * Hook into conversation updates
+         * Called after sending/receiving messages
+         */
+        function onConversationUpdateHUD() {
+            const lastMessage = getLastCustomerMessage();
+            if (lastMessage) {
+                autoUpdateHUDWidgets(lastMessage);
+            }
+        }
+
+        // Image handling functions
+        let selectedImageFile = null;
+
+        function handleImageSelect(input) {
+            if (input.files && input.files[0]) {
+                selectedImageFile = input.files[0];
+
+                const preview = document.getElementById('imagePreview');
+                const previewImg = document.getElementById('previewImg');
+                const previewName = document.getElementById('previewName');
+                const previewSize = document.getElementById('previewSize');
+
+                if (preview && previewImg) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        previewImg.src = e.target.result;
+                    };
+                    reader.readAsDataURL(selectedImageFile);
+
+                    previewName.textContent = selectedImageFile.name;
+                    previewSize.textContent = formatFileSize(selectedImageFile.size);
+                    preview.classList.remove('hidden');
                 }
             }
+        }
 
-            function appendImageMessage(imageUrl, time, sentBy) {
-                const chatBox = document.getElementById('chatBox');
-                if (!chatBox) return;
+        function cancelImageUpload() {
+            selectedImageFile = null;
+            const preview = document.getElementById('imagePreview');
+            const input = document.getElementById('imageInput');
 
-                const msgDiv = document.createElement('div');
-                msgDiv.className = 'message-item flex justify-end group';
+            if (preview) preview.classList.add('hidden');
+            if (input) input.value = '';
+        }
 
-                let senderBadge = '';
-                if (sentBy && sentBy.startsWith('admin:')) {
-                    const name = sentBy.substring(6);
-                    senderBadge = `<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ${escapeHtml(name)}</span>`;
+        async function sendImage() {
+            if (!selectedImageFile || !ghostDraftState.userId) return;
+
+            const formData = new FormData();
+            formData.append('action', 'send_image');
+            formData.append('user_id', ghostDraftState.userId);
+            formData.append('image', selectedImageFile);
+
+            try {
+                const response = await fetch('inbox-v2.php', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Add image to chat
+                    appendImageMessage(result.image_url, result.time, result.sent_by);
+                    cancelImageUpload();
+                    scrollToBottom();
+                    showNotification('ส่งรูปภาพสำเร็จ', 'success');
+                } else {
+                    throw new Error(result.error || 'ส่งรูปภาพไม่สำเร็จ');
                 }
+            } catch (error) {
+                console.error('Send image error:', error);
+                showNotification(error.message, 'error');
+            }
+        }
 
-                msgDiv.innerHTML = `
+        function appendImageMessage(imageUrl, time, sentBy) {
+            const chatBox = document.getElementById('chatBox');
+            if (!chatBox) return;
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message-item flex justify-end group';
+
+            let senderBadge = '';
+            if (sentBy && sentBy.startsWith('admin:')) {
+                const name = sentBy.substring(6);
+                senderBadge = `<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ${escapeHtml(name)}</span>`;
+            }
+
+            msgDiv.innerHTML = `
         <div class="msg-content-wrapper" style="max-width:70%; display:flex; flex-direction:column; align-items:flex-end;">
             <img src="${escapeHtml(imageUrl)}" class="rounded-xl max-w-[200px] border shadow-sm cursor-pointer hover:opacity-90" onclick="openImage(this.src)">
             <div class="msg-meta flex items-center gap-1 text-[10px] text-white/70 mt-1">
@@ -5947,133 +5947,133 @@ function formatThaiDateTime($datetime)
         </div>
     `;
 
-                chatBox.appendChild(msgDiv);
-            }
+            chatBox.appendChild(msgDiv);
+        }
 
-            function openImage(src) {
-                window.open(src, '_blank');
-            }
+        function openImage(src) {
+            window.open(src, '_blank');
+        }
 
-            function formatFileSize(bytes) {
-                if (bytes < 1024) return bytes + ' B';
-                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-                return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-            }
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
 
-            // PDF handling functions
-            let selectedPdfFile = null;
+        // PDF handling functions
+        let selectedPdfFile = null;
 
-            function handlePdfSelect(input) {
-                if (input.files && input.files[0]) {
-                    selectedPdfFile = input.files[0];
+        function handlePdfSelect(input) {
+            if (input.files && input.files[0]) {
+                selectedPdfFile = input.files[0];
 
-                    // Validate file type
-                    if (!selectedPdfFile.type.includes('pdf')) {
-                        showNotification('กรุณาเลือกไฟล์ PDF เท่านั้น', 'error');
-                        input.value = '';
-                        return;
-                    }
-
-                    // Validate file size (max 10MB)
-                    if (selectedPdfFile.size > 10 * 1024 * 1024) {
-                        showNotification('ไฟล์ PDF ต้องมีขนาดไม่เกิน 10MB', 'error');
-                        input.value = '';
-                        return;
-                    }
-
-                    // Show PDF preview
-                    showPdfPreview(selectedPdfFile);
+                // Validate file type
+                if (!selectedPdfFile.type.includes('pdf')) {
+                    showNotification('กรุณาเลือกไฟล์ PDF เท่านั้น', 'error');
+                    input.value = '';
+                    return;
                 }
-            }
 
-            function showPdfPreview(file) {
-                const preview = document.getElementById('imagePreview');
-                const previewImg = document.getElementById('previewImg');
-                const previewName = document.getElementById('previewName');
-                const previewSize = document.getElementById('previewSize');
-
-                if (preview && previewImg) {
-                    // Show PDF icon instead of image
-                    previewImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNEQzI2MjYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTQgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjhsLTYtNnoiLz48cG9seWxpbmUgcG9pbnRzPSIxNCAyIDE0IDggMjAgOCIvPjxwYXRoIGQ9Ik05IDEzaDZ2NUg5eiIvPjxwYXRoIGQ9Ik05IDEzdi0yYTIgMiAwIDAgMSAyLTJoMmEyIDIgMCAwIDEgMiAydjIiLz48L3N2Zz4=';
-                    previewName.textContent = file.name;
-                    previewSize.textContent = formatFileSize(file.size);
-                    preview.classList.remove('hidden');
-
-                    // Change send button to send PDF
-                    const sendBtn = preview.querySelector('button[onclick="sendImage()"]');
-                    if (sendBtn) {
-                        sendBtn.setAttribute('onclick', 'sendPdf()');
-                        sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>ส่ง PDF';
-                    }
+                // Validate file size (max 10MB)
+                if (selectedPdfFile.size > 10 * 1024 * 1024) {
+                    showNotification('ไฟล์ PDF ต้องมีขนาดไม่เกิน 10MB', 'error');
+                    input.value = '';
+                    return;
                 }
+
+                // Show PDF preview
+                showPdfPreview(selectedPdfFile);
             }
+        }
 
-            async function sendPdf() {
-                if (!selectedPdfFile || !ghostDraftState.userId) return;
+        function showPdfPreview(file) {
+            const preview = document.getElementById('imagePreview');
+            const previewImg = document.getElementById('previewImg');
+            const previewName = document.getElementById('previewName');
+            const previewSize = document.getElementById('previewSize');
 
-                const formData = new FormData();
-                formData.append('action', 'send_pdf');
-                formData.append('user_id', ghostDraftState.userId);
-                formData.append('pdf', selectedPdfFile);
+            if (preview && previewImg) {
+                // Show PDF icon instead of image
+                previewImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IiNEQzI2MjYiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTQgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjhsLTYtNnoiLz48cG9seWxpbmUgcG9pbnRzPSIxNCAyIDE0IDggMjAgOCIvPjxwYXRoIGQ9Ik05IDEzaDZ2NUg5eiIvPjxwYXRoIGQ9Ik05IDEzdi0yYTIgMiAwIDAgMSAyLTJoMmEyIDIgMCAwIDEgMiAydjIiLz48L3N2Zz4=';
+                previewName.textContent = file.name;
+                previewSize.textContent = formatFileSize(file.size);
+                preview.classList.remove('hidden');
 
-                try {
-                    showNotification('กำลังอัพโหลด PDF...', 'info');
-
-                    const response = await fetch('inbox-v2.php', {
-                        method: 'POST',
-                        body: formData,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success) {
-                        // Add PDF to chat
-                        appendPdfMessage(result.file_url, result.file_name, result.time, result.sent_by);
-                        cancelPdfUpload();
-                        scrollToBottom();
-                        showNotification('ส่งไฟล์ PDF สำเร็จ', 'success');
-                    } else {
-                        throw new Error(result.error || 'ส่งไฟล์ PDF ไม่สำเร็จ');
-                    }
-                } catch (error) {
-                    console.error('Send PDF error:', error);
-                    showNotification(error.message, 'error');
-                }
-            }
-
-            function cancelPdfUpload() {
-                selectedPdfFile = null;
-                const preview = document.getElementById('imagePreview');
-                const input = document.getElementById('pdfInput');
-
-                if (preview) preview.classList.add('hidden');
-                if (input) input.value = '';
-
-                // Reset send button back to image
-                const sendBtn = preview?.querySelector('button[onclick="sendPdf()"]');
+                // Change send button to send PDF
+                const sendBtn = preview.querySelector('button[onclick="sendImage()"]');
                 if (sendBtn) {
-                    sendBtn.setAttribute('onclick', 'sendImage()');
-                    sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>ส่งรูป';
+                    sendBtn.setAttribute('onclick', 'sendPdf()');
+                    sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>ส่ง PDF';
                 }
             }
+        }
 
-            function appendPdfMessage(fileUrl, fileName, time, sentBy) {
-                const chatBox = document.getElementById('chatBox');
-                if (!chatBox) return;
+        async function sendPdf() {
+            if (!selectedPdfFile || !ghostDraftState.userId) return;
 
-                const msgDiv = document.createElement('div');
-                msgDiv.className = 'message-item flex justify-end group';
+            const formData = new FormData();
+            formData.append('action', 'send_pdf');
+            formData.append('user_id', ghostDraftState.userId);
+            formData.append('pdf', selectedPdfFile);
 
-                let senderBadge = '';
-                if (sentBy && sentBy.startsWith('admin:')) {
-                    const name = sentBy.substring(6);
-                    senderBadge = `<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ${escapeHtml(name)}</span>`;
+            try {
+                showNotification('กำลังอัพโหลด PDF...', 'info');
+
+                const response = await fetch('inbox-v2.php', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // Add PDF to chat
+                    appendPdfMessage(result.file_url, result.file_name, result.time, result.sent_by);
+                    cancelPdfUpload();
+                    scrollToBottom();
+                    showNotification('ส่งไฟล์ PDF สำเร็จ', 'success');
+                } else {
+                    throw new Error(result.error || 'ส่งไฟล์ PDF ไม่สำเร็จ');
                 }
+            } catch (error) {
+                console.error('Send PDF error:', error);
+                showNotification(error.message, 'error');
+            }
+        }
 
-                msgDiv.innerHTML = `
+        function cancelPdfUpload() {
+            selectedPdfFile = null;
+            const preview = document.getElementById('imagePreview');
+            const input = document.getElementById('pdfInput');
+
+            if (preview) preview.classList.add('hidden');
+            if (input) input.value = '';
+
+            // Reset send button back to image
+            const sendBtn = preview?.querySelector('button[onclick="sendPdf()"]');
+            if (sendBtn) {
+                sendBtn.setAttribute('onclick', 'sendImage()');
+                sendBtn.innerHTML = '<i class="fas fa-paper-plane mr-1"></i>ส่งรูป';
+            }
+        }
+
+        function appendPdfMessage(fileUrl, fileName, time, sentBy) {
+            const chatBox = document.getElementById('chatBox');
+            if (!chatBox) return;
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message-item flex justify-end group';
+
+            let senderBadge = '';
+            if (sentBy && sentBy.startsWith('admin:')) {
+                const name = sentBy.substring(6);
+                senderBadge = `<span class="sender-badge admin"><i class="fas fa-user-shield"></i> ${escapeHtml(name)}</span>`;
+            }
+
+            msgDiv.innerHTML = `
         <div class="msg-content-wrapper" style="max-width:70%; display:flex; flex-direction:column; align-items:flex-end;">
             <a href="${escapeHtml(fileUrl)}" target="_blank" class="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl hover:bg-red-100 transition-colors">
                 <i class="fas fa-file-pdf text-2xl text-red-500"></i>
@@ -6089,175 +6089,188 @@ function formatThaiDateTime($datetime)
         </div>
     `;
 
-                chatBox.appendChild(msgDiv);
-            }
+            chatBox.appendChild(msgDiv);
+        }
 
-            // ============================================
-            // Hybrid Search System (Local + Server)
-            // - Local search: instant, searches loaded conversations
-            // - Server search: comprehensive, searches all conversations
-            // ============================================
+        // ============================================
+        // Hybrid Search System (Local + Server)
+        // - Local search: instant, searches loaded conversations
+        // - Server search: comprehensive, searches all conversations
+        // ============================================
 
-            // Search state
-            let searchState = {
-                query: '',
-                isServerSearch: false,
-                localResults: [],
-                serverResults: [],
-                pendingRequest: null,
-                minCharsForServerSearch: 1 // Changed from 2 to 1 - search immediately
+        // Utility function for debounce
+        function debounce(func, wait) {
+            let timeout;
+            return function (...args) {
+                const context = this;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
             };
+        }
 
-            const debouncedSearch = debounce(function (query) {
-                performAutocompleteSearch(query);
-            }, 150); // Faster response for autocomplete
+        // Search state
+        let searchState = {
+            query: '',
+            isServerSearch: false,
+            localResults: [],
+            serverResults: [],
+            pendingRequest: null,
+            minCharsForServerSearch: 1 // Changed from 2 to 1 - search immediately
+        };
 
-            /**
-             * Perform autocomplete search with dropdown
-             * Searches both loaded conversations AND server
-             */
-            async function performAutocompleteSearch(query) {
-                searchState.query = query.trim();
-                const autocompleteDiv = document.getElementById('searchAutocomplete');
-                const lowerQuery = searchState.query.toLowerCase();
+        const debouncedSearch = debounce(function (query) {
+            performAutocompleteSearch(query);
+        }, 150); // Faster response for autocomplete
 
-                // Cancel any pending request
-                if (searchState.pendingRequest) {
-                    searchState.pendingRequest.abort();
-                    searchState.pendingRequest = null;
-                }
+        /**
+         * Perform autocomplete search with dropdown
+         * Searches both loaded conversations AND server
+         */
+        async function performAutocompleteSearch(query) {
+            searchState.query = query.trim();
+            const autocompleteDiv = document.getElementById('searchAutocomplete');
+            const lowerQuery = searchState.query.toLowerCase();
 
-                // If query is empty, hide autocomplete and show all
-                if (!searchState.query) {
-                    autocompleteDiv.classList.add('hidden');
-                    resetSearch();
-                    return;
-                }
-
-                // Step 1: Instant local search on loaded conversations
-                const localMatches = [];
-                const userItems = document.querySelectorAll('#userList .user-item');
-
-                userItems.forEach(item => {
-                    const name = item.dataset.name || '';
-                    const lastMsg = item.querySelector('.last-msg')?.textContent?.toLowerCase() || '';
-
-                    if (name.includes(lowerQuery) || lastMsg.includes(lowerQuery)) {
-                        localMatches.push({
-                            id: item.dataset.userId,
-                            display_name: item.querySelector('h3')?.textContent || 'Unknown',
-                            picture_url: item.querySelector('img')?.src || '',
-                            last_message_preview: item.querySelector('.last-msg')?.textContent || '',
-                            unread_count: item.querySelector('.unread-badge')?.textContent || 0
-                        });
-                    }
-                });
-
-                // If we have local results, show them immediately
-                if (localMatches.length > 0) {
-                    displayAutocompleteResults(localMatches.slice(0, 10));
-
-                    // Also filter the main list
-                    filterMainList(lowerQuery);
-                } else {
-                    // Show loading while fetching from server
-                    autocompleteDiv.classList.remove('hidden');
-                    autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm"><i class="fas fa-spinner fa-spin"></i> กำลังค้นหา...</div>';
-                }
-
-                // Step 2: Also search server for comprehensive results
-                try {
-                    const controller = new AbortController();
-                    searchState.pendingRequest = controller;
-
-                    const params = new URLSearchParams({
-                        action: 'search_conversations',
-                        query: searchState.query,
-                        line_account_id: window.currentBotId || <?= $currentBotId ?>,
-                        limit: 20
-                    });
-
-                    const response = await fetch(`api/inbox-v2.php?${params.toString()}`, {
-                        signal: controller.signal
-                    });
-
-                    const result = await response.json();
-
-                    if (result.success && result.data && result.data.conversations) {
-                        // Merge local and server results (remove duplicates)
-                        const serverResults = result.data.conversations;
-                        const mergedResults = [...localMatches];
-                        const existingIds = new Set(localMatches.map(m => String(m.id)));
-
-                        serverResults.forEach(conv => {
-                            const convId = String(conv.id || conv.user_id);
-                            if (!existingIds.has(convId)) {
-                                mergedResults.push(conv);
-                                existingIds.add(convId);
-                            }
-                        });
-
-                        if (mergedResults.length > 0) {
-                            displayAutocompleteResults(mergedResults.slice(0, 15));
-                        } else {
-                            autocompleteDiv.classList.remove('hidden');
-                            autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
-                        }
-                    }
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error('[Autocomplete] Error:', error);
-                        // Still show local results if server failed
-                        if (localMatches.length === 0) {
-                            autocompleteDiv.classList.remove('hidden');
-                            autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
-                        }
-                    }
-                }
+            // Cancel any pending request
+            if (searchState.pendingRequest) {
+                searchState.pendingRequest.abort();
+                searchState.pendingRequest = null;
             }
 
-            /**
-             * Filter main conversation list based on query
-             */
-            function filterMainList(lowerQuery) {
-                const userItems = document.querySelectorAll('#userList .user-item');
-                let matchCount = 0;
+            // If query is empty, hide autocomplete and show all
+            if (!searchState.query) {
+                autocompleteDiv.classList.add('hidden');
+                resetSearch();
+                return;
+            }
 
-                userItems.forEach(item => {
-                    const name = item.dataset.name || '';
-                    const lastMsg = item.querySelector('.last-msg')?.textContent?.toLowerCase() || '';
+            // Step 1: Instant local search on loaded conversations
+            const localMatches = [];
+            const userItems = document.querySelectorAll('#userList .user-item');
 
-                    if (name.includes(lowerQuery) || lastMsg.includes(lowerQuery)) {
-                        item.style.display = 'block';
-                        matchCount++;
+            userItems.forEach(item => {
+                const name = item.dataset.name || '';
+                const lastMsg = item.querySelector('.last-msg')?.textContent?.toLowerCase() || '';
+
+                if (name.includes(lowerQuery) || lastMsg.includes(lowerQuery)) {
+                    localMatches.push({
+                        id: item.dataset.userId,
+                        display_name: item.querySelector('h3')?.textContent || 'Unknown',
+                        picture_url: item.querySelector('img')?.src || '',
+                        last_message_preview: item.querySelector('.last-msg')?.textContent || '',
+                        unread_count: item.querySelector('.unread-badge')?.textContent || 0
+                    });
+                }
+            });
+
+            // If we have local results, show them immediately
+            if (localMatches.length > 0) {
+                displayAutocompleteResults(localMatches.slice(0, 10));
+
+                // Also filter the main list
+                filterMainList(lowerQuery);
+            } else {
+                // Show loading while fetching from server
+                autocompleteDiv.classList.remove('hidden');
+                autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm"><i class="fas fa-spinner fa-spin"></i> กำลังค้นหา...</div>';
+            }
+
+            // Step 2: Also search server for comprehensive results
+            try {
+                const controller = new AbortController();
+                searchState.pendingRequest = controller;
+
+                const params = new URLSearchParams({
+                    action: 'search_conversations',
+                    query: searchState.query,
+                    line_account_id: window.currentBotId || <?= $currentBotId ?>,
+                    limit: 20
+                });
+
+                const response = await fetch(`api/inbox-v2.php?${params.toString()}`, {
+                    signal: controller.signal
+                });
+
+                const result = await response.json();
+
+                if (result.success && result.data && result.data.conversations) {
+                    // Merge local and server results (remove duplicates)
+                    const serverResults = result.data.conversations;
+                    const mergedResults = [...localMatches];
+                    const existingIds = new Set(localMatches.map(m => String(m.id)));
+
+                    serverResults.forEach(conv => {
+                        const convId = String(conv.id || conv.user_id);
+                        if (!existingIds.has(convId)) {
+                            mergedResults.push(conv);
+                            existingIds.add(convId);
+                        }
+                    });
+
+                    if (mergedResults.length > 0) {
+                        displayAutocompleteResults(mergedResults.slice(0, 15));
                     } else {
-                        item.style.display = 'none';
+                        autocompleteDiv.classList.remove('hidden');
+                        autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
                     }
-                });
+                }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('[Autocomplete] Error:', error);
+                    // Still show local results if server failed
+                    if (localMatches.length === 0) {
+                        autocompleteDiv.classList.remove('hidden');
+                        autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
+                    }
+                }
+            }
+        }
 
-                console.log(`[Search] Found ${matchCount} matches for "${lowerQuery}"`);
+        /**
+         * Filter main conversation list based on query
+         */
+        function filterMainList(lowerQuery) {
+            const userItems = document.querySelectorAll('#userList .user-item');
+            let matchCount = 0;
+
+            userItems.forEach(item => {
+                const name = item.dataset.name || '';
+                const lastMsg = item.querySelector('.last-msg')?.textContent?.toLowerCase() || '';
+
+                if (name.includes(lowerQuery) || lastMsg.includes(lowerQuery)) {
+                    item.style.display = 'block';
+                    matchCount++;
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+
+            console.log(`[Search] Found ${matchCount} matches for "${lowerQuery}"`);
+        }
+
+        /**
+         * Display autocomplete results in dropdown
+         */
+        function displayAutocompleteResults(conversations) {
+            const autocompleteDiv = document.getElementById('searchAutocomplete');
+
+            if (!conversations || conversations.length === 0) {
+                autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
+                autocompleteDiv.classList.remove('hidden');
+                return;
             }
 
-            /**
-             * Display autocomplete results in dropdown
-             */
-            function displayAutocompleteResults(conversations) {
-                const autocompleteDiv = document.getElementById('searchAutocomplete');
+            autocompleteDiv.classList.remove('hidden');
 
-                if (!conversations || conversations.length === 0) {
-                    autocompleteDiv.innerHTML = '<div class="p-3 text-center text-gray-500 text-sm">ไม่พบผลลัพธ์</div>';
-                    return;
-                }
+            let html = '';
+            conversations.forEach(conv => {
+                const displayName = conv.display_name || 'Unknown';
+                const lastMsg = conv.last_message_preview || '';
+                const pictureUrl = conv.picture_url || '';
+                const unreadCount = conv.unread_count || 0;
+                const userId = conv.id || conv.user_id;
 
-                let html = '';
-                conversations.forEach(conv => {
-                    const displayName = conv.display_name || 'Unknown';
-                    const lastMsg = conv.last_message_preview || '';
-                    const pictureUrl = conv.picture_url || '';
-                    const unreadCount = conv.unread_count || 0;
-                    const userId = conv.id || conv.user_id;
-
-                    html += `
+                html += `
             <div class="autocomplete-item p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 flex items-center gap-3" 
                  onclick="selectAutocompleteResult(${userId})" 
                  data-user-id="${userId}">
@@ -6271,260 +6284,260 @@ function formatThaiDateTime($datetime)
                 ${unreadCount > 0 ? `<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">${unreadCount}</span>` : ''}
             </div>
         `;
-                });
+            });
 
-                autocompleteDiv.innerHTML = html;
-            }
+            autocompleteDiv.innerHTML = html;
+        }
 
-            /**
-             * Select autocomplete result and load conversation
-             */
-            function selectAutocompleteResult(userId) {
-                const autocompleteDiv = document.getElementById('searchAutocomplete');
+        /**
+         * Select autocomplete result and load conversation
+         */
+        function selectAutocompleteResult(userId) {
+            const autocompleteDiv = document.getElementById('searchAutocomplete');
+            autocompleteDiv.classList.add('hidden');
+
+            // Clear search input
+            document.getElementById('userSearch').value = '';
+            searchState.query = '';
+
+            // Navigate to the conversation
+            window.location.href = `?user=${userId}`;
+        }
+
+        // Close autocomplete when clicking outside
+        document.addEventListener('click', function (e) {
+            const searchInput = document.getElementById('userSearch');
+            const autocompleteDiv = document.getElementById('searchAutocomplete');
+
+            if (searchInput && autocompleteDiv &&
+                !searchInput.contains(e.target) &&
+                !autocompleteDiv.contains(e.target)) {
                 autocompleteDiv.classList.add('hidden');
+            }
+        });
 
-                // Clear search input
-                document.getElementById('userSearch').value = '';
-                searchState.query = '';
+        /**
+         * Perform hybrid search (local first, then server) - LEGACY
+         */
+        async function performHybridSearch(query) {
+            searchState.query = query.trim();
+            const lowerQuery = searchState.query.toLowerCase();
 
-                // Navigate to the conversation
-                window.location.href = `?user=${userId}`;
+            // Cancel any pending server search
+            if (searchState.pendingRequest) {
+                searchState.pendingRequest.abort();
+                searchState.pendingRequest = null;
             }
 
-            // Close autocomplete when clicking outside
-            document.addEventListener('click', function (e) {
-                const searchInput = document.getElementById('userSearch');
-                const autocompleteDiv = document.getElementById('searchAutocomplete');
+            // If query is empty, show all loaded conversations
+            if (!searchState.query) {
+                resetSearch();
+                return;
+            }
 
-                if (searchInput && autocompleteDiv &&
-                    !searchInput.contains(e.target) &&
-                    !autocompleteDiv.contains(e.target)) {
-                    autocompleteDiv.classList.add('hidden');
+            // Step 1: Instant local search
+            const localMatches = performLocalSearch(lowerQuery);
+            searchState.localResults = localMatches;
+
+            // Update UI with local results immediately
+            updateSearchUI(localMatches, 'local');
+
+            // Step 2: Server search if query is long enough and we might have more results
+            if (searchState.query.length >= searchState.minCharsForServerSearch) {
+                // Show "searching server..." indicator
+                showSearchingIndicator();
+
+                // Debounced server search (additional 300ms delay)
+                setTimeout(() => performServerSearch(searchState.query), 300);
+            }
+        }
+
+        /**
+         * Perform local search on loaded conversations
+         * Now respects current filters and uses 'block' display
+         */
+        function performLocalSearch(lowerQuery) {
+            const userItems = document.querySelectorAll('#userList .user-item:not(.search-result-server)');
+            const matches = [];
+
+            // Get current filter values for combined filtering
+            const filterStatus = document.getElementById('filterStatus')?.value || '';
+            const filterChatStatus = document.getElementById('filterChatStatus')?.value || '';
+            const filterTag = document.getElementById('filterTag')?.value || '';
+
+            userItems.forEach(item => {
+                const name = item.dataset.name || '';
+                const lastMsg = item.querySelector('.last-msg')?.textContent?.toLowerCase() || '';
+
+                // Check if matches search query
+                const matchesSearch = name.includes(lowerQuery) || lastMsg.includes(lowerQuery);
+
+                // Check if matches filters
+                let matchesFilters = true;
+
+                // Filter by chat status
+                if (filterChatStatus && item.dataset.chatStatus !== filterChatStatus) {
+                    matchesFilters = false;
+                }
+
+                // Filter by unread
+                if (filterStatus === 'unread') {
+                    const hasUnread = item.querySelector('.unread-badge') !== null;
+                    if (!hasUnread) matchesFilters = false;
+                }
+
+                // Filter by assigned
+                if (filterStatus === 'assigned') {
+                    if (item.dataset.assigned !== '1') matchesFilters = false;
+                }
+
+                // Filter by tag
+                if (filterTag) {
+                    const itemTags = (item.dataset.tags || '').split(',').filter(t => t);
+                    if (!itemTags.includes(filterTag)) matchesFilters = false;
+                }
+
+                // Show if matches both search AND filters
+                if (matchesSearch && matchesFilters) {
+                    matches.push(item.dataset.userId);
+                    item.style.display = 'block';
+                    item.classList.add('search-match');
+                } else {
+                    item.style.display = 'none';
+                    item.classList.remove('search-match');
                 }
             });
 
-            /**
-             * Perform hybrid search (local first, then server) - LEGACY
-             */
-            async function performHybridSearch(query) {
-                searchState.query = query.trim();
-                const lowerQuery = searchState.query.toLowerCase();
+            return matches;
+        }
 
-                // Cancel any pending server search
-                if (searchState.pendingRequest) {
-                    searchState.pendingRequest.abort();
-                    searchState.pendingRequest = null;
-                }
+        /**
+         * Perform server search for comprehensive results
+         */
+        async function performServerSearch(query) {
+            // Don't search if query changed
+            if (query !== searchState.query) return;
 
-                // If query is empty, show all loaded conversations
-                if (!searchState.query) {
-                    resetSearch();
-                    return;
-                }
+            const abortController = new AbortController();
+            searchState.pendingRequest = abortController;
 
-                // Step 1: Instant local search
-                const localMatches = performLocalSearch(lowerQuery);
-                searchState.localResults = localMatches;
+            try {
+                // Get current filter values
+                const chatStatus = document.getElementById('filterChatStatus')?.value || '';
+                const tagId = document.getElementById('filterTag')?.value || '';
+                const assigneeId = document.getElementById('filterAssignee')?.value || '';
+                const status = document.getElementById('filterStatus')?.value || '';
 
-                // Update UI with local results immediately
-                updateSearchUI(localMatches, 'local');
+                // Build URL with search and filters
+                let url = `/api/inbox-v2.php?action=getConversations&limit=50&search=${encodeURIComponent(query)}`;
+                if (chatStatus) url += `&chatStatus=${encodeURIComponent(chatStatus)}`;
+                if (tagId) url += `&tagId=${encodeURIComponent(tagId)}`;
+                if (assigneeId) url += `&assigneeId=${encodeURIComponent(assigneeId)}`;
+                if (status === 'unread') url += `&unreadOnly=true`;
 
-                // Step 2: Server search if query is long enough and we might have more results
-                if (searchState.query.length >= searchState.minCharsForServerSearch) {
-                    // Show "searching server..." indicator
-                    showSearchingIndicator();
-
-                    // Debounced server search (additional 300ms delay)
-                    setTimeout(() => performServerSearch(searchState.query), 300);
-                }
-            }
-
-            /**
-             * Perform local search on loaded conversations
-             * Now respects current filters and uses 'block' display
-             */
-            function performLocalSearch(lowerQuery) {
-                const userItems = document.querySelectorAll('#userList .user-item:not(.search-result-server)');
-                const matches = [];
-
-                // Get current filter values for combined filtering
-                const filterStatus = document.getElementById('filterStatus')?.value || '';
-                const filterChatStatus = document.getElementById('filterChatStatus')?.value || '';
-                const filterTag = document.getElementById('filterTag')?.value || '';
-
-                userItems.forEach(item => {
-                    const name = item.dataset.name || '';
-                    const lastMsg = item.querySelector('.last-msg')?.textContent?.toLowerCase() || '';
-
-                    // Check if matches search query
-                    const matchesSearch = name.includes(lowerQuery) || lastMsg.includes(lowerQuery);
-
-                    // Check if matches filters
-                    let matchesFilters = true;
-
-                    // Filter by chat status
-                    if (filterChatStatus && item.dataset.chatStatus !== filterChatStatus) {
-                        matchesFilters = false;
-                    }
-
-                    // Filter by unread
-                    if (filterStatus === 'unread') {
-                        const hasUnread = item.querySelector('.unread-badge') !== null;
-                        if (!hasUnread) matchesFilters = false;
-                    }
-
-                    // Filter by assigned
-                    if (filterStatus === 'assigned') {
-                        if (item.dataset.assigned !== '1') matchesFilters = false;
-                    }
-
-                    // Filter by tag
-                    if (filterTag) {
-                        const itemTags = (item.dataset.tags || '').split(',').filter(t => t);
-                        if (!itemTags.includes(filterTag)) matchesFilters = false;
-                    }
-
-                    // Show if matches both search AND filters
-                    if (matchesSearch && matchesFilters) {
-                        matches.push(item.dataset.userId);
-                        item.style.display = 'block';
-                        item.classList.add('search-match');
-                    } else {
-                        item.style.display = 'none';
-                        item.classList.remove('search-match');
+                const response = await fetch(url, {
+                    signal: abortController.signal,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
                     }
                 });
 
-                return matches;
-            }
+                const data = await response.json();
 
-            /**
-             * Perform server search for comprehensive results
-             */
-            async function performServerSearch(query) {
-                // Don't search if query changed
-                if (query !== searchState.query) return;
+                if (data.success && data.data && data.data.conversations) {
+                    searchState.serverResults = data.data.conversations;
+                    searchState.isServerSearch = true;
 
-                const abortController = new AbortController();
-                searchState.pendingRequest = abortController;
+                    // Merge server results with local (add new ones)
+                    mergeServerResults(data.data.conversations);
 
-                try {
-                    // Get current filter values
-                    const chatStatus = document.getElementById('filterChatStatus')?.value || '';
-                    const tagId = document.getElementById('filterTag')?.value || '';
-                    const assigneeId = document.getElementById('filterAssignee')?.value || '';
-                    const status = document.getElementById('filterStatus')?.value || '';
-
-                    // Build URL with search and filters
-                    let url = `/api/inbox-v2.php?action=getConversations&limit=50&search=${encodeURIComponent(query)}`;
-                    if (chatStatus) url += `&chatStatus=${encodeURIComponent(chatStatus)}`;
-                    if (tagId) url += `&tagId=${encodeURIComponent(tagId)}`;
-                    if (assigneeId) url += `&assigneeId=${encodeURIComponent(assigneeId)}`;
-                    if (status === 'unread') url += `&unreadOnly=true`;
-
-                    const response = await fetch(url, {
-                        signal: abortController.signal,
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        }
-                    });
-
-                    const data = await response.json();
-
-                    if (data.success && data.data && data.data.conversations) {
-                        searchState.serverResults = data.data.conversations;
-                        searchState.isServerSearch = true;
-
-                        // Merge server results with local (add new ones)
-                        mergeServerResults(data.data.conversations);
-
-                        // Update UI
-                        hideSearchingIndicator();
-                        updateSearchResultsInfo(searchState.localResults.length, data.data.conversations.length);
-                    }
-                } catch (error) {
-                    if (error.name !== 'AbortError') {
-                        console.error('[Search] Server search failed:', error);
-                    }
+                    // Update UI
                     hideSearchingIndicator();
-                } finally {
-                    searchState.pendingRequest = null;
+                    updateSearchResultsInfo(searchState.localResults.length, data.data.conversations.length);
                 }
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('[Search] Server search failed:', error);
+                }
+                hideSearchingIndicator();
+            } finally {
+                searchState.pendingRequest = null;
             }
+        }
 
-            /**
-             * Merge server results into the conversation list
-             */
-            function mergeServerResults(serverConversations) {
-                const userList = document.getElementById('userList');
-                const sentinel = document.getElementById('loadMoreSentinel');
-                const existingIds = new Set();
+        /**
+         * Merge server results into the conversation list
+         */
+        function mergeServerResults(serverConversations) {
+            const userList = document.getElementById('userList');
+            const sentinel = document.getElementById('loadMoreSentinel');
+            const existingIds = new Set();
 
-                // Collect existing user IDs
-                document.querySelectorAll('#userList .user-item').forEach(item => {
-                    existingIds.add(item.dataset.userId);
-                });
+            // Collect existing user IDs
+            document.querySelectorAll('#userList .user-item').forEach(item => {
+                existingIds.add(item.dataset.userId);
+            });
 
-                // Add new conversations from server that aren't already loaded
-                serverConversations.forEach(conv => {
-                    const userId = String(conv.id || conv.user_id);
+            // Add new conversations from server that aren't already loaded
+            serverConversations.forEach(conv => {
+                const userId = String(conv.id || conv.user_id);
 
-                    if (!existingIds.has(userId)) {
-                        // Create new conversation element
-                        const element = createServerSearchResultElement(conv);
-                        element.classList.add('search-result-server', 'search-match');
+                if (!existingIds.has(userId)) {
+                    // Create new conversation element
+                    const element = createServerSearchResultElement(conv);
+                    element.classList.add('search-result-server', 'search-match');
 
-                        // Insert before sentinel or at end
-                        if (sentinel) {
-                            userList.insertBefore(element, sentinel);
-                        } else {
-                            userList.appendChild(element);
-                        }
+                    // Insert before sentinel or at end
+                    if (sentinel) {
+                        userList.insertBefore(element, sentinel);
                     } else {
-                        // Show existing item if it matches
-                        const existingItem = userList.querySelector(`[data-user-id="${userId}"]`);
-                        if (existingItem) {
-                            existingItem.style.display = '';
-                            existingItem.classList.add('search-match');
-                        }
+                        userList.appendChild(element);
                     }
-                });
-            }
+                } else {
+                    // Show existing item if it matches
+                    const existingItem = userList.querySelector(`[data-user-id="${userId}"]`);
+                    if (existingItem) {
+                        existingItem.style.display = '';
+                        existingItem.classList.add('search-match');
+                    }
+                }
+            });
+        }
 
-            /**
-             * Create element for server search result
-             */
-            function createServerSearchResultElement(conv) {
-                const userId = conv.id || conv.user_id;
-                const displayName = conv.display_name || 'Unknown';
-                const lastMsg = getMessagePreviewLocal(conv.last_message_preview || conv.last_message || '', conv.last_message_type || conv.last_type);
-                const lastTime = formatThaiTimeLocal(conv.last_message_at || conv.last_time);
-                const unreadCount = conv.unread_count || conv.unread || 0;
-                const pictureUrl = conv.picture_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%23e5e7eb'/%3E%3Cpath d='M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z' fill='%239ca3af'/%3E%3C/svg%3E";
-                const chatStatus = conv.chat_status || '';
+        /**
+         * Create element for server search result
+         */
+        function createServerSearchResultElement(conv) {
+            const userId = conv.id || conv.user_id;
+            const displayName = conv.display_name || 'Unknown';
+            const lastMsg = getMessagePreviewLocal(conv.last_message_preview || conv.last_message || '', conv.last_message_type || conv.last_type);
+            const lastTime = formatThaiTimeLocal(conv.last_message_at || conv.last_time);
+            const unreadCount = conv.unread_count || conv.unread || 0;
+            const pictureUrl = conv.picture_url || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='20' fill='%23e5e7eb'/%3E%3Cpath d='M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z' fill='%239ca3af'/%3E%3C/svg%3E";
+            const chatStatus = conv.chat_status || '';
 
-                const element = document.createElement('a');
-                element.href = `?user=${userId}`;
-                element.className = 'user-item block p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50';
-                element.dataset.userId = userId;
-                element.dataset.name = displayName.toLowerCase();
-                element.dataset.chatStatus = chatStatus;
-                element.tabIndex = 0;
+            const element = document.createElement('a');
+            element.href = `?user=${userId}`;
+            element.className = 'user-item block p-3 border-b border-gray-50 cursor-pointer hover:bg-gray-50';
+            element.dataset.userId = userId;
+            element.dataset.name = displayName.toLowerCase();
+            element.dataset.chatStatus = chatStatus;
+            element.tabIndex = 0;
 
-                // Status badge
-                const statusBadges = {
-                    'pending': { icon: '🔴', color: '#EF4444', bg: '#FEE2E2' },
-                    'completed': { icon: '🟢', color: '#10B981', bg: '#D1FAE5' },
-                    'shipping': { icon: '📦', color: '#F59E0B', bg: '#FEF3C7' },
-                    'tracking': { icon: '🚚', color: '#3B82F6', bg: '#DBEAFE' },
-                    'billing': { icon: '💰', color: '#8B5CF6', bg: '#EDE9FE' }
-                };
-                const statusBadge = statusBadges[chatStatus];
-                const statusBadgeHtml = statusBadge
-                    ? `<span class="chat-status-badge" style="background: ${statusBadge.bg}; color: ${statusBadge.color}; border: 1px solid ${statusBadge.color}30;">${statusBadge.icon}</span>`
-                    : '';
+            // Status badge
+            const statusBadges = {
+                'pending': { icon: '🔴', color: '#EF4444', bg: '#FEE2E2' },
+                'completed': { icon: '🟢', color: '#10B981', bg: '#D1FAE5' },
+                'shipping': { icon: '📦', color: '#F59E0B', bg: '#FEF3C7' },
+                'tracking': { icon: '🚚', color: '#3B82F6', bg: '#DBEAFE' },
+                'billing': { icon: '💰', color: '#8B5CF6', bg: '#EDE9FE' }
+            };
+            const statusBadge = statusBadges[chatStatus];
+            const statusBadgeHtml = statusBadge
+                ? `<span class="chat-status-badge" style="background: ${statusBadge.bg}; color: ${statusBadge.color}; border: 1px solid ${statusBadge.color}30;">${statusBadge.icon}</span>`
+                : '';
 
-                element.innerHTML = `
+            element.innerHTML = `
         <div class="flex items-center gap-3">
             <div class="relative flex-shrink-0">
                 <img src="${pictureUrl}"
@@ -6551,417 +6564,417 @@ function formatThaiDateTime($datetime)
         </div>
     `;
 
-                return element;
+            return element;
+        }
+
+        /**
+         * Reset search and show all loaded conversations
+         */
+        function resetSearch() {
+            searchState.query = '';
+            searchState.isServerSearch = false;
+            searchState.localResults = [];
+            searchState.serverResults = [];
+
+            // Remove server-only results first
+            document.querySelectorAll('#userList .search-result-server').forEach(item => {
+                item.remove();
+            });
+
+            // Show all loaded conversations (will be filtered by applyFilters)
+            document.querySelectorAll('#userList .user-item').forEach(item => {
+                item.style.display = 'block';
+                item.classList.remove('search-match');
+            });
+
+            // Hide search info
+            hideSearchResultsInfo();
+            hideSearchingIndicator();
+
+            // Re-apply filters if any are selected
+            applyFilters();
+        }
+
+        /**
+         * Update search UI
+         */
+        function updateSearchUI(matches, source) {
+            const count = matches.length;
+            console.log(`[Search] Found ${count} local matches for "${searchState.query}"`);
+        }
+
+        /**
+         * Show searching indicator
+         */
+        function showSearchingIndicator() {
+            let indicator = document.getElementById('searchingIndicator');
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.id = 'searchingIndicator';
+                indicator.className = 'px-3 py-2 bg-blue-50 text-blue-600 text-xs flex items-center gap-2';
+                indicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังค้นหาเพิ่มเติม...';
+
+                const userList = document.getElementById('userList');
+                userList.parentNode.insertBefore(indicator, userList);
+            }
+            indicator.style.display = 'flex';
+        }
+
+        /**
+         * Hide searching indicator
+         */
+        function hideSearchingIndicator() {
+            const indicator = document.getElementById('searchingIndicator');
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
+        }
+
+        /**
+         * Update search results info
+         */
+        function updateSearchResultsInfo(localCount, serverCount) {
+            let infoEl = document.getElementById('searchResultsInfo');
+            if (!infoEl) {
+                infoEl = document.createElement('div');
+                infoEl.id = 'searchResultsInfo';
+                infoEl.className = 'px-3 py-2 bg-teal-50 text-teal-700 text-xs flex items-center justify-between';
+
+                const userList = document.getElementById('userList');
+                userList.parentNode.insertBefore(infoEl, userList);
             }
 
-            /**
-             * Reset search and show all loaded conversations
-             */
-            function resetSearch() {
-                searchState.query = '';
-                searchState.isServerSearch = false;
-                searchState.localResults = [];
-                searchState.serverResults = [];
-
-                // Remove server-only results first
-                document.querySelectorAll('#userList .search-result-server').forEach(item => {
-                    item.remove();
-                });
-
-                // Show all loaded conversations (will be filtered by applyFilters)
-                document.querySelectorAll('#userList .user-item').forEach(item => {
-                    item.style.display = 'block';
-                    item.classList.remove('search-match');
-                });
-
-                // Hide search info
-                hideSearchResultsInfo();
-                hideSearchingIndicator();
-
-                // Re-apply filters if any are selected
-                applyFilters();
-            }
-
-            /**
-             * Update search UI
-             */
-            function updateSearchUI(matches, source) {
-                const count = matches.length;
-                console.log(`[Search] Found ${count} local matches for "${searchState.query}"`);
-            }
-
-            /**
-             * Show searching indicator
-             */
-            function showSearchingIndicator() {
-                let indicator = document.getElementById('searchingIndicator');
-                if (!indicator) {
-                    indicator = document.createElement('div');
-                    indicator.id = 'searchingIndicator';
-                    indicator.className = 'px-3 py-2 bg-blue-50 text-blue-600 text-xs flex items-center gap-2';
-                    indicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังค้นหาเพิ่มเติม...';
-
-                    const userList = document.getElementById('userList');
-                    userList.parentNode.insertBefore(indicator, userList);
-                }
-                indicator.style.display = 'flex';
-            }
-
-            /**
-             * Hide searching indicator
-             */
-            function hideSearchingIndicator() {
-                const indicator = document.getElementById('searchingIndicator');
-                if (indicator) {
-                    indicator.style.display = 'none';
-                }
-            }
-
-            /**
-             * Update search results info
-             */
-            function updateSearchResultsInfo(localCount, serverCount) {
-                let infoEl = document.getElementById('searchResultsInfo');
-                if (!infoEl) {
-                    infoEl = document.createElement('div');
-                    infoEl.id = 'searchResultsInfo';
-                    infoEl.className = 'px-3 py-2 bg-teal-50 text-teal-700 text-xs flex items-center justify-between';
-
-                    const userList = document.getElementById('userList');
-                    userList.parentNode.insertBefore(infoEl, userList);
-                }
-
-                const totalShown = document.querySelectorAll('#userList .user-item.search-match').length;
-                infoEl.innerHTML = `
+            const totalShown = document.querySelectorAll('#userList .user-item.search-match').length;
+            infoEl.innerHTML = `
         <span>🔍 พบ ${totalShown} รายการสำหรับ "${escapeHtmlLocal(searchState.query)}"</span>
         <button onclick="resetSearch(); document.getElementById('userSearch').value = '';" class="text-teal-600 hover:text-teal-800 underline">
             ล้างการค้นหา
         </button>
     `;
-                infoEl.style.display = 'flex';
+            infoEl.style.display = 'flex';
+        }
+
+        /**
+         * Hide search results info
+         */
+        function hideSearchResultsInfo() {
+            const infoEl = document.getElementById('searchResultsInfo');
+            if (infoEl) {
+                infoEl.style.display = 'none';
+            }
+        }
+
+        // Helper functions for search
+        function getMessagePreviewLocal(content, type) {
+            if (!content) return '';
+            if (type === 'image') return '📷 รูปภาพ';
+            if (type === 'sticker') return '😊 สติกเกอร์';
+            if (type === 'video') return '🎥 วิดีโอ';
+            if (type === 'audio') return '🎵 เสียง';
+            if (type === 'file') return '📎 ไฟล์';
+            if (type === 'location') return '📍 ตำแหน่ง';
+            return content.substring(0, 50) + (content.length > 50 ? '...' : '');
+        }
+
+        function formatThaiTimeLocal(timestamp) {
+            if (!timestamp) return '';
+            const date = new Date(timestamp);
+            const now = new Date();
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+
+            if (date.toDateString() === now.toDateString()) {
+                return `${hours}:${minutes} น.`;
+            }
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            if (date.toDateString() === yesterday.toDateString()) {
+                return `เมื่อวาน`;
+            }
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            return `${day}/${month}`;
+        }
+
+        function escapeHtmlLocal(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        // Legacy function for backward compatibility
+        function filterUsers(query) {
+            performHybridSearch(query);
+        }
+
+        function applyFilters() {
+            const status = document.getElementById('filterStatus')?.value || '';
+            const tag = document.getElementById('filterTag')?.value || '';
+            const chatStatus = document.getElementById('filterChatStatus')?.value || '';
+            const assignee = document.getElementById('filterAssignee')?.value || '';
+            const currentAdminId = <?= $_SESSION['admin_id'] ?? 0 ?>;
+
+            console.log('[Filter] Applying filters:', { status, tag, chatStatus, assignee });
+
+            // Check if there's an active search - if so, re-run search with new filters
+            const searchInput = document.getElementById('userSearch');
+            const hasActiveSearch = searchInput && searchInput.value.trim().length > 0;
+
+            if (hasActiveSearch) {
+                // Re-run search with new filters
+                performHybridSearch(searchInput.value);
+                return;
             }
 
-            /**
-             * Hide search results info
-             */
-            function hideSearchResultsInfo() {
-                const infoEl = document.getElementById('searchResultsInfo');
-                if (infoEl) {
-                    infoEl.style.display = 'none';
+            // No active search - just apply filters to ALL user items
+            const userItems = document.querySelectorAll('#userList .user-item');
+            let showCount = 0;
+            let totalCount = 0;
+
+            userItems.forEach(item => {
+                totalCount++;
+                let show = true;
+
+                // Filter by read/assigned status
+                if (status === 'unread') {
+                    const unreadBadge = item.querySelector('.unread-badge');
+                    show = show && unreadBadge !== null;
+                } else if (status === 'assigned') {
+                    const isAssigned = item.dataset.assigned === '1';
+                    show = show && isAssigned;
                 }
-            }
 
-            // Helper functions for search
-            function getMessagePreviewLocal(content, type) {
-                if (!content) return '';
-                if (type === 'image') return '📷 รูปภาพ';
-                if (type === 'sticker') return '😊 สติกเกอร์';
-                if (type === 'video') return '🎥 วิดีโอ';
-                if (type === 'audio') return '🎵 เสียง';
-                if (type === 'file') return '📎 ไฟล์';
-                if (type === 'location') return '📍 ตำแหน่ง';
-                return content.substring(0, 50) + (content.length > 50 ? '...' : '');
-            }
-
-            function formatThaiTimeLocal(timestamp) {
-                if (!timestamp) return '';
-                const date = new Date(timestamp);
-                const now = new Date();
-                const hours = date.getHours().toString().padStart(2, '0');
-                const minutes = date.getMinutes().toString().padStart(2, '0');
-
-                if (date.toDateString() === now.toDateString()) {
-                    return `${hours}:${minutes} น.`;
-                }
-                const yesterday = new Date(now);
-                yesterday.setDate(yesterday.getDate() - 1);
-                if (date.toDateString() === yesterday.toDateString()) {
-                    return `เมื่อวาน`;
-                }
-                const day = date.getDate().toString().padStart(2, '0');
-                const month = (date.getMonth() + 1).toString().padStart(2, '0');
-                return `${day}/${month}`;
-            }
-
-            function escapeHtmlLocal(text) {
-                const div = document.createElement('div');
-                div.textContent = text || '';
-                return div.innerHTML;
-            }
-
-            // Legacy function for backward compatibility
-            function filterUsers(query) {
-                performHybridSearch(query);
-            }
-
-            function applyFilters() {
-                const status = document.getElementById('filterStatus')?.value || '';
-                const tag = document.getElementById('filterTag')?.value || '';
-                const chatStatus = document.getElementById('filterChatStatus')?.value || '';
-                const assignee = document.getElementById('filterAssignee')?.value || '';
-                const currentAdminId = <?= $_SESSION['admin_id'] ?? 0 ?>;
-
-                console.log('[Filter] Applying filters:', { status, tag, chatStatus, assignee });
-
-                // Check if there's an active search - if so, re-run search with new filters
-                const searchInput = document.getElementById('userSearch');
-                const hasActiveSearch = searchInput && searchInput.value.trim().length > 0;
-
-                if (hasActiveSearch) {
-                    // Re-run search with new filters
-                    performHybridSearch(searchInput.value);
-                    return;
+                // Filter by tag
+                if (tag) {
+                    const itemTags = (item.dataset.tags || '').split(',').filter(t => t);
+                    const hasTag = itemTags.includes(tag);
+                    show = show && hasTag;
                 }
 
-                // No active search - just apply filters to ALL user items
-                const userItems = document.querySelectorAll('#userList .user-item');
-                let showCount = 0;
-                let totalCount = 0;
+                // Filter by chat status (work status)
+                if (chatStatus) {
+                    const itemChatStatus = item.dataset.chatStatus || '';
+                    show = show && (itemChatStatus === chatStatus);
+                }
 
-                userItems.forEach(item => {
-                    totalCount++;
-                    let show = true;
+                // Filter by assignee
+                if (assignee) {
+                    const userId = item.dataset.userId;
+                    const isAssigned = item.dataset.assigned === '1';
+                    const itemAssignees = item.dataset.assignees ? item.dataset.assignees.split(',').map(a => a.trim()) : [];
 
-                    // Filter by read/assigned status
-                    if (status === 'unread') {
-                        const unreadBadge = item.querySelector('.unread-badge');
-                        show = show && unreadBadge !== null;
-                    } else if (status === 'assigned') {
-                        const isAssigned = item.dataset.assigned === '1';
-                        show = show && isAssigned;
-                    }
-
-                    // Filter by tag
-                    if (tag) {
-                        const itemTags = (item.dataset.tags || '').split(',').filter(t => t);
-                        const hasTag = itemTags.includes(tag);
-                        show = show && hasTag;
-                    }
-
-                    // Filter by chat status (work status)
-                    if (chatStatus) {
-                        const itemChatStatus = item.dataset.chatStatus || '';
-                        show = show && (itemChatStatus === chatStatus);
-                    }
-
-                    // Filter by assignee
-                    if (assignee) {
-                        const userId = item.dataset.userId;
-                        const isAssigned = item.dataset.assigned === '1';
-                        const itemAssignees = item.dataset.assignees ? item.dataset.assignees.split(',').map(a => a.trim()) : [];
-
-                        if (assignee === 'me') {
-                            // Check if assigned to current admin
-                            const assignedToMe = itemAssignees.includes(String(currentAdminId)) ||
-                                checkIfAssignedToMe(userId, currentAdminId);
-                            show = show && assignedToMe;
-                        } else if (assignee === 'unassigned') {
-                            show = show && !isAssigned;
-                        } else {
-                            // Check if assigned to specific admin (compare as strings)
-                            const assignedToAdmin = itemAssignees.includes(assignee) ||
-                                itemAssignees.includes(String(assignee)) ||
-                                checkIfAssignedToAdmin(userId, assignee);
-                            show = show && assignedToAdmin;
-                        }
-                    }
-
-                    // Apply visibility using class instead of inline style
-                    if (show) {
-                        item.classList.remove('filter-hidden');
-                        item.style.display = '';
-                        showCount++;
+                    if (assignee === 'me') {
+                        // Check if assigned to current admin
+                        const assignedToMe = itemAssignees.includes(String(currentAdminId)) ||
+                            checkIfAssignedToMe(userId, currentAdminId);
+                        show = show && assignedToMe;
+                    } else if (assignee === 'unassigned') {
+                        show = show && !isAssigned;
                     } else {
-                        item.classList.add('filter-hidden');
-                        item.style.display = 'none';
+                        // Check if assigned to specific admin (compare as strings)
+                        const assignedToAdmin = itemAssignees.includes(assignee) ||
+                            itemAssignees.includes(String(assignee)) ||
+                            checkIfAssignedToAdmin(userId, assignee);
+                        show = show && assignedToAdmin;
                     }
-                });
-
-                console.log(`[Filter] Showing ${showCount} of ${totalCount} conversations`);
-
-                // Remove any server search results when just filtering (no search)
-                document.querySelectorAll('#userList .search-result-server').forEach(item => {
-                    item.remove();
-                });
-            }
-
-            // Helper function to check if conversation is assigned to specific admin
-            function checkIfAssignedToMe(userId, adminId) {
-                // This will be populated by server-side data
-                if (!window.conversationAssignees) return false;
-                const assignees = window.conversationAssignees[userId] || [];
-                return assignees.includes(parseInt(adminId));
-            }
-
-            function checkIfAssignedToAdmin(userId, adminId) {
-                if (!window.conversationAssignees) return false;
-                const assignees = window.conversationAssignees[userId] || [];
-                return assignees.includes(parseInt(adminId));
-            }
-
-            // Mark all messages as read
-            async function markAllAsRead() {
-                if (!confirm('ต้องการทำเครื่องหมายอ่านทั้งหมดหรือไม่?')) return;
-
-                try {
-                    const formData = new FormData();
-                    formData.append('action', 'mark_all_read');
-                    formData.append('line_account_id', <?= $currentBotId ?>);
-
-                    const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
-                    const result = await response.json();
-
-                    if (result.success) {
-                        // Remove all unread badges
-                        document.querySelectorAll('.unread-badge').forEach(badge => badge.remove());
-                        showNotification && showNotification('✓ ทำเครื่องหมายอ่านทั้งหมดแล้ว', 'success');
-                    } else {
-                        showNotification && showNotification('❌ ' + (result.error || 'เกิดข้อผิดพลาด'), 'error');
-                    }
-                } catch (error) {
-                    console.error('Mark all read error:', error);
-                    showNotification && showNotification('❌ เกิดข้อผิดพลาด', 'error');
-                }
-            }
-            // Mobile functions
-            function showChatList() {
-                const sidebar = document.getElementById('inboxSidebar');
-                if (sidebar) {
-                    sidebar.classList.remove('hidden-mobile');
-                }
-            }
-
-            // Sound toggle
-            let soundEnabled = true;
-
-            function toggleSound() {
-                soundEnabled = !soundEnabled;
-                const icon = document.getElementById('soundIcon');
-                if (icon) {
-                    icon.className = soundEnabled ? 'fas fa-volume-up' : 'fas fa-volume-mute';
-                }
-            }
-
-            // Initialize on page load
-            document.addEventListener('DOMContentLoaded', function () {
-                // Scroll to bottom of chat
-                scrollToBottom();
-
-                // Focus message input if user is selected
-                const messageInput = document.getElementById('messageInput');
-                if (messageInput) {
-                    messageInput.focus();
                 }
 
-                // Load quick actions if user is selected
-                if (ghostDraftState.userId) {
-                    loadQuickActions();
-
-                    // Initialize HUD with context from last customer message - Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
-                    const lastMessage = getLastCustomerMessage();
-                    initializeHUD(lastMessage || '');
+                // Apply visibility using class instead of inline style
+                if (show) {
+                    item.classList.remove('filter-hidden');
+                    item.style.display = '';
+                    showCount++;
+                } else {
+                    item.classList.add('filter-hidden');
+                    item.style.display = 'none';
                 }
             });
 
-            /**
-             * Initialize HUD Dashboard with user data
-             * Loads health profile, drug info, and recommendations
-             */
-            async function initializeHUD(message = '') {
-                if (!ghostDraftState.userId) return;
+            console.log(`[Filter] Showing ${showCount} of ${totalCount} conversations`);
 
-                try {
-                    // Load health profile
-                    const healthParams = new URLSearchParams({
-                        action: 'customer_health',
-                        user_id: ghostDraftState.userId,
-                        line_account_id: <?= $currentBotId ?>
-                    });
-                    const healthResponse = await fetch(`api/inbox-v2.php?${healthParams.toString()}`);
-                    const healthResult = await healthResponse.json();
+            // Remove any server search results when just filtering (no search)
+            document.querySelectorAll('#userList .search-result-server').forEach(item => {
+                item.remove();
+            });
+        }
 
-                    if (healthResult.success && healthResult.data) {
-                        updateHealthProfileWidget(healthResult.data);
-                    }
+        // Helper function to check if conversation is assigned to specific admin
+        function checkIfAssignedToMe(userId, adminId) {
+            // This will be populated by server-side data
+            if (!window.conversationAssignees) return false;
+            const assignees = window.conversationAssignees[userId] || [];
+            return assignees.includes(parseInt(adminId));
+        }
 
-                    // Load context widgets if we have a message
-                    if (message) {
-                        autoUpdateHUDWidgets(message);
-                    }
+        function checkIfAssignedToAdmin(userId, adminId) {
+            if (!window.conversationAssignees) return false;
+            const assignees = window.conversationAssignees[userId] || [];
+            return assignees.includes(parseInt(adminId));
+        }
 
-                    // Load drug recommendations based on recent conversation
-                    const recsParams = new URLSearchParams({
-                        action: 'recommendations',
-                        user_id: ghostDraftState.userId,
-                        type: 'context',
-                        line_account_id: <?= $currentBotId ?>
-                    });
+        // Mark all messages as read
+        async function markAllAsRead() {
+            if (!confirm('ต้องการทำเครื่องหมายอ่านทั้งหมดหรือไม่?')) return;
 
-                    // Add message if available for better drug matching
-                    if (message) {
-                        recsParams.append('message', message);
-                    }
+            try {
+                const formData = new FormData();
+                formData.append('action', 'mark_all_read');
+                formData.append('line_account_id', <?= $currentBotId ?>);
 
-                    const recsResponse = await fetch(`api/inbox-v2.php?${recsParams.toString()}`);
-                    const recsResult = await recsResponse.json();
+                const response = await fetch('api/inbox-v2.php', { method: 'POST', body: formData });
+                const result = await response.json();
 
-                    if (recsResult.success && recsResult.data && recsResult.data.recommendations) {
-                        // Send recommendations to symptom widget (product detection)
-                        updateSymptomWidget(recsResult.data);
-                    }
-
-                } catch (error) {
-                    console.error('Initialize HUD error:', error);
+                if (result.success) {
+                    // Remove all unread badges
+                    document.querySelectorAll('.unread-badge').forEach(badge => badge.remove());
+                    showNotification && showNotification('✓ ทำเครื่องหมายอ่านทั้งหมดแล้ว', 'success');
+                } else {
+                    showNotification && showNotification('❌ ' + (result.error || 'เกิดข้อผิดพลาด'), 'error');
                 }
+            } catch (error) {
+                console.error('Mark all read error:', error);
+                showNotification && showNotification('❌ เกิดข้อผิดพลาด', 'error');
+            }
+        }
+        // Mobile functions
+        function showChatList() {
+            const sidebar = document.getElementById('inboxSidebar');
+            if (sidebar) {
+                sidebar.classList.remove('hidden-mobile');
+            }
+        }
+
+        // Sound toggle
+        let soundEnabled = true;
+
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('soundIcon');
+            if (icon) {
+                icon.className = soundEnabled ? 'fas fa-volume-up' : 'fas fa-volume-mute';
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            // Scroll to bottom of chat
+            scrollToBottom();
+
+            // Focus message input if user is selected
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.focus();
             }
 
-            /**
-             * Update health profile widget in HUD
-             */
-            function updateHealthProfileWidget(data) {
-                const container = document.querySelector('#hudDashboard [data-widget="health-profile"]');
-                if (!container) return;
+            // Load quick actions if user is selected
+            if (ghostDraftState.userId) {
+                loadQuickActions();
 
-                const content = container.querySelector('.widget-content');
-                if (!content) return;
+                // Initialize HUD with context from last customer message - Requirements: 4.1, 4.2, 4.3, 4.4, 4.5
+                const lastMessage = getLastCustomerMessage();
+                initializeHUD(lastMessage || '');
+            }
+        });
 
-                const profile = data.profile || data;
-                const commType = profile.communication_type || 'A';
-                const confidence = profile.confidence || 100;
-                const emotion = profile.emotion || 'neutral';
+        /**
+         * Initialize HUD Dashboard with user data
+         * Loads health profile, drug info, and recommendations
+         */
+        async function initializeHUD(message = '') {
+            if (!ghostDraftState.userId) return;
 
-                // Communication type labels in Thai
-                const typeLabels = {
-                    'A': '⚡ ตรงไปตรงมา',
-                    'B': '� ใส่ใๆจรายละเอียด',
-                    'C': '📊 สบายๆ ค่อยๆคุย'
-                };
+            try {
+                // Load health profile
+                const healthParams = new URLSearchParams({
+                    action: 'customer_health',
+                    user_id: ghostDraftState.userId,
+                    line_account_id: <?= $currentBotId ?>
+                });
+                const healthResponse = await fetch(`api/inbox-v2.php?${healthParams.toString()}`);
+                const healthResult = await healthResponse.json();
 
-                // Emotion labels in Thai
-                const emotionLabels = {
-                    'angry': '😠 โมโห',
-                    'frustrated': '😤 หงุดหงิด',
-                    'happy': '😊 ปลาบปลื้ม',
-                    'satisfied': '😌 พอใจ',
-                    'neutral': '😐 ปกติ',
-                    'confused': '😕 สับสน',
-                    'worried': '😟 กังวล',
-                    'urgent': '⚡ เร่งด่วน'
-                };
+                if (healthResult.success && healthResult.data) {
+                    updateHealthProfileWidget(healthResult.data);
+                }
 
-                // Emotion background colors
-                const emotionBgClass = {
-                    'angry': 'from-red-50 to-red-100 border-red-200',
-                    'frustrated': 'from-orange-50 to-orange-100 border-orange-200',
-                    'happy': 'from-green-50 to-green-100 border-green-200',
-                    'satisfied': 'from-emerald-50 to-emerald-100 border-emerald-200',
-                    'neutral': 'from-gray-50 to-gray-100 border-gray-200',
-                    'confused': 'from-yellow-50 to-yellow-100 border-yellow-200',
-                    'worried': 'from-amber-50 to-amber-100 border-amber-200',
-                    'urgent': 'from-purple-50 to-purple-100 border-purple-200'
-                };
+                // Load context widgets if we have a message
+                if (message) {
+                    autoUpdateHUDWidgets(message);
+                }
 
-                content.innerHTML = `
+                // Load drug recommendations based on recent conversation
+                const recsParams = new URLSearchParams({
+                    action: 'recommendations',
+                    user_id: ghostDraftState.userId,
+                    type: 'context',
+                    line_account_id: <?= $currentBotId ?>
+                });
+
+                // Add message if available for better drug matching
+                if (message) {
+                    recsParams.append('message', message);
+                }
+
+                const recsResponse = await fetch(`api/inbox-v2.php?${recsParams.toString()}`);
+                const recsResult = await recsResponse.json();
+
+                if (recsResult.success && recsResult.data && recsResult.data.recommendations) {
+                    // Send recommendations to symptom widget (product detection)
+                    updateSymptomWidget(recsResult.data);
+                }
+
+            } catch (error) {
+                console.error('Initialize HUD error:', error);
+            }
+        }
+
+        /**
+         * Update health profile widget in HUD
+         */
+        function updateHealthProfileWidget(data) {
+            const container = document.querySelector('#hudDashboard [data-widget="health-profile"]');
+            if (!container) return;
+
+            const content = container.querySelector('.widget-content');
+            if (!content) return;
+
+            const profile = data.profile || data;
+            const commType = profile.communication_type || 'A';
+            const confidence = profile.confidence || 100;
+            const emotion = profile.emotion || 'neutral';
+
+            // Communication type labels in Thai
+            const typeLabels = {
+                'A': '⚡ ตรงไปตรงมา',
+                'B': '� ใส่ใๆจรายละเอียด',
+                'C': '📊 สบายๆ ค่อยๆคุย'
+            };
+
+            // Emotion labels in Thai
+            const emotionLabels = {
+                'angry': '😠 โมโห',
+                'frustrated': '😤 หงุดหงิด',
+                'happy': '😊 ปลาบปลื้ม',
+                'satisfied': '😌 พอใจ',
+                'neutral': '😐 ปกติ',
+                'confused': '😕 สับสน',
+                'worried': '😟 กังวล',
+                'urgent': '⚡ เร่งด่วน'
+            };
+
+            // Emotion background colors
+            const emotionBgClass = {
+                'angry': 'from-red-50 to-red-100 border-red-200',
+                'frustrated': 'from-orange-50 to-orange-100 border-orange-200',
+                'happy': 'from-green-50 to-green-100 border-green-200',
+                'satisfied': 'from-emerald-50 to-emerald-100 border-emerald-200',
+                'neutral': 'from-gray-50 to-gray-100 border-gray-200',
+                'confused': 'from-yellow-50 to-yellow-100 border-yellow-200',
+                'worried': 'from-amber-50 to-amber-100 border-amber-200',
+                'urgent': 'from-purple-50 to-purple-100 border-purple-200'
+            };
+
+            content.innerHTML = `
         <div class="space-y-2">
             <!-- Customer Emotion -->
             <div class="p-2 bg-gradient-to-r ${emotionBgClass[emotion] || emotionBgClass['neutral']} rounded-lg border">
@@ -6999,226 +7012,226 @@ function formatThaiDateTime($datetime)
             ` : ''}
         </div>
     `;
+        }
+
+        /**
+         * Detect customer emotion from message
+         * @param {string} message Customer message
+         * @returns {string} Detected emotion
+         */
+        function detectCustomerEmotion(message) {
+            if (!message) return 'neutral';
+
+            const msg = message.toLowerCase();
+
+            // Angry keywords
+            if (/โกรธ|โมโห|หัวร้อน|บ้า|เวร|ห่า|สัตว์|ไอ้|อี|แม่ง|เหี้ย|!{2,}/.test(msg)) {
+                return 'angry';
             }
 
-            /**
-             * Detect customer emotion from message
-             * @param {string} message Customer message
-             * @returns {string} Detected emotion
-             */
-            function detectCustomerEmotion(message) {
-                if (!message) return 'neutral';
-
-                const msg = message.toLowerCase();
-
-                // Angry keywords
-                if (/โกรธ|โมโห|หัวร้อน|บ้า|เวร|ห่า|สัตว์|ไอ้|อี|แม่ง|เหี้ย|!{2,}/.test(msg)) {
-                    return 'angry';
-                }
-
-                // Frustrated keywords
-                if (/หงุดหงิด|รำคาญ|เบื่อ|ช้า|นาน|รอ|ทำไม|ไม่ได้|ไม่ดี|แย่/.test(msg)) {
-                    return 'frustrated';
-                }
-
-                // Happy keywords
-                if (/ขอบคุณ|ดีมาก|เยี่ยม|สุดยอด|ชอบ|รัก|ปลื้ม|ดีใจ|😊|😄|🥰|❤️|👍/.test(msg)) {
-                    return 'happy';
-                }
-
-                // Satisfied keywords
-                if (/โอเค|ได้|ดี|เข้าใจ|ตกลง|ok|okay/.test(msg)) {
-                    return 'satisfied';
-                }
-
-                // Confused keywords
-                if (/งง|ไม่เข้าใจ|อะไร|ยังไง|หมายความว่า|\?{2,}|สับสน/.test(msg)) {
-                    return 'confused';
-                }
-
-                // Worried keywords
-                if (/กังวล|กลัว|เป็นห่วง|ไม่แน่ใจ|อันตราย|ผลข้างเคียง/.test(msg)) {
-                    return 'worried';
-                }
-
-                // Urgent keywords
-                if (/ด่วน|เร่ง|รีบ|ตอนนี้|ทันที|asap|urgent/.test(msg)) {
-                    return 'urgent';
-                }
-
-                return 'neutral';
+            // Frustrated keywords
+            if (/หงุดหงิด|รำคาญ|เบื่อ|ช้า|นาน|รอ|ทำไม|ไม่ได้|ไม่ดี|แย่/.test(msg)) {
+                return 'frustrated';
             }
 
-            /**
-             * Update customer emotion display
-             * @param {string} message Latest customer message
-             */
-            function updateCustomerEmotion(message) {
-                const emotion = detectCustomerEmotion(message);
-                const emotionEl = document.getElementById('customerEmotion');
+            // Happy keywords
+            if (/ขอบคุณ|ดีมาก|เยี่ยม|สุดยอด|ชอบ|รัก|ปลื้ม|ดีใจ|😊|😄|🥰|❤️|👍/.test(msg)) {
+                return 'happy';
+            }
 
-                if (emotionEl) {
-                    const emotionLabels = {
-                        'angry': '😠 โมโห',
-                        'frustrated': '😤 หงุดหงิด',
-                        'happy': '😊 ปลาบปลื้ม',
-                        'satisfied': '😌 พอใจ',
-                        'neutral': '😐 ปกติ',
-                        'confused': '😕 สับสน',
-                        'worried': '😟 กังวล',
-                        'urgent': '⚡ เร่งด่วน'
+            // Satisfied keywords
+            if (/โอเค|ได้|ดี|เข้าใจ|ตกลง|ok|okay/.test(msg)) {
+                return 'satisfied';
+            }
+
+            // Confused keywords
+            if (/งง|ไม่เข้าใจ|อะไร|ยังไง|หมายความว่า|\?{2,}|สับสน/.test(msg)) {
+                return 'confused';
+            }
+
+            // Worried keywords
+            if (/กังวล|กลัว|เป็นห่วง|ไม่แน่ใจ|อันตราย|ผลข้างเคียง/.test(msg)) {
+                return 'worried';
+            }
+
+            // Urgent keywords
+            if (/ด่วน|เร่ง|รีบ|ตอนนี้|ทันที|asap|urgent/.test(msg)) {
+                return 'urgent';
+            }
+
+            return 'neutral';
+        }
+
+        /**
+         * Update customer emotion display
+         * @param {string} message Latest customer message
+         */
+        function updateCustomerEmotion(message) {
+            const emotion = detectCustomerEmotion(message);
+            const emotionEl = document.getElementById('customerEmotion');
+
+            if (emotionEl) {
+                const emotionLabels = {
+                    'angry': '😠 โมโห',
+                    'frustrated': '😤 หงุดหงิด',
+                    'happy': '😊 ปลาบปลื้ม',
+                    'satisfied': '😌 พอใจ',
+                    'neutral': '😐 ปกติ',
+                    'confused': '😕 สับสน',
+                    'worried': '😟 กังวล',
+                    'urgent': '⚡ เร่งด่วน'
+                };
+                emotionEl.textContent = emotionLabels[emotion] || '😐 ปกติ';
+
+                // Update background color
+                const emotionBox = emotionEl.closest('.bg-gradient-to-r');
+                if (emotionBox) {
+                    emotionBox.className = emotionBox.className.replace(/from-\w+-50 to-\w+-50 border-\w+-100/g, '');
+                    const bgClasses = {
+                        'angry': 'from-red-50 to-red-100 border-red-200',
+                        'frustrated': 'from-orange-50 to-orange-100 border-orange-200',
+                        'happy': 'from-green-50 to-green-100 border-green-200',
+                        'satisfied': 'from-emerald-50 to-emerald-100 border-emerald-200',
+                        'neutral': 'from-amber-50 to-orange-50 border-amber-100',
+                        'confused': 'from-yellow-50 to-yellow-100 border-yellow-200',
+                        'worried': 'from-amber-50 to-amber-100 border-amber-200',
+                        'urgent': 'from-purple-50 to-purple-100 border-purple-200'
                     };
-                    emotionEl.textContent = emotionLabels[emotion] || '😐 ปกติ';
-
-                    // Update background color
-                    const emotionBox = emotionEl.closest('.bg-gradient-to-r');
-                    if (emotionBox) {
-                        emotionBox.className = emotionBox.className.replace(/from-\w+-50 to-\w+-50 border-\w+-100/g, '');
-                        const bgClasses = {
-                            'angry': 'from-red-50 to-red-100 border-red-200',
-                            'frustrated': 'from-orange-50 to-orange-100 border-orange-200',
-                            'happy': 'from-green-50 to-green-100 border-green-200',
-                            'satisfied': 'from-emerald-50 to-emerald-100 border-emerald-200',
-                            'neutral': 'from-amber-50 to-orange-50 border-amber-100',
-                            'confused': 'from-yellow-50 to-yellow-100 border-yellow-200',
-                            'worried': 'from-amber-50 to-amber-100 border-amber-200',
-                            'urgent': 'from-purple-50 to-purple-100 border-purple-200'
-                        };
-                        emotionBox.classList.add(...(bgClasses[emotion] || bgClasses['neutral']).split(' '));
-                    }
+                    emotionBox.classList.add(...(bgClasses[emotion] || bgClasses['neutral']).split(' '));
                 }
             }
+        }
 
-            /**
-             * Quick Actions State and Functions
-             * Requirements: 9.1, 9.2, 9.3, 9.4, 9.5
-             */
-            const quickActionsState = {
-                currentStage: null,
-                hasUrgentSymptoms: false,
-                actions: [],
-                isLoading: false,
-                lastRefresh: null
-            };
+        /**
+         * Quick Actions State and Functions
+         * Requirements: 9.1, 9.2, 9.3, 9.4, 9.5
+         */
+        const quickActionsState = {
+            currentStage: null,
+            hasUrgentSymptoms: false,
+            actions: [],
+            isLoading: false,
+            lastRefresh: null
+        };
 
-            /**
-             * Load quick actions from API based on consultation stage
-             * Requirements: 9.1, 9.2, 9.3
-             */
-            async function loadQuickActions() {
-                if (!ghostDraftState.userId || quickActionsState.isLoading) {
-                    return;
+        /**
+         * Load quick actions from API based on consultation stage
+         * Requirements: 9.1, 9.2, 9.3
+         */
+        async function loadQuickActions() {
+            if (!ghostDraftState.userId || quickActionsState.isLoading) {
+                return;
+            }
+
+            quickActionsState.isLoading = true;
+            const container = document.getElementById('quickActionsContainer');
+            const refreshIcon = document.getElementById('quickActionsRefreshIcon');
+
+            // Show loading state
+            if (container) {
+                container.innerHTML = '<div class="text-xs text-gray-400 py-1"><i class="fas fa-spinner fa-spin mr-1"></i>กำลังโหลด...</div>';
+            }
+            if (refreshIcon) {
+                refreshIcon.classList.add('fa-spin');
+            }
+
+            try {
+                const params = new URLSearchParams({
+                    action: 'quick_actions',
+                    user_id: ghostDraftState.userId,
+                    line_account_id: <?= $currentBotId ?>
+                });
+
+                // Add stage if we already know it
+                if (quickActionsState.currentStage) {
+                    params.append('stage', quickActionsState.currentStage);
                 }
 
-                quickActionsState.isLoading = true;
-                const container = document.getElementById('quickActionsContainer');
-                const refreshIcon = document.getElementById('quickActionsRefreshIcon');
+                const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
+                const result = await response.json();
 
-                // Show loading state
+                if (result.success && result.data) {
+                    quickActionsState.currentStage = result.data.stage;
+                    quickActionsState.hasUrgentSymptoms = result.data.hasUrgentSymptoms || false;
+                    quickActionsState.actions = result.data.actions || [];
+                    quickActionsState.lastRefresh = new Date();
+
+                    // Update stage label
+                    updateStageLabel(result.data.stageLabel || result.data.stage);
+
+                    // Render quick action buttons
+                    renderQuickActions();
+                } else {
+                    throw new Error(result.error || 'Failed to load quick actions');
+                }
+            } catch (error) {
+                console.error('Load quick actions error:', error);
                 if (container) {
-                    container.innerHTML = '<div class="text-xs text-gray-400 py-1"><i class="fas fa-spinner fa-spin mr-1"></i>กำลังโหลด...</div>';
+                    container.innerHTML = '<div class="text-xs text-gray-400 py-1"><i class="fas fa-exclamation-circle mr-1"></i>ไม่สามารถโหลดได้</div>';
                 }
+            } finally {
+                quickActionsState.isLoading = false;
                 if (refreshIcon) {
-                    refreshIcon.classList.add('fa-spin');
-                }
-
-                try {
-                    const params = new URLSearchParams({
-                        action: 'quick_actions',
-                        user_id: ghostDraftState.userId,
-                        line_account_id: <?= $currentBotId ?>
-                    });
-
-                    // Add stage if we already know it
-                    if (quickActionsState.currentStage) {
-                        params.append('stage', quickActionsState.currentStage);
-                    }
-
-                    const response = await fetch(`api/inbox-v2.php?${params.toString()}`);
-                    const result = await response.json();
-
-                    if (result.success && result.data) {
-                        quickActionsState.currentStage = result.data.stage;
-                        quickActionsState.hasUrgentSymptoms = result.data.hasUrgentSymptoms || false;
-                        quickActionsState.actions = result.data.actions || [];
-                        quickActionsState.lastRefresh = new Date();
-
-                        // Update stage label
-                        updateStageLabel(result.data.stageLabel || result.data.stage);
-
-                        // Render quick action buttons
-                        renderQuickActions();
-                    } else {
-                        throw new Error(result.error || 'Failed to load quick actions');
-                    }
-                } catch (error) {
-                    console.error('Load quick actions error:', error);
-                    if (container) {
-                        container.innerHTML = '<div class="text-xs text-gray-400 py-1"><i class="fas fa-exclamation-circle mr-1"></i>ไม่สามารถโหลดได้</div>';
-                    }
-                } finally {
-                    quickActionsState.isLoading = false;
-                    if (refreshIcon) {
-                        refreshIcon.classList.remove('fa-spin');
-                    }
+                    refreshIcon.classList.remove('fa-spin');
                 }
             }
+        }
 
-            /**
-             * Refresh quick actions
-             */
-            function refreshQuickActions() {
-                quickActionsState.currentStage = null; // Force re-detection
-                loadQuickActions();
-            }
+        /**
+         * Refresh quick actions
+         */
+        function refreshQuickActions() {
+            quickActionsState.currentStage = null; // Force re-detection
+            loadQuickActions();
+        }
 
-            /**
-             * Update stage label display
-             * @param {string} stageLabel
-             */
-            function updateStageLabel(stageLabel) {
-                const labelEl = document.getElementById('quickActionsStageLabel');
-                if (labelEl) {
-                    // Determine stage class for badge styling
-                    let stageClass = '';
-                    const stage = quickActionsState.currentStage || '';
-                    if (stage.includes('symptom')) stageClass = 'symptom';
-                    else if (stage.includes('recommendation')) stageClass = 'recommendation';
-                    else if (stage.includes('purchase')) stageClass = 'purchase';
-                    else if (stage.includes('follow')) stageClass = 'followup';
+        /**
+         * Update stage label display
+         * @param {string} stageLabel
+         */
+        function updateStageLabel(stageLabel) {
+            const labelEl = document.getElementById('quickActionsStageLabel');
+            if (labelEl) {
+                // Determine stage class for badge styling
+                let stageClass = '';
+                const stage = quickActionsState.currentStage || '';
+                if (stage.includes('symptom')) stageClass = 'symptom';
+                else if (stage.includes('recommendation')) stageClass = 'recommendation';
+                else if (stage.includes('purchase')) stageClass = 'purchase';
+                else if (stage.includes('follow')) stageClass = 'followup';
 
-                    labelEl.innerHTML = `
+                labelEl.innerHTML = `
             <span class="quick-actions-stage-badge ${stageClass}">
                 ${escapeHtml(stageLabel)}
             </span>
             ${quickActionsState.hasUrgentSymptoms ? '<span class="text-red-500 ml-1" title="ตรวจพบอาการฉุกเฉิน">🚨</span>' : ''}
         `;
-                }
+            }
+        }
+
+        /**
+         * Render quick action buttons
+         * Requirements: 9.1, 9.2, 9.3, 9.4
+         */
+        function renderQuickActions() {
+            const container = document.getElementById('quickActionsContainer');
+            if (!container) return;
+
+            if (quickActionsState.actions.length === 0) {
+                container.innerHTML = '<div class="text-xs text-gray-400 py-1">ไม่มี Quick Actions</div>';
+                return;
             }
 
-            /**
-             * Render quick action buttons
-             * Requirements: 9.1, 9.2, 9.3, 9.4
-             */
-            function renderQuickActions() {
-                const container = document.getElementById('quickActionsContainer');
-                if (!container) return;
+            // Build buttons HTML
+            const buttonsHtml = quickActionsState.actions.map((action, index) => {
+                const isUrgent = action.isUrgent || action.highlight;
+                const isPrimary = index === 0 && !isUrgent;
 
-                if (quickActionsState.actions.length === 0) {
-                    container.innerHTML = '<div class="text-xs text-gray-400 py-1">ไม่มี Quick Actions</div>';
-                    return;
-                }
+                let btnClass = 'quick-action-btn';
+                if (isUrgent) btnClass += ' urgent';
+                else if (isPrimary) btnClass += ' primary';
 
-                // Build buttons HTML
-                const buttonsHtml = quickActionsState.actions.map((action, index) => {
-                    const isUrgent = action.isUrgent || action.highlight;
-                    const isPrimary = index === 0 && !isUrgent;
-
-                    let btnClass = 'quick-action-btn';
-                    if (isUrgent) btnClass += ' urgent';
-                    else if (isPrimary) btnClass += ' primary';
-
-                    return `
+                return `
             <button type="button" 
                     class="${btnClass}" 
                     onclick="executeQuickAction('${escapeHtml(action.action)}', ${JSON.stringify(action).replace(/"/g, '&quot;')})"
@@ -7439,52 +7452,52 @@ function formatThaiDateTime($datetime)
 
         // Create modal HTML
         const modalHtml = `
-                                                                    <div id="createOrderModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('createOrderModal')">
-                                                                        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
-                                                                            <div class="bg-gradient-to-r from-green-500 to-emerald-600 p-4 text-white">
-                                                                                <div class="flex items-center justify-between">
-                                                                                    <h3 class="font-bold text-lg flex items-center gap-2">
-                                                                                        <i class="fas fa-cart-plus"></i>
-                                                                                        สร้างออเดอร์
-                                                                                    </h3>
-                                                                                    <button onclick="closeModal('createOrderModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
-                                                                                        <i class="fas fa-times"></i>
-                                                                                    </button>
+                                                                            <div id="createOrderModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('createOrderModal')">
+                                                                                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-hidden">
+                                                                                    <div class="bg-gradient-to-r from-green-500 to-emerald-600 p-4 text-white">
+                                                                                        <div class="flex items-center justify-between">
+                                                                                            <h3 class="font-bold text-lg flex items-center gap-2">
+                                                                                                <i class="fas fa-cart-plus"></i>
+                                                                                                สร้างออเดอร์
+                                                                                            </h3>
+                                                                                            <button onclick="closeModal('createOrderModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                                                                                                <i class="fas fa-times"></i>
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="p-4 overflow-y-auto max-h-[60vh]">
+                                                                                        <div id="orderItemsList" class="space-y-2 mb-4">
+                                                                                            <p class="text-gray-500 text-sm text-center py-4">
+                                                                                                <i class="fas fa-info-circle mr-1"></i>
+                                                                                                เลือกยาจาก HUD Dashboard แล้วกด "เพิ่มในออเดอร์"
+                                                                                            </p>
+                                                                                        </div>
+                                                                                        <div class="border-t pt-4">
+                                                                                            <div class="flex justify-between text-sm mb-2">
+                                                                                                <span class="text-gray-600">รวมสินค้า:</span>
+                                                                                                <span id="orderSubtotal" class="font-medium">฿0</span>
+                                                                                            </div>
+                                                                                            <div class="flex justify-between text-sm mb-2">
+                                                                                                <span class="text-gray-600">ส่วนลด:</span>
+                                                                                                <span id="orderDiscount" class="font-medium text-red-500">-฿0</span>
+                                                                                            </div>
+                                                                                            <div class="flex justify-between text-lg font-bold border-t pt-2">
+                                                                                                <span>รวมทั้งหมด:</span>
+                                                                                                <span id="orderTotal" class="text-green-600">฿0</span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="p-4 bg-gray-50 border-t flex gap-2">
+                                                                                        <button onclick="closeModal('createOrderModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                                                                                            ยกเลิก
+                                                                                        </button>
+                                                                                        <button onclick="confirmCreateOrder()" class="flex-1 py-2 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium">
+                                                                                            <i class="fas fa-check mr-1"></i>สร้างออเดอร์
+                                                                                        </button>
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
-                                                                            <div class="p-4 overflow-y-auto max-h-[60vh]">
-                                                                                <div id="orderItemsList" class="space-y-2 mb-4">
-                                                                                    <p class="text-gray-500 text-sm text-center py-4">
-                                                                                        <i class="fas fa-info-circle mr-1"></i>
-                                                                                        เลือกยาจาก HUD Dashboard แล้วกด "เพิ่มในออเดอร์"
-                                                                                    </p>
-                                                                                </div>
-                                                                                <div class="border-t pt-4">
-                                                                                    <div class="flex justify-between text-sm mb-2">
-                                                                                        <span class="text-gray-600">รวมสินค้า:</span>
-                                                                                        <span id="orderSubtotal" class="font-medium">฿0</span>
-                                                                                    </div>
-                                                                                    <div class="flex justify-between text-sm mb-2">
-                                                                                        <span class="text-gray-600">ส่วนลด:</span>
-                                                                                        <span id="orderDiscount" class="font-medium text-red-500">-฿0</span>
-                                                                                    </div>
-                                                                                    <div class="flex justify-between text-lg font-bold border-t pt-2">
-                                                                                        <span>รวมทั้งหมด:</span>
-                                                                                        <span id="orderTotal" class="text-green-600">฿0</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div class="p-4 bg-gray-50 border-t flex gap-2">
-                                                                                <button onclick="closeModal('createOrderModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
-                                                                                    ยกเลิก
-                                                                                </button>
-                                                                                <button onclick="confirmCreateOrder()" class="flex-1 py-2 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium">
-                                                                                    <i class="fas fa-check mr-1"></i>สร้างออเดอร์
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                `;
+                                                                        `;
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
 
@@ -7533,48 +7546,48 @@ function formatThaiDateTime($datetime)
         const minDate = tomorrow.toISOString().split('T')[0];
 
         const modalHtml = `
-                                                                    <div id="scheduleDeliveryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('scheduleDeliveryModal')">
-                                                                        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
-                                                                            <div class="bg-gradient-to-r from-blue-500 to-indigo-600 p-4 text-white">
-                                                                                <div class="flex items-center justify-between">
-                                                                                    <h3 class="font-bold text-lg flex items-center gap-2">
-                                                                                        <i class="fas fa-truck"></i>
-                                                                                        นัดส่งสินค้า
-                                                                                    </h3>
-                                                                                    <button onclick="closeModal('scheduleDeliveryModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
-                                                                                        <i class="fas fa-times"></i>
-                                                                                    </button>
+                                                                            <div id="scheduleDeliveryModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('scheduleDeliveryModal')">
+                                                                                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                                                                                    <div class="bg-gradient-to-r from-blue-500 to-indigo-600 p-4 text-white">
+                                                                                        <div class="flex items-center justify-between">
+                                                                                            <h3 class="font-bold text-lg flex items-center gap-2">
+                                                                                                <i class="fas fa-truck"></i>
+                                                                                                นัดส่งสินค้า
+                                                                                            </h3>
+                                                                                            <button onclick="closeModal('scheduleDeliveryModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                                                                                                <i class="fas fa-times"></i>
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="p-4">
+                                                                                        <div class="mb-4">
+                                                                                            <label class="block text-sm font-medium text-gray-700 mb-1">วันที่ส่ง</label>
+                                                                                            <input type="date" id="deliveryDate" min="${minDate}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                                                        </div>
+                                                                                        <div class="mb-4">
+                                                                                            <label class="block text-sm font-medium text-gray-700 mb-1">ช่วงเวลา</label>
+                                                                                            <select id="deliveryTime" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
+                                                                                                <option value="09:00-12:00">เช้า (09:00-12:00)</option>
+                                                                                                <option value="13:00-17:00">บ่าย (13:00-17:00)</option>
+                                                                                                <option value="17:00-20:00">เย็น (17:00-20:00)</option>
+                                                                                            </select>
+                                                                                        </div>
+                                                                                        <div class="mb-4">
+                                                                                            <label class="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
+                                                                                            <textarea id="deliveryNote" rows="2" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="เช่น โทรก่อนส่ง, ฝากไว้ที่รปภ."></textarea>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="p-4 bg-gray-50 border-t flex gap-2">
+                                                                                        <button onclick="closeModal('scheduleDeliveryModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                                                                                            ยกเลิก
+                                                                                        </button>
+                                                                                        <button onclick="confirmScheduleDelivery()" class="flex-1 py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium">
+                                                                                            <i class="fas fa-check mr-1"></i>ยืนยัน
+                                                                                        </button>
+                                                                                    </div>
                                                                                 </div>
                                                                             </div>
-                                                                            <div class="p-4">
-                                                                                <div class="mb-4">
-                                                                                    <label class="block text-sm font-medium text-gray-700 mb-1">วันที่ส่ง</label>
-                                                                                    <input type="date" id="deliveryDate" min="${minDate}" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
-                                                                                </div>
-                                                                                <div class="mb-4">
-                                                                                    <label class="block text-sm font-medium text-gray-700 mb-1">ช่วงเวลา</label>
-                                                                                    <select id="deliveryTime" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500">
-                                                                                        <option value="09:00-12:00">เช้า (09:00-12:00)</option>
-                                                                                        <option value="13:00-17:00">บ่าย (13:00-17:00)</option>
-                                                                                        <option value="17:00-20:00">เย็น (17:00-20:00)</option>
-                                                                                    </select>
-                                                                                </div>
-                                                                                <div class="mb-4">
-                                                                                    <label class="block text-sm font-medium text-gray-700 mb-1">หมายเหตุ</label>
-                                                                                    <textarea id="deliveryNote" rows="2" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder="เช่น โทรก่อนส่ง, ฝากไว้ที่รปภ."></textarea>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div class="p-4 bg-gray-50 border-t flex gap-2">
-                                                                                <button onclick="closeModal('scheduleDeliveryModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
-                                                                                    ยกเลิก
-                                                                                </button>
-                                                                                <button onclick="confirmScheduleDelivery()" class="flex-1 py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium">
-                                                                                    <i class="fas fa-check mr-1"></i>ยืนยัน
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                `;
+                                                                        `;
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
     }
@@ -7626,50 +7639,50 @@ function formatThaiDateTime($datetime)
         }
 
         const modalHtml = `
-                                                                    <div id="usePointsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('usePointsModal')">
-                                                                        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
-                                                                            <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 text-white">
-                                                                                <div class="flex items-center justify-between">
-                                                                                    <h3 class="font-bold text-lg flex items-center gap-2">
-                                                                                        <i class="fas fa-star"></i>
-                                                                                        ใช้แต้มสะสม
-                                                                                    </h3>
-                                                                                    <button onclick="closeModal('usePointsModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
-                                                                                        <i class="fas fa-times"></i>
-                                                                                    </button>
-                                                                                </div>
-                                                                            </div>
-                                                                            <div class="p-4">
-                                                                                <div class="text-center mb-4">
-                                                                                    <div class="text-4xl font-bold text-yellow-500">${points.toLocaleString()}</div>
-                                                                                    <div class="text-sm text-gray-500">แต้มสะสมปัจจุบัน</div>
-                                                                                </div>
-                                                                                <div class="bg-yellow-50 rounded-lg p-3 mb-4">
-                                                                                    <div class="text-sm text-yellow-800">
-                                                                                        <i class="fas fa-info-circle mr-1"></i>
-                                                                                        อัตราแลก: 100 แต้ม = ส่วนลด ฿10
+                                                                            <div id="usePointsModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]" onclick="if(event.target===this)closeModal('usePointsModal')">
+                                                                                <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4">
+                                                                                    <div class="bg-gradient-to-r from-yellow-500 to-orange-500 p-4 text-white">
+                                                                                        <div class="flex items-center justify-between">
+                                                                                            <h3 class="font-bold text-lg flex items-center gap-2">
+                                                                                                <i class="fas fa-star"></i>
+                                                                                                ใช้แต้มสะสม
+                                                                                            </h3>
+                                                                                            <button onclick="closeModal('usePointsModal')" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center">
+                                                                                                <i class="fas fa-times"></i>
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="p-4">
+                                                                                        <div class="text-center mb-4">
+                                                                                            <div class="text-4xl font-bold text-yellow-500">${points.toLocaleString()}</div>
+                                                                                            <div class="text-sm text-gray-500">แต้มสะสมปัจจุบัน</div>
+                                                                                        </div>
+                                                                                        <div class="bg-yellow-50 rounded-lg p-3 mb-4">
+                                                                                            <div class="text-sm text-yellow-800">
+                                                                                                <i class="fas fa-info-circle mr-1"></i>
+                                                                                                อัตราแลก: 100 แต้ม = ส่วนลด ฿10
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div class="mb-4">
+                                                                                            <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนแต้มที่ต้องการใช้</label>
+                                                                                            <input type="number" id="pointsToUse" min="0" max="${points}" step="100" value="0" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-500">
+                                                                                        </div>
+                                                                                        <div class="text-center">
+                                                                                            <span class="text-sm text-gray-600">ส่วนลดที่ได้รับ: </span>
+                                                                                            <span id="pointsDiscount" class="text-lg font-bold text-green-600">฿0</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <div class="p-4 bg-gray-50 border-t flex gap-2">
+                                                                                        <button onclick="closeModal('usePointsModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
+                                                                                            ยกเลิก
+                                                                                        </button>
+                                                                                        <button onclick="confirmUsePoints()" class="flex-1 py-2 px-4 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium">
+                                                                                            <i class="fas fa-check mr-1"></i>ใช้แต้ม
+                                                                                        </button>
                                                                                     </div>
                                                                                 </div>
-                                                                                <div class="mb-4">
-                                                                                    <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนแต้มที่ต้องการใช้</label>
-                                                                                    <input type="number" id="pointsToUse" min="0" max="${points}" step="100" value="0" class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-yellow-500">
-                                                                                </div>
-                                                                                <div class="text-center">
-                                                                                    <span class="text-sm text-gray-600">ส่วนลดที่ได้รับ: </span>
-                                                                                    <span id="pointsDiscount" class="text-lg font-bold text-green-600">฿0</span>
-                                                                                </div>
                                                                             </div>
-                                                                            <div class="p-4 bg-gray-50 border-t flex gap-2">
-                                                                                <button onclick="closeModal('usePointsModal')" class="flex-1 py-2 px-4 bg-gray-200 hover:bg-gray-300 rounded-lg font-medium">
-                                                                                    ยกเลิก
-                                                                                </button>
-                                                                                <button onclick="confirmUsePoints()" class="flex-1 py-2 px-4 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg font-medium">
-                                                                                    <i class="fas fa-check mr-1"></i>ใช้แต้ม
-                                                                                </button>
-                                                                            </div>
-                                                                        </div>
-                                                                    </div>
-                                                                `;
+                                                                        `;
 
         document.body.insertAdjacentHTML('beforeend', modalHtml);
 
@@ -7924,35 +7937,35 @@ function formatThaiDateTime($datetime)
             menu.id = 'quickImageAnalysisMenu';
             menu.className = 'fixed bg-white rounded-xl shadow-2xl border border-gray-100 py-2 min-w-[200px] z-50';
             menu.innerHTML = `
-                                                                        <div class="px-3 py-1 text-[10px] text-gray-400 font-medium uppercase tracking-wider">วิเคราะห์รูปภาพ AI</div>
-                                                                        <button type="button" onclick="triggerSymptomAnalysis(); closeQuickImageMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2 text-gray-700">
-                                                                            <span class="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-500">
-                                                                                <i class="fas fa-stethoscope"></i>
-                                                                            </span>
-                                                                            <div>
-                                                                                <div class="font-medium">วิเคราะห์อาการ</div>
-                                                                                <div class="text-[10px] text-gray-400">ผื่น, บาดแผล, อาการผิดปกติ</div>
-                                                                            </div>
-                                                                        </button>
-                                                                        <button type="button" onclick="triggerDrugAnalysis(); closeQuickImageMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2 text-gray-700">
-                                                                            <span class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-500">
-                                                                                <i class="fas fa-pills"></i>
-                                                                            </span>
-                                                                            <div>
-                                                                                <div class="font-medium">ระบุยาจากรูป</div>
-                                                                                <div class="text-[10px] text-gray-400">ชื่อยา, สรรพคุณ, ข้อควรระวัง</div>
-                                                                            </div>
-                                                                        </button>
-                                                                        <button type="button" onclick="triggerPrescriptionAnalysis(); closeQuickImageMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2 text-gray-700">
-                                                                            <span class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-500">
-                                                                                <i class="fas fa-file-prescription"></i>
-                                                                            </span>
-                                                                            <div>
-                                                                                <div class="font-medium">อ่านใบสั่งยา</div>
-                                                                                <div class="text-[10px] text-gray-400">OCR + ตรวจยาตีกัน</div>
-                                                                            </div>
-                                                                        </button>
-                                                                    `;
+                                                                                <div class="px-3 py-1 text-[10px] text-gray-400 font-medium uppercase tracking-wider">วิเคราะห์รูปภาพ AI</div>
+                                                                                <button type="button" onclick="triggerSymptomAnalysis(); closeQuickImageMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2 text-gray-700">
+                                                                                    <span class="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center text-red-500">
+                                                                                        <i class="fas fa-stethoscope"></i>
+                                                                                    </span>
+                                                                                    <div>
+                                                                                        <div class="font-medium">วิเคราะห์อาการ</div>
+                                                                                        <div class="text-[10px] text-gray-400">ผื่น, บาดแผล, อาการผิดปกติ</div>
+                                                                                    </div>
+                                                                                </button>
+                                                                                <button type="button" onclick="triggerDrugAnalysis(); closeQuickImageMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2 text-gray-700">
+                                                                                    <span class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-500">
+                                                                                        <i class="fas fa-pills"></i>
+                                                                                    </span>
+                                                                                    <div>
+                                                                                        <div class="font-medium">ระบุยาจากรูป</div>
+                                                                                        <div class="text-[10px] text-gray-400">ชื่อยา, สรรพคุณ, ข้อควรระวัง</div>
+                                                                                    </div>
+                                                                                </button>
+                                                                                <button type="button" onclick="triggerPrescriptionAnalysis(); closeQuickImageMenu();" class="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 flex items-center gap-2 text-gray-700">
+                                                                                    <span class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-500">
+                                                                                        <i class="fas fa-file-prescription"></i>
+                                                                                    </span>
+                                                                                    <div>
+                                                                                        <div class="font-medium">อ่านใบสั่งยา</div>
+                                                                                        <div class="text-[10px] text-gray-400">OCR + ตรวจยาตีกัน</div>
+                                                                                    </div>
+                                                                                </button>
+                                                                            `;
             document.body.appendChild(menu);
 
             // Close when clicking outside
@@ -8074,19 +8087,19 @@ function formatThaiDateTime($datetime)
         }
 
         modal.innerHTML = `
-                                                                    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden">
-                                                                        <div class="p-4 border-b border-gray-100 flex items-center justify-between">
-                                                                            <div>
-                                                                                <h3 class="font-semibold text-gray-800">เลือกรูปภาพเพื่อ${typeLabels[type]}</h3>
-                                                                                <p class="text-xs text-gray-500 mt-1">คลิกที่รูปภาพที่ลูกค้าส่งมา</p>
-                                                                            </div>
-                                                                            <button onclick="closeCustomerImagePicker()" class="text-gray-400 hover:text-gray-600 p-2">
-                                                                                <i class="fas fa-times text-lg"></i>
-                                                                            </button>
-                                                                        </div>
-                                                                        <div class="p-4 overflow-y-auto max-h-[60vh]">
-                                                                            <div class="grid grid-cols-3 gap-3">
-                                                                                ${customerImages.map((img, idx) => `
+                                                                            <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden">
+                                                                                <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                                                                                    <div>
+                                                                                        <h3 class="font-semibold text-gray-800">เลือกรูปภาพเพื่อ${typeLabels[type]}</h3>
+                                                                                        <p class="text-xs text-gray-500 mt-1">คลิกที่รูปภาพที่ลูกค้าส่งมา</p>
+                                                                                    </div>
+                                                                                    <button onclick="closeCustomerImagePicker()" class="text-gray-400 hover:text-gray-600 p-2">
+                                                                                        <i class="fas fa-times text-lg"></i>
+                                                                                    </button>
+                                                                                </div>
+                                                                                <div class="p-4 overflow-y-auto max-h-[60vh]">
+                                                                                    <div class="grid grid-cols-3 gap-3">
+                                                                                        ${customerImages.map((img, idx) => `
                         <div class="relative group cursor-pointer" onclick="selectCustomerImage('${img.src}', '${type}')">
                             <img src="${img.src}" class="w-full h-24 object-cover rounded-lg border-2 border-transparent group-hover:border-purple-500 transition-all">
                             <div class="absolute inset-0 bg-purple-500/0 group-hover:bg-purple-500/20 rounded-lg transition-all flex items-center justify-center">
@@ -8094,16 +8107,16 @@ function formatThaiDateTime($datetime)
                             </div>
                         </div>
                     `).join('')}
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div class="p-4 border-t border-gray-100 bg-gray-50">
+                                                                                    <p class="text-xs text-gray-500 text-center">
+                                                                                        <i class="fas fa-info-circle mr-1"></i>
+                                                                                        หรือ <button onclick="closeCustomerImagePicker(); document.getElementById('${type}ImageInput').click();" class="text-purple-600 hover:underline">อัพโหลดรูปใหม่</button>
+                                                                                    </p>
+                                                                                </div>
                                                                             </div>
-                                                                        </div>
-                                                                        <div class="p-4 border-t border-gray-100 bg-gray-50">
-                                                                            <p class="text-xs text-gray-500 text-center">
-                                                                                <i class="fas fa-info-circle mr-1"></i>
-                                                                                หรือ <button onclick="closeCustomerImagePicker(); document.getElementById('${type}ImageInput').click();" class="text-purple-600 hover:underline">อัพโหลดรูปใหม่</button>
-                                                                            </p>
-                                                                        </div>
-                                                                    </div>
-                                                                `;
+                                                                        `;
 
         modal.classList.remove('hidden');
     }
@@ -8280,16 +8293,16 @@ function formatThaiDateTime($datetime)
             };
 
             btnContainer.innerHTML = `
-                                                                        <button type="button" onclick="analyzeImage('${type}')" 
-                                                                                class="${typeColors[type]} text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
-                                                                            <i class="fas fa-magic"></i>
-                                                                            ${typeLabels[type]}
-                                                                        </button>
-                                                                        <button type="button" onclick="sendImageWithoutAnalysis()" 
-                                                                                class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm">
-                                                                            <i class="fas fa-paper-plane"></i>
-                                                                        </button>
-                                                                    `;
+                                                                                <button type="button" onclick="analyzeImage('${type}')" 
+                                                                                        class="${typeColors[type]} text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2">
+                                                                                    <i class="fas fa-magic"></i>
+                                                                                    ${typeLabels[type]}
+                                                                                </button>
+                                                                                <button type="button" onclick="sendImageWithoutAnalysis()" 
+                                                                                        class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg text-sm">
+                                                                                    <i class="fas fa-paper-plane"></i>
+                                                                                </button>
+                                                                            `;
         }
     }
 
@@ -8511,24 +8524,24 @@ function formatThaiDateTime($datetime)
 
         if (isUrgent) {
             html += `
-                                                                        <div class="bg-red-100 border-l-4 border-red-500 p-3 mb-3 rounded-r-lg">
-                                                                            <div class="flex items-center gap-2 text-red-700 font-bold">
-                                                                                <i class="fas fa-exclamation-triangle"></i>
-                                                                                ⚠️ แนะนำพบแพทย์
-                                                                            </div>
-                                                                            <p class="text-red-600 text-xs mt-1">${escapeHtml(result.urgencyReason || result.recommendation || 'อาการรุนแรง ควรพบแพทย์')}</p>
-                                                                        </div>
-                                                                    `;
+                                                                                <div class="bg-red-100 border-l-4 border-red-500 p-3 mb-3 rounded-r-lg">
+                                                                                    <div class="flex items-center gap-2 text-red-700 font-bold">
+                                                                                        <i class="fas fa-exclamation-triangle"></i>
+                                                                                        ⚠️ แนะนำพบแพทย์
+                                                                                    </div>
+                                                                                    <p class="text-red-600 text-xs mt-1">${escapeHtml(result.urgencyReason || result.recommendation || 'อาการรุนแรง ควรพบแพทย์')}</p>
+                                                                                </div>
+                                                                            `;
         }
 
         html += `
-                                                                    <div class="space-y-2">
-                                                                        <div class="bg-purple-50 rounded-lg p-2">
-                                                                            <div class="text-xs font-medium text-purple-700 mb-1">🔬 ผลการวิเคราะห์</div>
-                                                                            <div class="text-sm text-gray-800">${escapeHtml(result.condition || result.analysis || 'ไม่สามารถระบุได้')}</div>
-                                                                        </div>
+                                                                            <div class="space-y-2">
+                                                                                <div class="bg-purple-50 rounded-lg p-2">
+                                                                                    <div class="text-xs font-medium text-purple-700 mb-1">🔬 ผลการวิเคราะห์</div>
+                                                                                    <div class="text-sm text-gray-800">${escapeHtml(result.condition || result.analysis || 'ไม่สามารถระบุได้')}</div>
+                                                                                </div>
             
-                                                                        ${result.severity ? `
+                                                                                ${result.severity ? `
             <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-500">ความรุนแรง:</span>
                 <span class="text-xs px-2 py-0.5 rounded-full ${result.severity === 'severe' ? 'bg-red-100 text-red-700' :
@@ -8538,7 +8551,7 @@ function formatThaiDateTime($datetime)
             </div>
             ` : ''}
             
-                                                                        ${result.recommendations && result.recommendations.length > 0 ? `
+                                                                                ${result.recommendations && result.recommendations.length > 0 ? `
             <div class="mt-2">
                 <div class="text-xs font-medium text-gray-600 mb-1">💊 ยาแนะนำ</div>
                 ${result.recommendations.map(drug => `
@@ -8552,8 +8565,8 @@ function formatThaiDateTime($datetime)
                 `).join('')}
             </div>
             ` : ''}
-                                                                    </div>
-                                                                `;
+                                                                            </div>
+                                                                        `;
 
         content.innerHTML = html;
 
@@ -8582,27 +8595,27 @@ function formatThaiDateTime($datetime)
         const drug = result.drug || result;
 
         let html = `
-                                                                    <div class="space-y-3">
-                                                                        <div class="bg-emerald-50 rounded-lg p-2 mb-2">
-                                                                            <div class="text-xs text-emerald-600 mb-1">📷 ระบุจากรูปภาพ</div>
-                                                                        </div>
+                                                                            <div class="space-y-3">
+                                                                                <div class="bg-emerald-50 rounded-lg p-2 mb-2">
+                                                                                    <div class="text-xs text-emerald-600 mb-1">📷 ระบุจากรูปภาพ</div>
+                                                                                </div>
             
-                                                                        <div class="flex justify-between items-start">
-                                                                            <div>
-                                                                                <div class="drug-name">${escapeHtml(drug.drugName || drug.name || 'ไม่ทราบชื่อยา')}</div>
-                                                                                ${drug.genericName ? `<div class="text-xs text-gray-500">${escapeHtml(drug.genericName)}</div>` : ''}
-                                                                                <div class="drug-dosage">${escapeHtml(drug.dosage || drug.description || '')}</div>
-                                                                            </div>
-                                                                        </div>
+                                                                                <div class="flex justify-between items-start">
+                                                                                    <div>
+                                                                                        <div class="drug-name">${escapeHtml(drug.drugName || drug.name || 'ไม่ทราบชื่อยา')}</div>
+                                                                                        ${drug.genericName ? `<div class="text-xs text-gray-500">${escapeHtml(drug.genericName)}</div>` : ''}
+                                                                                        <div class="drug-dosage">${escapeHtml(drug.dosage || drug.description || '')}</div>
+                                                                                    </div>
+                                                                                </div>
             
-                                                                        ${drug.usage ? `
+                                                                                ${drug.usage ? `
             <div class="bg-blue-50 rounded-lg p-2 text-xs">
                 <p class="font-medium text-blue-700 mb-1">📋 วิธีใช้</p>
                 <p class="text-blue-600">${escapeHtml(drug.usage)}</p>
             </div>
             ` : ''}
             
-                                                                        ${drug.contraindications && drug.contraindications.length > 0 ? `
+                                                                                ${drug.contraindications && drug.contraindications.length > 0 ? `
             <div class="bg-yellow-50 rounded-lg p-2 text-xs">
                 <p class="font-medium text-yellow-700 mb-1">⚠️ ข้อควรระวัง</p>
                 <ul class="text-yellow-600 text-[11px] list-disc list-inside">
@@ -8611,7 +8624,7 @@ function formatThaiDateTime($datetime)
             </div>
             ` : ''}
             
-                                                                        ${drug.matchedProductId ? `
+                                                                                ${drug.matchedProductId ? `
             <div class="flex gap-2 mt-2">
                 <button onclick="selectDrugForInfo(${drug.matchedProductId}, '')" class="flex-1 text-xs py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg">
                     <i class="fas fa-info-circle mr-1"></i>ดูข้อมูลในระบบ
@@ -8621,8 +8634,8 @@ function formatThaiDateTime($datetime)
                 </button>
             </div>
             ` : ''}
-                                                                    </div>
-                                                                `;
+                                                                            </div>
+                                                                        `;
 
         content.innerHTML = html;
         showNotification('✓ ระบุยาจากรูปเสร็จสิ้น', 'success');
@@ -8639,14 +8652,14 @@ function formatThaiDateTime($datetime)
 
         if (!widget && hudWidgets) {
             const widgetHtml = `
-                                                                        <div class="hud-widget" id="prescriptionWidget" style="background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%); border: 2px solid #60A5FA;">
-                                                                            <div class="hud-widget-header" onclick="toggleWidget('prescriptionWidget')" style="background: #3B82F6; color: white; border-bottom: none;">
-                                                                                <h4 style="color: white;"><i class="fas fa-file-prescription"></i> ใบสั่งยา OCR</h4>
-                                                                                <i class="fas fa-chevron-down text-white/70 text-xs"></i>
-                                                                            </div>
-                                                                            <div class="hud-widget-body" id="prescriptionContent"></div>
-                                                                        </div>
-                                                                    `;
+                                                                                <div class="hud-widget" id="prescriptionWidget" style="background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%); border: 2px solid #60A5FA;">
+                                                                                    <div class="hud-widget-header" onclick="toggleWidget('prescriptionWidget')" style="background: #3B82F6; color: white; border-bottom: none;">
+                                                                                        <h4 style="color: white;"><i class="fas fa-file-prescription"></i> ใบสั่งยา OCR</h4>
+                                                                                        <i class="fas fa-chevron-down text-white/70 text-xs"></i>
+                                                                                    </div>
+                                                                                    <div class="hud-widget-body" id="prescriptionContent"></div>
+                                                                                </div>
+                                                                            `;
 
             // Insert at the top of HUD widgets
             hudWidgets.insertAdjacentHTML('afterbegin', widgetHtml);
@@ -8665,8 +8678,8 @@ function formatThaiDateTime($datetime)
         const hasInteractions = result.interactions && result.interactions.length > 0;
 
         let html = `
-                                                                    <div class="space-y-2">
-                                                                        ${result.doctorName || result.hospitalName ? `
+                                                                            <div class="space-y-2">
+                                                                                ${result.doctorName || result.hospitalName ? `
             <div class="bg-white rounded-lg p-2 text-xs">
                 ${result.doctorName ? `<div><span class="text-gray-500">แพทย์:</span> ${escapeHtml(result.doctorName)}</div>` : ''}
                 ${result.hospitalName ? `<div><span class="text-gray-500">โรงพยาบาล:</span> ${escapeHtml(result.hospitalName)}</div>` : ''}
@@ -8674,9 +8687,9 @@ function formatThaiDateTime($datetime)
             </div>
             ` : ''}
             
-                                                                        <div class="text-xs font-medium text-blue-700 mt-2">📋 รายการยา (${drugs.length} รายการ)</div>
+                                                                                <div class="text-xs font-medium text-blue-700 mt-2">📋 รายการยา (${drugs.length} รายการ)</div>
             
-                                                                        ${drugs.map((drug, index) => `
+                                                                                ${drugs.map((drug, index) => `
                 <div class="bg-white rounded-lg p-2 text-xs border-l-2 ${drug.hasInteraction ? 'border-red-400' : 'border-blue-400'}">
                     <div class="font-medium text-gray-800">${index + 1}. ${escapeHtml(drug.name || drug.drugName || drug)}</div>
                     ${drug.dosage ? `<div class="text-gray-500">${escapeHtml(drug.dosage)}</div>` : ''}
@@ -8685,7 +8698,7 @@ function formatThaiDateTime($datetime)
                 </div>
             `).join('')}
             
-                                                                        ${hasInteractions ? `
+                                                                                ${hasInteractions ? `
             <div class="bg-red-50 border-l-4 border-red-500 p-2 rounded-r-lg mt-2">
                 <div class="text-xs font-bold text-red-700 mb-1">⚠️ พบปฏิกิริยาระหว่างยา</div>
                 ${result.interactions.map(interaction => `
@@ -8702,13 +8715,13 @@ function formatThaiDateTime($datetime)
             </div>
             `}
             
-                                                                        ${result.ocrConfidence ? `
+                                                                                ${result.ocrConfidence ? `
             <div class="text-[10px] text-gray-400 mt-2 text-right">
                 ความแม่นยำ OCR: ${Math.round(result.ocrConfidence * 100)}%
             </div>
             ` : ''}
-                                                                    </div>
-                                                                `;
+                                                                            </div>
+                                                                        `;
 
         content.innerHTML = html;
 
@@ -9099,11 +9112,11 @@ function formatThaiDateTime($datetime)
         loadingOverlay.id = 'conversationLoadingOverlay';
         loadingOverlay.className = 'absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50';
         loadingOverlay.innerHTML = `
-                                                                    <div class="text-center">
-                                                                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mb-3"></div>
-                                                                        <p class="text-gray-600 text-sm">กำลังโหลดการสนทนา...</p>
-                                                                    </div>
-                                                                `;
+                                                                            <div class="text-center">
+                                                                                <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mb-3"></div>
+                                                                                <p class="text-gray-600 text-sm">กำลังโหลดการสนทนา...</p>
+                                                                            </div>
+                                                                        `;
 
         const chatArea = document.getElementById('chatArea');
         if (chatArea) {
@@ -9138,17 +9151,17 @@ function formatThaiDateTime($datetime)
         errorOverlay.id = 'conversationErrorOverlay';
         errorOverlay.className = 'absolute inset-0 bg-white flex items-center justify-center z-50';
         errorOverlay.innerHTML = `
-                                                                    <div class="text-center p-6">
-                                                                        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                                                            <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
-                                                                        </div>
-                                                                        <h3 class="text-lg font-semibold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3>
-                                                                        <p class="text-gray-600 text-sm mb-4">${escapeHtml(errorMessage)}</p>
-                                                                        <button onclick="retryLoadConversation()" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition">
-                                                                            <i class="fas fa-redo mr-2"></i>ลองอีกครั้ง
-                                                                        </button>
-                                                                    </div>
-                                                                `;
+                                                                            <div class="text-center p-6">
+                                                                                <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                                                    <i class="fas fa-exclamation-triangle text-red-600 text-2xl"></i>
+                                                                                </div>
+                                                                                <h3 class="text-lg font-semibold text-gray-800 mb-2">เกิดข้อผิดพลาด</h3>
+                                                                                <p class="text-gray-600 text-sm mb-4">${escapeHtml(errorMessage)}</p>
+                                                                                <button onclick="retryLoadConversation()" class="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition">
+                                                                                    <i class="fas fa-redo mr-2"></i>ลองอีกครั้ง
+                                                                                </button>
+                                                                            </div>
+                                                                        `;
 
         const chatArea = document.getElementById('chatArea');
         if (chatArea) {
@@ -9189,15 +9202,15 @@ function formatThaiDateTime($datetime)
         warning.id = 'slowConnectionWarning';
         warning.className = 'fixed top-4 right-4 bg-amber-100 border border-amber-400 text-amber-800 px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3';
         warning.innerHTML = `
-                                                                    <i class="fas fa-exclamation-triangle text-amber-600"></i>
-                                                                    <div>
-                                                                        <p class="font-semibold text-sm">การเชื่อมต่อช้า</p>
-                                                                        <p class="text-xs">กำลังพยายามเชื่อมต่อใหม่...</p>
-                                                                    </div>
-                                                                    <button onclick="this.parentElement.remove()" class="ml-2 text-amber-600 hover:text-amber-800">
-                                                                        <i class="fas fa-times"></i>
-                                                                    </button>
-                                                                `;
+                                                                            <i class="fas fa-exclamation-triangle text-amber-600"></i>
+                                                                            <div>
+                                                                                <p class="font-semibold text-sm">การเชื่อมต่อช้า</p>
+                                                                                <p class="text-xs">กำลังพยายามเชื่อมต่อใหม่...</p>
+                                                                            </div>
+                                                                            <button onclick="this.parentElement.remove()" class="ml-2 text-amber-600 hover:text-amber-800">
+                                                                                <i class="fas fa-times"></i>
+                                                                            </button>
+                                                                        `;
 
         document.body.appendChild(warning);
 
@@ -9300,12 +9313,12 @@ function formatThaiDateTime($datetime)
         indicator.id = 'offlineIndicator';
         indicator.className = 'fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-3';
         indicator.innerHTML = `
-                                                                    <i class="fas fa-wifi-slash"></i>
-                                                                    <div>
-                                                                        <p class="font-semibold text-sm">ออฟไลน์</p>
-                                                                        <p class="text-xs">ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้</p>
-                                                                    </div>
-                                                                `;
+                                                                            <i class="fas fa-wifi-slash"></i>
+                                                                            <div>
+                                                                                <p class="font-semibold text-sm">ออฟไลน์</p>
+                                                                                <p class="text-xs">ไม่สามารถเชื่อมต่ออินเทอร์เน็ตได้</p>
+                                                                            </div>
+                                                                        `;
 
         document.body.appendChild(indicator);
     }
@@ -9805,35 +9818,35 @@ function formatThaiDateTime($datetime)
                 : '';
 
             element.innerHTML = `
-                                                                        <div class="flex items-center gap-3">
-                                                                            <div class="relative flex-shrink-0">
-                                                                                <img src="${pictureUrl}"
-                                                                                     class="w-10 h-10 rounded-full object-cover border-2 border-white shadow"
-                                                                                     loading="lazy"
-                                                                                     onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E'">
-                                                                                ${unreadCount > 0 ? `
+                                                                                <div class="flex items-center gap-3">
+                                                                                    <div class="relative flex-shrink-0">
+                                                                                        <img src="${pictureUrl}"
+                                                                                             class="w-10 h-10 rounded-full object-cover border-2 border-white shadow"
+                                                                                             loading="lazy"
+                                                                                             onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 40 40%22%3E%3Ccircle cx=%2220%22 cy=%2220%22 r=%2220%22 fill=%22%23e5e7eb%22/%3E%3Cpath d=%22M20 22c3.3 0 6-2.7 6-6s-2.7-6-6-6-6 2.7-6 6 2.7 6 6 6zm0 3c-4 0-12 2-12 6v3h24v-3c0-4-8-6-12-6z%22 fill=%22%239ca3af%22/%3E%3C/svg%3E'">
+                                                                                        ${unreadCount > 0 ? `
                     <div class="unread-badge absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold">
                         ${unreadCount > 9 ? '9+' : unreadCount}
                     </div>
                     ` : ''}
-                                                                            </div>
-                                                                            <div class="flex-1 min-w-0">
-                                                                                <div class="flex justify-between items-baseline">
-                                                                                    <h3 class="text-sm font-semibold text-gray-800 truncate">${this.escapeHtml(displayName)}</h3>
-                                                                                    <span class="last-time text-[10px] text-gray-400">${lastTime}</span>
-                                                                                </div>
-                                                                                <p class="last-msg text-xs text-gray-500 truncate">${this.escapeHtml(lastMsg)}</p>
-                                                                                <div class="flex items-center gap-1 mt-1 flex-wrap">
-                                                                                    ${statusBadgeHtml}
-                                                                                    ${assignees.length > 0 ? `
+                                                                                    </div>
+                                                                                    <div class="flex-1 min-w-0">
+                                                                                        <div class="flex justify-between items-baseline">
+                                                                                            <h3 class="text-sm font-semibold text-gray-800 truncate">${this.escapeHtml(displayName)}</h3>
+                                                                                            <span class="last-time text-[10px] text-gray-400">${lastTime}</span>
+                                                                                        </div>
+                                                                                        <p class="last-msg text-xs text-gray-500 truncate">${this.escapeHtml(lastMsg)}</p>
+                                                                                        <div class="flex items-center gap-1 mt-1 flex-wrap">
+                                                                                            ${statusBadgeHtml}
+                                                                                            ${assignees.length > 0 ? `
                             <span class="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full">
                                 <i class="fas fa-user-check"></i> ${assignees.length === 1 ? 'มอบหมายแล้ว' : assignees.length + ' คน'}
                             </span>
                         ` : ''}
+                                                                                        </div>
+                                                                                    </div>
                                                                                 </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    `;
+                                                                            `;
 
             return element;
         }
@@ -10281,50 +10294,50 @@ function formatThaiDateTime($datetime)
     // Add CSS for keyboard navigation
     const ajaxStyles = document.createElement('style');
     ajaxStyles.textContent = `
-                                                                /* Keyboard navigation styles - Task 18.1 */
-                                                                .user-item.keyboard-selected {
-                                                                    outline: 2px solid #0C665D;
-                                                                    outline-offset: -2px;
-                                                                    background-color: rgba(12, 102, 93, 0.05);
-                                                                }
+                                                                        /* Keyboard navigation styles - Task 18.1 */
+                                                                        .user-item.keyboard-selected {
+                                                                            outline: 2px solid #0C665D;
+                                                                            outline-offset: -2px;
+                                                                            background-color: rgba(12, 102, 93, 0.05);
+                                                                        }
     
-                                                                .user-item:focus {
-                                                                    outline: 2px solid #0C665D;
-                                                                    outline-offset: -2px;
-                                                                }
+                                                                        .user-item:focus {
+                                                                            outline: 2px solid #0C665D;
+                                                                            outline-offset: -2px;
+                                                                        }
     
-                                                                /* Remove default focus outline from userList container */
-                                                                #userList:focus {
-                                                                    outline: none;
-                                                                }
+                                                                        /* Remove default focus outline from userList container */
+                                                                        #userList:focus {
+                                                                            outline: none;
+                                                                        }
     
-                                                                /* Make user-item focusable and improve accessibility */
-                                                                .user-item {
-                                                                    cursor: pointer;
-                                                                    transition: background-color 0.15s ease, outline 0.15s ease;
-                                                                }
+                                                                        /* Make user-item focusable and improve accessibility */
+                                                                        .user-item {
+                                                                            cursor: pointer;
+                                                                            transition: background-color 0.15s ease, outline 0.15s ease;
+                                                                        }
     
-                                                                .user-item:hover {
-                                                                    background-color: rgba(12, 102, 93, 0.03);
-                                                                }
+                                                                        .user-item:hover {
+                                                                            background-color: rgba(12, 102, 93, 0.03);
+                                                                        }
     
-                                                                #conversationLoadingOverlay {
-                                                                    animation: fadeIn 0.2s ease-out;
-                                                                }
+                                                                        #conversationLoadingOverlay {
+                                                                            animation: fadeIn 0.2s ease-out;
+                                                                        }
     
-                                                                #conversationErrorOverlay {
-                                                                    animation: fadeIn 0.3s ease-out;
-                                                                }
+                                                                        #conversationErrorOverlay {
+                                                                            animation: fadeIn 0.3s ease-out;
+                                                                        }
     
-                                                                @keyframes fadeIn {
-                                                                    from { opacity: 0; }
-                                                                    to { opacity: 1; }
-                                                                }
+                                                                        @keyframes fadeIn {
+                                                                            from { opacity: 0; }
+                                                                            to { opacity: 1; }
+                                                                        }
     
-                                                                .conversation-bumping {
-                                                                    background-color: rgba(16, 185, 129, 0.1);
-                                                                }
-                                                            `;
+                                                                        .conversation-bumping {
+                                                                            background-color: rgba(16, 185, 129, 0.1);
+                                                                        }
+                                                                    `;
     document.head.appendChild(ajaxStyles);
 
     console.log('[AJAX] Conversation switching script loaded');
@@ -10993,13 +11006,13 @@ function formatThaiDateTime($datetime)
             console.error('Error loading performance metrics:', error);
             // Show error in table
             document.getElementById('perfMetricsTable').innerHTML = `
-                                                                        <tr>
-                                                                            <td colspan="9" class="px-4 py-8 text-center text-red-500">
-                                                                                <i class="fas fa-exclamation-triangle mr-2"></i>
-                                                                                Error loading performance metrics: ${error.message}
-                                                                            </td>
-                                                                        </tr>
-                                                                    `;
+                                                                                <tr>
+                                                                                    <td colspan="9" class="px-4 py-8 text-center text-red-500">
+                                                                                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                                                                                        Error loading performance metrics: ${error.message}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            `;
         }
     }
 
@@ -11040,12 +11053,12 @@ function formatThaiDateTime($datetime)
 
         if (!stats || Object.keys(stats).length === 0) {
             tbody.innerHTML = `
-                                                                        <tr>
-                                                                            <td colspan="9" class="px-4 py-8 text-center text-gray-500">
-                                                                                No performance data available for this date range
-                                                                            </td>
-                                                                        </tr>
-                                                                    `;
+                                                                                <tr>
+                                                                                    <td colspan="9" class="px-4 py-8 text-center text-gray-500">
+                                                                                        No performance data available for this date range
+                                                                                    </td>
+                                                                                </tr>
+                                                                            `;
             return;
         }
 
@@ -11062,11 +11075,11 @@ function formatThaiDateTime($datetime)
             const data = stats[metric.key];
             if (!data || data.count === 0) {
                 html += `
-                                                                            <tr class="hover:bg-gray-50">
-                                                                                <td class="px-4 py-3 font-medium text-gray-700">${metric.label}</td>
-                                                                                <td colspan="8" class="px-4 py-3 text-center text-gray-400">No data</td>
-                                                                            </tr>
-                                                                        `;
+                                                                                    <tr class="hover:bg-gray-50">
+                                                                                        <td class="px-4 py-3 font-medium text-gray-700">${metric.label}</td>
+                                                                                        <td colspan="8" class="px-4 py-3 text-center text-gray-400">No data</td>
+                                                                                    </tr>
+                                                                                `;
                 return;
             }
 
@@ -11078,18 +11091,18 @@ function formatThaiDateTime($datetime)
             const errorClass = errorRate > 10 ? 'text-red-600 font-semibold' : 'text-gray-600';
 
             html += `
-                                                                        <tr class="hover:bg-gray-50">
-                                                                            <td class="px-4 py-3 font-medium text-gray-700">${metric.label}</td>
-                                                                            <td class="px-4 py-3 text-right text-gray-600">${formatNumber(data.count)}</td>
-                                                                            <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.average)}ms</td>
-                                                                            <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.min)}ms</td>
-                                                                            <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.max)}ms</td>
-                                                                            <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.p50)}ms</td>
-                                                                            <td class="px-4 py-3 text-right font-semibold text-gray-700">${Math.round(data.p95)}ms</td>
-                                                                            <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.p99)}ms</td>
-                                                                            <td class="px-4 py-3 text-right ${errorClass}">${errorRate.toFixed(1)}%</td>
-                                                                        </tr>
-                                                                    `;
+                                                                                <tr class="hover:bg-gray-50">
+                                                                                    <td class="px-4 py-3 font-medium text-gray-700">${metric.label}</td>
+                                                                                    <td class="px-4 py-3 text-right text-gray-600">${formatNumber(data.count)}</td>
+                                                                                    <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.average)}ms</td>
+                                                                                    <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.min)}ms</td>
+                                                                                    <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.max)}ms</td>
+                                                                                    <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.p50)}ms</td>
+                                                                                    <td class="px-4 py-3 text-right font-semibold text-gray-700">${Math.round(data.p95)}ms</td>
+                                                                                    <td class="px-4 py-3 text-right text-gray-600">${Math.round(data.p99)}ms</td>
+                                                                                    <td class="px-4 py-3 text-right ${errorClass}">${errorRate.toFixed(1)}%</td>
+                                                                                </tr>
+                                                                            `;
         });
 
         tbody.innerHTML = html;

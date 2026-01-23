@@ -143,6 +143,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute([$currentBotId, $isEnabled, $messageType, $textContent, $flexContent]);
             }
             $success = 'บันทึกการตั้งค่าข้อความต้อนรับสำเร็จ!';
+            
+            // Log activity
+            $activityLogger->logData(ActivityLogger::ACTION_UPDATE, 'ตั้งค่าข้อความต้อนรับ', [
+                'entity_type' => 'welcome_settings',
+                'new_value' => ['enabled' => $isEnabled, 'type' => $messageType]
+            ]);
+            
         } catch (Exception $e) {
             $error = 'เกิดข้อผิดพลาด: ' . $e->getMessage();
         }
@@ -180,7 +187,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             isset($_POST['notify_new_order']) ? 1 : 0,
             isset($_POST['notify_payment']) ? 1 : 0
         ]);
+        ]);
         $success = 'บันทึกการตั้งค่าการแจ้งเตือนสำเร็จ!';
+        
+        // Log activity
+        $activityLogger->logData(ActivityLogger::ACTION_UPDATE, 'ตั้งค่าการแจ้งเตือน (Telegram)', [
+            'entity_type' => 'telegram_settings'
+        ]);
+        
         $activeTab = 'telegram';
     } elseif ($action === 'test_telegram') {
         $stmt = $db->query("SELECT bot_token, chat_id FROM telegram_settings WHERE id = 1");
@@ -371,7 +385,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $db->prepare($sql);
             $stmt->execute($data);
+            $stmt->execute($data);
             $success = 'บันทึกการตั้งค่าการแจ้งเตือนสำเร็จ';
+            
+            // Log activity
+            $activityLogger->logData(ActivityLogger::ACTION_UPDATE, 'ตั้งค่าการแจ้งเตือน (System)', [
+                'entity_type' => 'notification_settings'
+            ]);
+            
         } catch (Exception $e) {
             $error = 'เกิดข้อผิดพลาด: ' . $e->getMessage();
         }

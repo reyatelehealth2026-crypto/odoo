@@ -2907,7 +2907,7 @@ try {
                             FROM user_tag_assignments uta
                             JOIN user_tags ut ON uta.tag_id = ut.id
                             WHERE ut.line_account_id = ?
-                            AND ut.tag_name LIKE ?
+                            AND ut.name LIKE ?
                         )
                     )
                     ORDER BY last_message_time DESC

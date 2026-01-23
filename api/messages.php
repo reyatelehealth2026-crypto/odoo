@@ -26,7 +26,7 @@ try {
             $search = $_GET['search'] ?? '';
             $limit = min(intval($_GET['limit'] ?? 50), 100);
             $offset = intval($_GET['offset'] ?? 0);
-            
+
             // Use JOIN to only get users with messages and get accurate last_time
             $sql = "SELECT u.id, u.line_user_id, u.display_name, u.picture_url, u.phone,
                     m_last.content as last_message,
@@ -41,83 +41,83 @@ try {
                     ) m_max ON u.id = m_max.user_id
                     INNER JOIN messages m_last ON m_max.max_id = m_last.id
                     WHERE u.line_account_id = ?";
-            
+
             $params = [$currentBotId];
-            
+
             if ($search) {
                 $sql .= " AND (u.display_name LIKE ? OR u.phone LIKE ?)";
                 $params[] = "%$search%";
                 $params[] = "%$search%";
             }
-            
+
             $sql .= " ORDER BY m_last.created_at DESC LIMIT ? OFFSET ?";
             $params[] = $limit;
             $params[] = $offset;
-            
+
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
             $conversations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Get total unread
             $stmt = $db->prepare("SELECT COUNT(*) FROM messages m 
                                   JOIN users u ON m.user_id = u.id 
                                   WHERE u.line_account_id = ? AND m.direction = 'incoming' AND m.is_read = 0");
             $stmt->execute([$currentBotId]);
             $totalUnread = $stmt->fetchColumn();
-            
+
             echo json_encode([
                 'success' => true,
                 'conversations' => $conversations,
                 'total_unread' => $totalUnread
             ]);
             break;
-            
+
         case 'get_messages':
             // Get messages for a user
             $userId = intval($_GET['user_id'] ?? 0);
             $lastId = intval($_GET['last_id'] ?? 0);
             $limit = min(intval($_GET['limit'] ?? 50), 200);
-            
+
             if (!$userId) {
                 throw new Exception('user_id required');
             }
-            
+
             $sql = "SELECT * FROM messages WHERE user_id = ?";
             $params = [$userId];
-            
+
             if ($lastId > 0) {
                 $sql .= " AND id > ?";
                 $params[] = $lastId;
             }
-            
+
             $sql .= " ORDER BY created_at ASC LIMIT ?";
             $params[] = $limit;
-            
+
             $stmt = $db->prepare($sql);
             $stmt->execute($params);
             $messages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             echo json_encode([
                 'success' => true,
                 'messages' => $messages,
                 'count' => count($messages)
             ]);
             break;
-            
+
         case 'poll':
             // Real-time polling - get new messages since last_id
             $userId = intval($_GET['user_id'] ?? 0);
             $lastId = intval($_GET['last_id'] ?? 0);
-            
+
             if (!$userId) {
                 throw new Exception('user_id required');
             }
-            
+
             // Get new messages
             $stmt = $db->prepare("SELECT * FROM messages WHERE user_id = ? AND id > ? ORDER BY created_at ASC");
             $stmt->execute([$userId, $lastId]);
             $newMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Get unread count for sidebar update
             $stmt = $db->prepare("SELECT u.id, 
                                   (SELECT COUNT(*) FROM messages WHERE user_id = u.id AND direction = 'incoming' AND is_read = 0) as unread
@@ -125,7 +125,7 @@ try {
                                   HAVING unread > 0");
             $stmt->execute([$currentBotId, $userId]);
             $unreadUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             // Check for recently updated conversations (within last poll interval)
             $stmt = $db->prepare("SELECT u.id, u.display_name, u.picture_url,
                                   (SELECT content FROM messages WHERE user_id = u.id ORDER BY created_at DESC LIMIT 1) as last_message,
@@ -138,7 +138,7 @@ try {
                                   ORDER BY last_time DESC LIMIT 20");
             $stmt->execute([$currentBotId]);
             $updatedConversations = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             echo json_encode([
                 'success' => true,
                 'messages' => $newMessages,
@@ -147,64 +147,65 @@ try {
                 'timestamp' => time()
             ]);
             break;
-            
+
         case 'send':
             // Send message
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 throw new Exception('POST required');
             }
-            
+
             $userId = intval($_POST['user_id'] ?? 0);
             $message = trim($_POST['message'] ?? '');
             $messageType = $_POST['type'] ?? 'text';
-            
+
             if (!$userId || !$message) {
                 throw new Exception('user_id and message required');
             }
-            
+
             // Get user info
             $stmt = $db->prepare("SELECT line_user_id, line_account_id, reply_token, reply_token_expires FROM users WHERE id = ?");
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            
+
             if (!$user) {
                 throw new Exception('User not found');
             }
-            
+
             // Send via LINE
             $lineManager = new LineAccountManager($db);
             $line = $lineManager->getLineAPI($user['line_account_id']);
-            
+
             if (method_exists($line, 'sendMessage')) {
                 $result = $line->sendMessage(
-                    $user['line_user_id'], 
-                    $message, 
-                    $user['reply_token'] ?? null, 
-                    $user['reply_token_expires'] ?? null, 
-                    $db, 
+                    $user['line_user_id'],
+                    $message,
+                    $user['reply_token'] ?? null,
+                    $user['reply_token_expires'] ?? null,
+                    $db,
                     $userId
                 );
             } else {
                 $result = $line->pushMessage($user['line_user_id'], [['type' => 'text', 'text' => $message]]);
                 $result['method'] = 'push';
             }
-            
+
             if ($result['code'] !== 200) {
                 throw new Exception('LINE API Error: ' . ($result['error'] ?? 'Unknown'));
             }
-            
+
             // Save to database - ใช้ username เป็นหลัก เพราะ display_name อาจว่าง
             $adminUser = $_SESSION['admin_user'] ?? [];
             $adminName = !empty($adminUser['username']) ? $adminUser['username'] : (!empty($adminUser['display_name']) ? $adminUser['display_name'] : 'Admin');
             $sentBy = 'admin:' . $adminName;
-            
+
             // Check if sent_by column exists
             $hasSentBy = false;
             try {
                 $checkCol = $db->query("SHOW COLUMNS FROM messages LIKE 'sent_by'");
                 $hasSentBy = $checkCol->rowCount() > 0;
-            } catch (Exception $e) {}
-            
+            } catch (Exception $e) {
+            }
+
             if ($hasSentBy) {
                 $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, sent_by, created_at, is_read) 
                                       VALUES (?, ?, 'outgoing', ?, ?, ?, NOW(), 1)");
@@ -214,9 +215,22 @@ try {
                                       VALUES (?, ?, 'outgoing', ?, ?, NOW(), 1)");
                 $stmt->execute([$user['line_account_id'], $userId, $messageType, $message]);
             }
-            
+
+
+
             $messageId = $db->lastInsertId();
-            
+
+            // Log activity
+            require_once __DIR__ . '/../classes/ActivityLogger.php';
+            $activityLogger = ActivityLogger::getInstance($db);
+            $activityLogger->logMessage(ActivityLogger::ACTION_SEND, 'ส่งข้อความถึงลูกค้า', [
+                'user_id' => $userId,
+                'message_id' => $messageId,
+                'message_type' => $messageType,
+                'content' => $message,
+                'sent_by' => $sentBy
+            ]);
+
             echo json_encode([
                 'success' => true,
                 'message_id' => $messageId,
@@ -226,41 +240,41 @@ try {
                 'sent_by' => $sentBy
             ]);
             break;
-            
+
         case 'mark_read':
             // Mark messages as read
             $userId = intval($_POST['user_id'] ?? $_GET['user_id'] ?? 0);
-            
+
             if (!$userId) {
                 throw new Exception('user_id required');
             }
-            
+
             $stmt = $db->prepare("UPDATE messages SET is_read = 1 WHERE user_id = ? AND direction = 'incoming' AND is_read = 0");
             $stmt->execute([$userId]);
             $affected = $stmt->rowCount();
-            
+
             echo json_encode([
                 'success' => true,
                 'marked' => $affected
             ]);
             break;
-            
+
         case 'get_user':
             // Get user details
             $userId = intval($_GET['user_id'] ?? 0);
-            
+
             if (!$userId) {
                 throw new Exception('user_id required');
             }
-            
+
             $stmt = $db->prepare("SELECT * FROM users WHERE id = ?");
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            
+
             if (!$user) {
                 throw new Exception('User not found');
             }
-            
+
             // Get tags
             $tags = [];
             try {
@@ -269,24 +283,27 @@ try {
                                       WHERE uta.user_id = ?");
                 $stmt->execute([$userId]);
                 $tags = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-            
+            } catch (Exception $e) {
+            }
+
             // Get notes
             $notes = [];
             try {
                 $stmt = $db->prepare("SELECT * FROM user_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
                 $stmt->execute([$userId]);
                 $notes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-            
+            } catch (Exception $e) {
+            }
+
             // Get orders
             $orders = [];
             try {
                 $stmt = $db->prepare("SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 5");
                 $stmt->execute([$userId]);
                 $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            } catch (Exception $e) {}
-            
+            } catch (Exception $e) {
+            }
+
             echo json_encode([
                 'success' => true,
                 'user' => $user,
@@ -295,7 +312,7 @@ try {
                 'orders' => $orders
             ]);
             break;
-            
+
         default:
             throw new Exception('Invalid action');
     }
