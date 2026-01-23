@@ -39,9 +39,9 @@ if (!defined('LIFF_ID'))
 if (!defined('APP_NAME'))
     define('APP_NAME', 'LINECRM');
 if (!defined('APP_URL'))
-    define('APP_URL', 'https://cny.re-ya.com/');  // แก้เป็น URL ใหม่
+    define('APP_URL', 'https://re-ya.com/');  // แก้เป็น URL ใหม่
 if (!defined('BASE_URL'))
-    define('BASE_URL', 'https://cny.re-ya.com/'); // แก้เป็น URL ใหม่
+    define('BASE_URL', 'https://re-ya.com/'); // แก้เป็น URL ใหม่
 if (!defined('APP_VERSION'))
     define('APP_VERSION', '2026.01.23.03'); // Version with video call fix 2
 if (!defined('TIMEZONE'))
