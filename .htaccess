@@ -3,6 +3,7 @@
 
 # Enable RewriteEngine
 RewriteEngine On
+DirectoryIndex index.php
 
 # Base path - root domain (re-ya.com)
 RewriteBase /
