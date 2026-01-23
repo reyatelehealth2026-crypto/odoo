@@ -5859,9 +5859,54 @@ class LiffApp {
                         <span>บัตรสมาชิก</span>
                         <i class="fas fa-chevron-right"></i>
                     </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/points')">
+                        <i class="fas fa-coins text-warning"></i>
+                        <span>ประวัติแต้ม</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/redeem')">
+                        <i class="fas fa-gift text-success"></i>
+                        <span>แลกของรางวัล</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/coupons')">
+                        <i class="fas fa-ticket-alt text-info"></i>
+                        <span>คูปองของฉัน</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/wishlist')">
+                        <i class="fas fa-heart text-danger"></i>
+                        <span>รายการโปรด</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
                     <div class="profile-menu-item" onclick="window.router.navigate('/health-profile')">
                         <i class="fas fa-heartbeat text-danger"></i>
                         <span>ข้อมูลสุขภาพ</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/medication-reminders')">
+                        <i class="fas fa-pills text-purple"></i>
+                        <span>เตือนทานยา</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/appointments')">
+                        <i class="fas fa-calendar-check text-primary"></i>
+                        <span>นัดหมาย</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/video-call')">
+                        <i class="fas fa-video text-success"></i>
+                        <span>ปรึกษาเภสัชกร</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/symptom')">
+                        <i class="fas fa-stethoscope text-info"></i>
+                        <span>ประเมินอาการ</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/ai-assistant')">
+                        <i class="fas fa-robot text-primary"></i>
+                        <span>ผู้ช่วย AI</span>
                         <i class="fas fa-chevron-right"></i>
                     </div>
                     <div class="profile-menu-item" onclick="window.router.navigate('/notifications')">
