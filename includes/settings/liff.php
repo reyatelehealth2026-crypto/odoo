@@ -30,9 +30,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
 ?>
 
 <style>
-.liff-card { transition: all 0.2s; }
-.liff-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-.copy-btn:active { transform: scale(0.95); }
+    .liff-card {
+        transition: all 0.2s;
+    }
+
+    .liff-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .copy-btn:active {
+        transform: scale(0.95);
+    }
 </style>
 
 <div class="space-y-6">
@@ -42,13 +51,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             <div class="text-4xl">🚀</div>
             <div class="flex-1">
                 <h2 class="text-xl font-bold mb-2">แนะนำ: Unified LIFF App (ระบบใหม่)</h2>
-                <p class="text-green-100 mb-4">ใช้ LIFF ID เดียวสำหรับทุกฟังก์ชัน! ง่ายต่อการจัดการ ไม่ต้องสร้างหลาย LIFF</p>
+                <p class="text-green-100 mb-4">ใช้ LIFF ID เดียวสำหรับทุกฟังก์ชัน! ง่ายต่อการจัดการ ไม่ต้องสร้างหลาย
+                    LIFF</p>
                 <div class="bg-white/20 rounded-lg p-4 mb-4">
                     <p class="text-sm font-medium mb-2">Endpoint URL สำหรับสร้าง LIFF (ระบบใหม่):</p>
                     <div class="flex gap-2">
-                        <input type="text" value="<?= $baseUrl ?>/liff/" readonly 
+                        <input type="text" value="<?= $baseUrl ?>/liff/" readonly
                             class="flex-1 px-3 py-2 bg-white/30 rounded-lg font-mono text-sm" onclick="this.select()">
-                        <button onclick="copyLiffText('<?= $baseUrl ?>/liff/')" class="px-4 py-2 bg-white/30 hover:bg-white/40 rounded-lg">
+                        <button onclick="copyLiffText('<?= $baseUrl ?>/liff/')"
+                            class="px-4 py-2 bg-white/30 hover:bg-white/40 rounded-lg">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>
@@ -76,11 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
             สถานะ LIFF
         </h2>
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="bg-purple-50 rounded-lg p-4 border-2 <?= !empty($currentAccount['liff_id'] ?? '') ? 'border-green-400' : 'border-red-300' ?>">
+            <div
+                class="bg-purple-50 rounded-lg p-4 border-2 <?= !empty($currentAccount['liff_id'] ?? '') ? 'border-green-400' : 'border-red-300' ?>">
                 <div class="text-2xl mb-2">🛒</div>
                 <h3 class="font-semibold">LIFF Shop</h3>
                 <p class="text-sm text-gray-600">หน้าร้านค้า+Checkout</p>
-                <p class="text-xs mt-2 <?= !empty($currentAccount['liff_id'] ?? '') ? 'text-green-600' : 'text-red-500' ?>">
+                <p
+                    class="text-xs mt-2 <?= !empty($currentAccount['liff_id'] ?? '') ? 'text-green-600' : 'text-red-500' ?>">
                     <?= !empty($currentAccount['liff_id'] ?? '') ? '✓ ตั้งค่าแล้ว' : '✗ ยังไม่ได้ตั้งค่า' ?>
                 </p>
             </div>
@@ -90,7 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                 <p class="text-sm text-gray-600">ใช้ร่วมกับ Shop</p>
                 <p class="text-xs mt-2 text-blue-500">ไม่ต้องสร้างแยก</p>
             </div>
-            <div class="bg-green-50 rounded-lg p-4 border-2 <?= !empty($configLiffId) ? 'border-green-400' : 'border-red-300' ?>">
+            <div
+                class="bg-green-50 rounded-lg p-4 border-2 <?= !empty($configLiffId) ? 'border-green-400' : 'border-red-300' ?>">
                 <div class="text-2xl mb-2">📹</div>
                 <h3 class="font-semibold">Video Call</h3>
                 <p class="text-sm text-gray-600">วิดีโอคอลใน LINE</p>
@@ -98,7 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                     <?= !empty($configLiffId) ? '✓ ตั้งค่าแล้ว' : '✗ ยังไม่ได้ตั้งค่า' ?>
                 </p>
             </div>
-            <div class="bg-orange-50 rounded-lg p-4 border-2 <?= !empty($configLiffShareId) ? 'border-green-400' : 'border-red-300' ?>">
+            <div
+                class="bg-orange-50 rounded-lg p-4 border-2 <?= !empty($configLiffShareId) ? 'border-green-400' : 'border-red-300' ?>">
                 <div class="text-2xl mb-2">📤</div>
                 <h3 class="font-semibold">Share</h3>
                 <p class="text-sm text-gray-600">แชร์ข้อความ</p>
@@ -119,55 +134,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         </div>
         <div class="p-5">
             <?php if (empty($accounts)): ?>
-            <p class="text-gray-500 text-center py-8">ยังไม่มีบัญชี LINE <a href="settings.php?tab=line" class="text-blue-500 hover:underline">เพิ่มบัญชี</a></p>
+                <p class="text-gray-500 text-center py-8">ยังไม่มีบัญชี LINE <a href="settings.php?tab=line"
+                        class="text-blue-500 hover:underline">เพิ่มบัญชี</a></p>
             <?php else: ?>
-            <div class="space-y-4">
-                <?php foreach ($accounts as $acc): ?>
-                <form method="POST" class="liff-card border rounded-xl p-4">
-                    <input type="hidden" name="action" value="update_account_liff">
-                    <input type="hidden" name="account_id" value="<?= $acc['id'] ?>">
-                    <div class="flex items-center justify-between mb-3">
-                        <div class="flex items-center gap-3">
-                            <?php if (!empty($acc['picture_url'])): ?>
-                            <img src="<?= htmlspecialchars($acc['picture_url']) ?>" class="w-10 h-10 rounded-full">
-                            <?php else: ?>
-                            <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                                <i class="fab fa-line text-green-500"></i>
+                <div class="space-y-4">
+                    <?php foreach ($accounts as $acc): ?>
+                        <form method="POST" class="liff-card border rounded-xl p-4">
+                            <input type="hidden" name="action" value="update_account_liff">
+                            <input type="hidden" name="account_id" value="<?= $acc['id'] ?>">
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="flex items-center gap-3">
+                                    <?php if (!empty($acc['picture_url'])): ?>
+                                        <img src="<?= htmlspecialchars($acc['picture_url']) ?>" class="w-10 h-10 rounded-full">
+                                    <?php else: ?>
+                                        <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                                            <i class="fab fa-line text-green-500"></i>
+                                        </div>
+                                    <?php endif; ?>
+                                    <div>
+                                        <h3 class="font-semibold"><?= htmlspecialchars($acc['name']) ?></h3>
+                                        <p class="text-xs text-gray-500">
+                                            <?= htmlspecialchars($acc['basic_id'] ?: 'Channel: ' . $acc['channel_id']) ?></p>
+                                    </div>
+                                </div>
+                                <?php if ($acc['is_default']): ?>
+                                    <span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">⭐ หลัก</span>
+                                <?php endif; ?>
                             </div>
+                            <div class="flex gap-2">
+                                <input type="text" name="liff_id" value="<?= htmlspecialchars($acc['liff_id'] ?? '') ?>"
+                                    class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
+                                    placeholder="LIFF ID เช่น 2001234567-aBcDeFgH">
+                                <button type="submit" class="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                            </div>
+                            <?php if (!empty($acc['liff_id'])): ?>
+                                <div class="mt-2 flex items-center gap-2 text-sm">
+                                    <span class="text-gray-500">URL:</span>
+                                    <a href="https://liff.line.me/<?= htmlspecialchars($acc['liff_id']) ?>" target="_blank"
+                                        class="text-blue-500 hover:underline font-mono text-xs">
+                                        https://liff.line.me/<?= htmlspecialchars($acc['liff_id']) ?>
+                                    </a>
+                                    <button type="button"
+                                        onclick="copyLiffText('https://liff.line.me/<?= htmlspecialchars($acc['liff_id']) ?>')"
+                                        class="copy-btn text-gray-400 hover:text-gray-600">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
                             <?php endif; ?>
-                            <div>
-                                <h3 class="font-semibold"><?= htmlspecialchars($acc['name']) ?></h3>
-                                <p class="text-xs text-gray-500"><?= htmlspecialchars($acc['basic_id'] ?: 'Channel: ' . $acc['channel_id']) ?></p>
-                            </div>
-                        </div>
-                        <?php if ($acc['is_default']): ?>
-                        <span class="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs rounded-full">⭐ หลัก</span>
-                        <?php endif; ?>
-                    </div>
-                    <div class="flex gap-2">
-                        <input type="text" name="liff_id" value="<?= htmlspecialchars($acc['liff_id'] ?? '') ?>" 
-                               class="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
-                               placeholder="LIFF ID เช่น 2001234567-aBcDeFgH">
-                        <button type="submit" class="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600">
-                            <i class="fas fa-save"></i>
-                        </button>
-                    </div>
-                    <?php if (!empty($acc['liff_id'])): ?>
-                    <div class="mt-2 flex items-center gap-2 text-sm">
-                        <span class="text-gray-500">URL:</span>
-                        <a href="https://liff.line.me/<?= htmlspecialchars($acc['liff_id']) ?>" target="_blank" 
-                           class="text-blue-500 hover:underline font-mono text-xs">
-                            https://liff.line.me/<?= htmlspecialchars($acc['liff_id']) ?>
-                        </a>
-                        <button type="button" onclick="copyLiffText('https://liff.line.me/<?= htmlspecialchars($acc['liff_id']) ?>')" 
-                                class="copy-btn text-gray-400 hover:text-gray-600">
-                            <i class="fas fa-copy"></i>
-                        </button>
-                    </div>
-                    <?php endif; ?>
-                </form>
-                <?php endforeach; ?>
-            </div>
+                        </form>
+                    <?php endforeach; ?>
+                </div>
             <?php endif; ?>
         </div>
     </div>
@@ -182,38 +200,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         </div>
         <div class="p-5 space-y-4">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="border rounded-lg p-4 <?= $configLiffId ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50' ?>">
+                <div
+                    class="border rounded-lg p-4 <?= $configLiffId ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50' ?>">
                     <label class="block text-sm font-medium mb-2">
                         📹 LIFF_ID <span class="text-gray-500">(Video Call)</span>
                         <?= $configLiffId ? '<span class="text-green-600">✓</span>' : '<span class="text-red-500">✗ ต้องตั้งค่า</span>' ?>
                     </label>
                     <div class="flex gap-2">
                         <input type="text" value="<?= htmlspecialchars($configLiffId ?: 'ยังไม่ได้ตั้งค่า') ?>" readonly
-                               class="flex-1 px-3 py-2 bg-white border rounded-lg font-mono text-sm <?= $configLiffId ? 'text-green-600' : 'text-red-400' ?>">
+                            class="flex-1 px-3 py-2 bg-white border rounded-lg font-mono text-sm <?= $configLiffId ? 'text-green-600' : 'text-red-400' ?>">
                         <?php if ($configLiffId): ?>
-                        <button onclick="copyLiffText('https://liff.line.me/<?= htmlspecialchars($configLiffId) ?>')" class="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg"><i class="fas fa-copy"></i></button>
+                            <button onclick="copyLiffText('https://liff.line.me/<?= htmlspecialchars($configLiffId) ?>')"
+                                class="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg"><i
+                                    class="fas fa-copy"></i></button>
                         <?php endif; ?>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Endpoint: <code class="bg-gray-100 px-1 rounded"><?= $baseUrl ?>/liff-video-call-pro.php</code></p>
+                    <p class="text-xs text-gray-500 mt-2">Endpoint: <code
+                            class="bg-gray-100 px-1 rounded"><?= $baseUrl ?>/api/video-call.php</code></p>
                 </div>
-                <div class="border rounded-lg p-4 <?= $configLiffShareId ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50' ?>">
+                <div
+                    class="border rounded-lg p-4 <?= $configLiffShareId ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50' ?>">
                     <label class="block text-sm font-medium mb-2">
                         📤 LIFF_SHARE_ID <span class="text-gray-500">(Share)</span>
                         <?= $configLiffShareId ? '<span class="text-green-600">✓</span>' : '<span class="text-red-500">✗ ต้องตั้งค่า</span>' ?>
                     </label>
                     <div class="flex gap-2">
-                        <input type="text" value="<?= htmlspecialchars($configLiffShareId ?: 'ยังไม่ได้ตั้งค่า') ?>" readonly
-                               class="flex-1 px-3 py-2 bg-white border rounded-lg font-mono text-sm <?= $configLiffShareId ? 'text-green-600' : 'text-red-400' ?>">
+                        <input type="text" value="<?= htmlspecialchars($configLiffShareId ?: 'ยังไม่ได้ตั้งค่า') ?>"
+                            readonly
+                            class="flex-1 px-3 py-2 bg-white border rounded-lg font-mono text-sm <?= $configLiffShareId ? 'text-green-600' : 'text-red-400' ?>">
                         <?php if ($configLiffShareId): ?>
-                        <button onclick="copyLiffText('https://liff.line.me/<?= htmlspecialchars($configLiffShareId) ?>')" class="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg"><i class="fas fa-copy"></i></button>
+                            <button
+                                onclick="copyLiffText('https://liff.line.me/<?= htmlspecialchars($configLiffShareId) ?>')"
+                                class="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg"><i
+                                    class="fas fa-copy"></i></button>
                         <?php endif; ?>
                     </div>
-                    <p class="text-xs text-gray-500 mt-2">Endpoint: <code class="bg-gray-100 px-1 rounded"><?= $baseUrl ?>/liff-share.php</code></p>
+                    <p class="text-xs text-gray-500 mt-2">Endpoint: <code
+                            class="bg-gray-100 px-1 rounded"><?= $baseUrl ?>/liff-share.php</code></p>
                 </div>
             </div>
-            
+
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p class="font-medium text-blue-700 mb-2"><i class="fas fa-edit mr-1"></i>วิธีแก้ไข LIFF ID ใน config.php</p>
+                <p class="font-medium text-blue-700 mb-2"><i class="fas fa-edit mr-1"></i>วิธีแก้ไข LIFF ID ใน
+                    config.php</p>
                 <ol class="text-blue-600 text-sm space-y-1 list-decimal list-inside">
                     <li>เปิดไฟล์ <code class="bg-blue-100 px-1 rounded">config/config.php</code></li>
                     <li>หาบรรทัด <code class="bg-blue-100 px-1 rounded">define('LIFF_ID', '');</code></li>
@@ -241,10 +270,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                         <div class="text-xs text-gray-600">ระบบ LIFF ใหม่ครบทุกฟังก์ชัน</div>
                     </div>
                     <div class="flex-1">
-                        <input type="text" value="<?= $baseUrl ?>/liff/" readonly 
-                               class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs" onclick="this.select()">
+                        <input type="text" value="<?= $baseUrl ?>/liff/" readonly
+                            class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs"
+                            onclick="this.select()">
                     </div>
-                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff/')" class="copy-btn px-3 py-2 bg-green-200 hover:bg-green-300 rounded-lg text-green-700">
+                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff/')"
+                        class="copy-btn px-3 py-2 bg-green-200 hover:bg-green-300 rounded-lg text-green-700">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
@@ -255,10 +286,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                         <div class="text-xs text-gray-600">หน้าร้านค้าและชำระเงิน (ระบบเดิม)</div>
                     </div>
                     <div class="flex-1">
-                        <input type="text" value="<?= $baseUrl ?>/liff-shop.php" readonly 
-                               class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs" onclick="this.select()">
+                        <input type="text" value="<?= $baseUrl ?>/liff-shop.php" readonly
+                            class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs"
+                            onclick="this.select()">
                     </div>
-                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff-shop.php')" class="copy-btn px-3 py-2 bg-purple-200 hover:bg-purple-300 rounded-lg text-purple-700">
+                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff-shop.php')"
+                        class="copy-btn px-3 py-2 bg-purple-200 hover:bg-purple-300 rounded-lg text-purple-700">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
@@ -269,10 +302,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                         <div class="text-xs text-gray-600">วิดีโอคอลกับลูกค้า</div>
                     </div>
                     <div class="flex-1">
-                        <input type="text" value="<?= $baseUrl ?>/liff-video-call-pro.php" readonly 
-                               class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs" onclick="this.select()">
+                        <input type="text" value="<?= $baseUrl ?>/api/video-call.php" readonly
+                            class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs"
+                            onclick="this.select()">
                     </div>
-                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff-video-call-pro.php')" class="copy-btn px-3 py-2 bg-blue-200 hover:bg-blue-300 rounded-lg text-blue-700">
+                    <button onclick="copyLiffText('<?= $baseUrl ?>/api/video-call.php')"
+                        class="copy-btn px-3 py-2 bg-blue-200 hover:bg-blue-300 rounded-lg text-blue-700">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
@@ -283,10 +318,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
                         <div class="text-xs text-gray-600">แชร์ข้อความไปยังเพื่อน</div>
                     </div>
                     <div class="flex-1">
-                        <input type="text" value="<?= $baseUrl ?>/liff-share.php" readonly 
-                               class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs" onclick="this.select()">
+                        <input type="text" value="<?= $baseUrl ?>/liff-share.php" readonly
+                            class="w-full px-3 py-2 bg-white border rounded-lg font-mono text-xs"
+                            onclick="this.select()">
                     </div>
-                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff-share.php')" class="copy-btn px-3 py-2 bg-orange-200 hover:bg-orange-300 rounded-lg text-orange-700">
+                    <button onclick="copyLiffText('<?= $baseUrl ?>/liff-share.php')"
+                        class="copy-btn px-3 py-2 bg-orange-200 hover:bg-orange-300 rounded-lg text-orange-700">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
@@ -304,41 +341,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
         <div class="p-5">
             <div class="space-y-4">
                 <div class="flex gap-4">
-                    <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
+                    <div
+                        class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                        1</div>
                     <div>
                         <h3 class="font-semibold">เข้า LINE Developers Console</h3>
-                        <p class="text-gray-600 text-sm">ไปที่ <a href="https://developers.line.biz/console/" target="_blank" class="text-blue-500 hover:underline">developers.line.biz/console</a></p>
+                        <p class="text-gray-600 text-sm">ไปที่ <a href="https://developers.line.biz/console/"
+                                target="_blank" class="text-blue-500 hover:underline">developers.line.biz/console</a>
+                        </p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">2</div>
+                    <div
+                        class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                        2</div>
                     <div>
                         <h3 class="font-semibold">เลือก Provider → LINE Login Channel</h3>
                         <p class="text-gray-600 text-sm">ถ้ายังไม่มี ให้สร้าง LINE Login Channel ใหม่</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">3</div>
+                    <div
+                        class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                        3</div>
                     <div>
                         <h3 class="font-semibold">ไปที่แท็บ LIFF → Add</h3>
                         <div class="bg-gray-50 rounded-lg p-4 mt-2 text-sm">
                             <p><strong>LIFF app name:</strong> LINE Shop</p>
                             <p><strong>Size:</strong> Full</p>
-                            <p><strong>Endpoint URL:</strong> <span class="text-green-600"><?= $baseUrl ?>/liff/</span></p>
+                            <p><strong>Endpoint URL:</strong> <span class="text-green-600"><?= $baseUrl ?>/liff/</span>
+                            </p>
                             <p><strong>Scope:</strong> ✅ profile, ✅ openid</p>
                             <p><strong>Bot link feature:</strong> On (Aggressive)</p>
                         </div>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">4</div>
+                    <div
+                        class="w-8 h-8 bg-green-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                        4</div>
                     <div>
                         <h3 class="font-semibold">คัดลอก LIFF ID</h3>
                         <p class="text-gray-600 text-sm">นำ LIFF ID ที่ได้มาใส่ในช่องด้านบน</p>
                     </div>
                 </div>
                 <div class="flex gap-4">
-                    <div class="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">5</div>
+                    <div
+                        class="w-8 h-8 bg-blue-500 text-white rounded-full flex items-center justify-center font-bold flex-shrink-0">
+                        5</div>
                     <div>
                         <h3 class="font-semibold">ตั้งค่า Linked OA (สำคัญ!)</h3>
                         <p class="text-gray-600 text-sm">ใน LIFF settings → Linked OA → เลือก LINE OA ของคุณ</p>
@@ -352,52 +402,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'updat
     <div class="bg-white rounded-xl shadow-sm p-6">
         <h2 class="text-lg font-bold mb-4">🧪 ทดสอบ LIFF</h2>
         <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <a href="liff/" target="_blank" class="block p-4 bg-green-100 rounded-xl hover:bg-green-200 text-center border-2 border-green-300">
+            <a href="liff/" target="_blank"
+                class="block p-4 bg-green-100 rounded-xl hover:bg-green-200 text-center border-2 border-green-300">
                 <div class="text-3xl mb-2">🚀</div>
                 <div class="font-medium text-green-700">LIFF ใหม่</div>
                 <div class="text-xs text-green-600">ระบบใหม่ครบทุกฟังก์ชัน</div>
             </a>
-            <a href="liff/#/shop" target="_blank" class="block p-4 bg-purple-50 rounded-xl hover:bg-purple-100 text-center">
+            <a href="liff/#/shop" target="_blank"
+                class="block p-4 bg-purple-50 rounded-xl hover:bg-purple-100 text-center">
                 <div class="text-3xl mb-2">🛒</div>
                 <div class="font-medium">ร้านค้า</div>
                 <div class="text-xs text-gray-500">LIFF ใหม่</div>
             </a>
-            <a href="liff/#/appointments" target="_blank" class="block p-4 bg-blue-50 rounded-xl hover:bg-blue-100 text-center">
+            <a href="liff/#/appointments" target="_blank"
+                class="block p-4 bg-blue-50 rounded-xl hover:bg-blue-100 text-center">
                 <div class="text-3xl mb-2">📅</div>
                 <div class="font-medium">นัดหมาย</div>
                 <div class="text-xs text-gray-500">LIFF ใหม่</div>
             </a>
-            <a href="liff/#/video-call" target="_blank" class="block p-4 bg-teal-50 rounded-xl hover:bg-teal-100 text-center">
+            <a href="liff/#/video-call" target="_blank"
+                class="block p-4 bg-teal-50 rounded-xl hover:bg-teal-100 text-center">
                 <div class="text-3xl mb-2">📹</div>
                 <div class="font-medium">Video Call</div>
                 <div class="text-xs text-gray-500">LIFF ใหม่</div>
             </a>
             <?php if ($currentAccount && !empty($currentAccount['liff_id'])): ?>
-            <a href="https://liff.line.me/<?= htmlspecialchars($currentAccount['liff_id']) ?>" target="_blank" 
-               class="block p-4 bg-green-100 rounded-xl hover:bg-green-200 text-center border-2 border-green-300">
-                <div class="text-3xl mb-2">📱</div>
-                <div class="font-medium text-green-700">เปิดใน LINE</div>
-                <div class="text-xs text-green-600">ใช้ LIFF URL จริง</div>
-            </a>
+                <a href="https://liff.line.me/<?= htmlspecialchars($currentAccount['liff_id']) ?>" target="_blank"
+                    class="block p-4 bg-green-100 rounded-xl hover:bg-green-200 text-center border-2 border-green-300">
+                    <div class="text-3xl mb-2">📱</div>
+                    <div class="font-medium text-green-700">เปิดใน LINE</div>
+                    <div class="text-xs text-green-600">ใช้ LIFF URL จริง</div>
+                </a>
             <?php else: ?>
-            <div class="block p-4 bg-gray-100 rounded-xl text-center opacity-50">
-                <div class="text-3xl mb-2">📱</div>
-                <div class="font-medium">เปิดใน LINE</div>
-                <div class="text-xs text-gray-500">ต้องตั้งค่า LIFF ID ก่อน</div>
-            </div>
+                <div class="block p-4 bg-gray-100 rounded-xl text-center opacity-50">
+                    <div class="text-3xl mb-2">📱</div>
+                    <div class="font-medium">เปิดใน LINE</div>
+                    <div class="text-xs text-gray-500">ต้องตั้งค่า LIFF ID ก่อน</div>
+                </div>
             <?php endif; ?>
         </div>
     </div>
 </div>
 
 <script>
-function copyLiffText(text) {
-    navigator.clipboard.writeText(text).then(() => {
-        if (typeof Swal !== 'undefined') {
-            Swal.fire({ icon: 'success', title: 'คัดลอกแล้ว!', timer: 1500, showConfirmButton: false });
-        } else {
-            alert('คัดลอกแล้ว!');
-        }
-    });
-}
+    function copyLiffText(text) {
+        navigator.clipboard.writeText(text).then(() => {
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({ icon: 'success', title: 'คัดลอกแล้ว!', timer: 1500, showConfirmButton: false });
+            } else {
+                alert('คัดลอกแล้ว!');
+            }
+        });
+    }
 </script>

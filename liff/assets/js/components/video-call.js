@@ -30,41 +30,41 @@ class VideoCallManager {
         this.peerConnection = null;
         this.currentCallId = null;
         this.roomId = null;
-        
+
         // Call state
         this.callState = 'idle'; // idle, connecting, ringing, active, ended
         this.callStartTime = null;
         this.callDuration = 0;
         this.callTimer = null;
-        
+
         // Media state
         this.isMuted = false;
         this.isVideoOff = false;
         this.facingMode = 'user';
         this.isSpeakerOn = true;
-        
+
         // Signaling
         this.signalPollInterval = null;
         this.pendingIceCandidates = [];
         this.answerReceived = false;
-        
+
         // Callbacks
         this.onStateChange = null;
         this.onRemoteStream = null;
         this.onCallEnded = null;
         this.onError = null;
         this.onControlsUpdate = null;
-        
+
         // Config
         this.baseUrl = window.APP_CONFIG?.BASE_URL || '';
         this.accountId = window.APP_CONFIG?.ACCOUNT_ID || 1;
-        
+
         // Device detection
         this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         this.isAndroid = /Android/.test(navigator.userAgent);
         this.isLINE = /Line/i.test(navigator.userAgent);
         this.isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-        
+
         // iOS WebRTC limitations flag
         this.hasIOSLimitations = this.isIOS && this.isLINE;
     }
@@ -82,7 +82,7 @@ class VideoCallManager {
         if (options.onCallEnded) this.onCallEnded = options.onCallEnded;
         if (options.onError) this.onError = options.onError;
         if (options.onControlsUpdate) this.onControlsUpdate = options.onControlsUpdate;
-        
+
         console.log('📹 VideoCallManager initialized', {
             isIOS: this.isIOS,
             isLINE: this.isLINE,
@@ -100,7 +100,7 @@ class VideoCallManager {
         if (!this.hasIOSLimitations) {
             return { hasLimitations: false };
         }
-        
+
         return {
             hasLimitations: true,
             message: 'LINE บน iOS มีข้อจำกัดในการใช้งานวิดีโอคอล',
@@ -128,7 +128,7 @@ class VideoCallManager {
      */
     openInExternalBrowser() {
         const url = this.getExternalBrowserUrl();
-        
+
         if (this.isIOS) {
             // On iOS, use window.open which should open in Safari
             window.open(url, '_blank');
@@ -143,7 +143,7 @@ class VideoCallManager {
      */
     getApiUrl() {
         const base = this.baseUrl.replace(/\/+$/, ''); // Remove trailing slashes
-        return `${base}/liff-video-call-pro.php`;
+        return `${base}/api/video-call.php`;
     }
 
     /**
@@ -154,9 +154,9 @@ class VideoCallManager {
     setState(state, data = {}) {
         const oldState = this.callState;
         this.callState = state;
-        
+
         console.log(`📹 Call state: ${oldState} -> ${state}`, data);
-        
+
         if (this.onStateChange) {
             this.onStateChange(state, oldState, data);
         }
@@ -216,14 +216,14 @@ class VideoCallManager {
             return this.localStream;
         } catch (error) {
             console.error('📹 Media error:', error);
-            
+
             // Try audio only if video fails
             if (finalConstraints.video) {
                 console.log('📹 Trying audio only...');
                 try {
-                    this.localStream = await navigator.mediaDevices.getUserMedia({ 
-                        video: false, 
-                        audio: finalConstraints.audio 
+                    this.localStream = await navigator.mediaDevices.getUserMedia({
+                        video: false,
+                        audio: finalConstraints.audio
                     });
                     this.isVideoOff = true;
                     return this.localStream;
@@ -242,9 +242,9 @@ class VideoCallManager {
     async createCall() {
         const profile = window.store?.get('profile');
         const apiUrl = this.getApiUrl();
-        
+
         console.log('📹 Creating call...', { apiUrl, accountId: this.accountId, appointmentId: this.appointmentId });
-        
+
         const requestBody = {
             action: 'create',
             user_id: profile?.userId || 'guest_' + Date.now(),
@@ -253,9 +253,9 @@ class VideoCallManager {
             account_id: this.accountId,
             appointment_id: this.appointmentId || null
         };
-        
+
         console.log('📹 Request body:', requestBody);
-        
+
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -264,16 +264,16 @@ class VideoCallManager {
 
         const data = await response.json();
         console.log('📹 Create call response:', data);
-        
+
         if (!data.success) {
             throw new Error(data.error || 'ไม่สามารถสร้างการโทรได้');
         }
 
         this.currentCallId = data.call_id;
         this.roomId = data.room_id;
-        
+
         console.log('📹 Call created:', { callId: this.currentCallId, roomId: this.roomId });
-        
+
         return data;
     }
 
@@ -283,10 +283,10 @@ class VideoCallManager {
      */
     async setupPeerConnection() {
         console.log('📹 Setting up peer connection...');
-        
+
         // Create peer connection
         this.peerConnection = new RTCPeerConnection(this.rtcConfig);
-        
+
         // Add local tracks to connection
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => {
@@ -299,13 +299,13 @@ class VideoCallManager {
         // Requirements: 6.3 - Display remote video prominent
         this.peerConnection.ontrack = (event) => {
             console.log('📹 Remote track received:', event.track.kind);
-            
+
             if (!this.remoteStream) {
                 this.remoteStream = new MediaStream();
             }
-            
+
             this.remoteStream.addTrack(event.track);
-            
+
             if (this.onRemoteStream) {
                 this.onRemoteStream(this.remoteStream);
             }
@@ -323,7 +323,7 @@ class VideoCallManager {
         this.peerConnection.oniceconnectionstatechange = () => {
             const state = this.peerConnection.iceConnectionState;
             console.log('📹 ICE connection state:', state);
-            
+
             switch (state) {
                 case 'connected':
                 case 'completed':
@@ -352,10 +352,10 @@ class VideoCallManager {
             offerToReceiveAudio: true,
             offerToReceiveVideo: true
         });
-        
+
         await this.peerConnection.setLocalDescription(offer);
         await this.sendSignal('offer', offer);
-        
+
         console.log('📹 Offer sent');
     }
 
@@ -377,7 +377,7 @@ class VideoCallManager {
                     from: 'customer'
                 })
             });
-            
+
             const result = await response.json();
             console.log('📹 Signal sent:', type, result.success);
             return result;
@@ -391,7 +391,7 @@ class VideoCallManager {
      */
     startSignalPolling() {
         console.log('📹 Starting signal polling...');
-        
+
         // Set timeout for no answer
         const noAnswerTimeout = setTimeout(() => {
             if (this.callState === 'ringing' || this.callState === 'connecting') {
@@ -402,18 +402,18 @@ class VideoCallManager {
 
         this.signalPollInterval = setInterval(async () => {
             if (!this.currentCallId) return;
-            
+
             try {
                 // Check call status
                 const statusRes = await fetch(`${this.getApiUrl()}?action=get_status&call_id=${this.currentCallId}`);
                 const statusData = await statusRes.json();
-                
+
                 if (statusData.status === 'rejected') {
                     clearTimeout(noAnswerTimeout);
                     this.endCall('ถูกปฏิเสธ');
                     return;
                 }
-                
+
                 if (statusData.status === 'completed' || statusData.status === 'ended') {
                     clearTimeout(noAnswerTimeout);
                     this.endCall('สิ้นสุดการโทร');
@@ -423,7 +423,7 @@ class VideoCallManager {
                 // Get signals
                 const sigRes = await fetch(`${this.getApiUrl()}?action=get_signals&call_id=${this.currentCallId}&for=customer`);
                 const sigData = await sigRes.json();
-                
+
                 if (sigData.success && sigData.signals?.length > 0) {
                     clearTimeout(noAnswerTimeout);
                     for (const signal of sigData.signals) {
@@ -443,9 +443,9 @@ class VideoCallManager {
     async handleSignal(signal) {
         // Allow hangup and message signals even without peer connection
         if (!this.peerConnection && signal.signal_type !== 'hangup' && signal.signal_type !== 'message') return;
-        
+
         console.log('📹 Handling signal:', signal.signal_type);
-        
+
         try {
             switch (signal.signal_type) {
                 case 'answer':
@@ -453,17 +453,17 @@ class VideoCallManager {
                         console.log('📹 Answer already received, skipping');
                         return;
                     }
-                    
+
                     if (this.peerConnection.signalingState !== 'have-local-offer') {
                         console.log('📹 Wrong state for answer:', this.peerConnection.signalingState);
                         return;
                     }
-                    
+
                     await this.peerConnection.setRemoteDescription(
                         new RTCSessionDescription(signal.signal_data)
                     );
                     this.answerReceived = true;
-                    
+
                     // Process pending ICE candidates
                     console.log('📹 Processing', this.pendingIceCandidates.length, 'pending ICE candidates');
                     for (const candidate of this.pendingIceCandidates) {
@@ -471,7 +471,7 @@ class VideoCallManager {
                     }
                     this.pendingIceCandidates = [];
                     break;
-                    
+
                 case 'ice-candidate':
                     if (signal.signal_data) {
                         if (!this.peerConnection.remoteDescription) {
@@ -484,13 +484,13 @@ class VideoCallManager {
                         }
                     }
                     break;
-                    
+
                 case 'hangup':
                     // Other party hung up
                     console.log('📹 Received hangup signal from admin');
                     this.endCall('เภสัชกรวางสายแล้ว');
                     break;
-                    
+
                 case 'message':
                     // Received message from admin
                     console.log('📹 Received message:', signal.signal_data);
@@ -501,7 +501,7 @@ class VideoCallManager {
             console.error('📹 Signal handling error:', error);
         }
     }
-    
+
     /**
      * Show incoming message overlay
      * @param {Object} data - Message data
@@ -509,7 +509,7 @@ class VideoCallManager {
     showIncomingMessage(data) {
         const text = data.text || data.message || 'ข้อความจากเภสัชกร';
         const icon = data.type === 'greeting' ? '👋' : '⏳';
-        
+
         // Create message overlay
         const overlay = document.createElement('div');
         overlay.style.cssText = `
@@ -530,12 +530,12 @@ class VideoCallManager {
         `;
         overlay.innerHTML = `<div style="font-size: 48px; margin-bottom: 12px;">${icon}</div>${text}`;
         document.body.appendChild(overlay);
-        
+
         // Callback if set
         if (this.onMessage) {
             this.onMessage(data);
         }
-        
+
         // Remove after 3 seconds
         setTimeout(() => {
             overlay.style.opacity = '0';
@@ -552,7 +552,7 @@ class VideoCallManager {
     async startCall(audioOnly = false) {
         try {
             this.setState('connecting');
-            
+
             // Get local media if not already available
             if (!this.localStream) {
                 try {
@@ -562,7 +562,7 @@ class VideoCallManager {
                     // Continue without local stream for testing purposes
                 }
             }
-            
+
             // Disable video if audio only
             if (audioOnly && this.localStream) {
                 this.localStream.getVideoTracks().forEach(track => {
@@ -570,17 +570,17 @@ class VideoCallManager {
                 });
                 this.isVideoOff = true;
             }
-            
+
             // Create call session - this is the important part
             await this.createCall();
             this.setState('ringing');
-            
+
             // Setup peer connection (will work even without local stream)
             await this.setupPeerConnection();
-            
+
             // Start polling for signals
             this.startSignalPolling();
-            
+
         } catch (error) {
             console.error('📹 Start call error:', error);
             this.setState('error', { error });
@@ -599,9 +599,9 @@ class VideoCallManager {
      */
     async endCall(reason = 'สิ้นสุดการโทร', notes = null) {
         console.log('📹 Ending call:', reason);
-        
+
         const wasCallId = this.currentCallId;
-        
+
         // Send hangup signal to other party first (unless they hung up)
         if (wasCallId && reason !== 'เภสัชกรวางสายแล้ว') {
             try {
@@ -620,22 +620,22 @@ class VideoCallManager {
                 console.error('📹 Failed to send hangup signal:', error);
             }
         }
-        
+
         // Stop polling
         if (this.signalPollInterval) {
             clearInterval(this.signalPollInterval);
             this.signalPollInterval = null;
         }
-        
+
         // Stop timer
         this.stopCallTimer();
-        
+
         // Close peer connection
         if (this.peerConnection) {
             this.peerConnection.close();
             this.peerConnection = null;
         }
-        
+
         // Notify server with duration and optional notes
         if (wasCallId) {
             try {
@@ -644,11 +644,11 @@ class VideoCallManager {
                     call_id: wasCallId,
                     duration: this.callDuration
                 };
-                
+
                 if (notes) {
                     payload.notes = notes;
                 }
-                
+
                 await fetch(this.getApiUrl(), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -658,19 +658,19 @@ class VideoCallManager {
                 console.error('📹 End call API error:', error);
             }
         }
-        
+
         const duration = this.callDuration;
         const callId = wasCallId;
-        
+
         // Reset state
         this.currentCallId = null;
         this.roomId = null;
         this.answerReceived = false;
         this.pendingIceCandidates = [];
         this.remoteStream = null;
-        
+
         this.setState('ended', { reason, duration });
-        
+
         if (this.onCallEnded) {
             this.onCallEnded({ reason, duration, callId });
         }
@@ -687,7 +687,7 @@ class VideoCallManager {
             console.warn('📹 No active call to save notes');
             return { success: false, error: 'No active call' };
         }
-        
+
         try {
             const response = await fetch(this.getApiUrl(), {
                 method: 'POST',
@@ -698,7 +698,7 @@ class VideoCallManager {
                     notes: notes
                 })
             });
-            
+
             const result = await response.json();
             console.log('📹 Notes saved:', result);
             return result;
@@ -716,11 +716,11 @@ class VideoCallManager {
      */
     async getCallSummary(callId = null) {
         const id = callId || this.currentCallId;
-        
+
         if (!id) {
             return { success: false, error: 'No call ID' };
         }
-        
+
         try {
             const response = await fetch(`${this.getApiUrl()}?action=get_summary&call_id=${id}`);
             const result = await response.json();
@@ -746,13 +746,13 @@ class VideoCallManager {
      */
     toggleMute() {
         this.isMuted = !this.isMuted;
-        
+
         if (this.localStream) {
             this.localStream.getAudioTracks().forEach(track => {
                 track.enabled = !this.isMuted;
             });
         }
-        
+
         console.log('📹 Mute:', this.isMuted);
         this.notifyControlsUpdate();
         return this.isMuted;
@@ -765,13 +765,13 @@ class VideoCallManager {
      */
     toggleVideo() {
         this.isVideoOff = !this.isVideoOff;
-        
+
         if (this.localStream) {
             this.localStream.getVideoTracks().forEach(track => {
                 track.enabled = !this.isVideoOff;
             });
         }
-        
+
         console.log('📹 Video off:', this.isVideoOff);
         this.notifyControlsUpdate();
         return this.isVideoOff;
@@ -783,7 +783,7 @@ class VideoCallManager {
      */
     toggleSpeaker() {
         this.isSpeakerOn = !this.isSpeakerOn;
-        
+
         // On mobile, we can try to switch audio output
         // This is limited by browser support
         const remoteVideo = document.getElementById('vc-remote-video');
@@ -791,7 +791,7 @@ class VideoCallManager {
             // setSinkId is not widely supported, but we can try
             console.log('📹 Speaker toggle attempted (limited support)');
         }
-        
+
         console.log('📹 Speaker:', this.isSpeakerOn);
         this.notifyControlsUpdate();
         return this.isSpeakerOn;
@@ -803,7 +803,7 @@ class VideoCallManager {
      */
     async switchCamera() {
         this.facingMode = this.facingMode === 'user' ? 'environment' : 'user';
-        
+
         try {
             const newStream = await navigator.mediaDevices.getUserMedia({
                 video: {
@@ -813,9 +813,9 @@ class VideoCallManager {
                 },
                 audio: true
             });
-            
+
             const newVideoTrack = newStream.getVideoTracks()[0];
-            
+
             // Replace track in local stream
             if (this.localStream) {
                 const oldVideoTrack = this.localStream.getVideoTracks()[0];
@@ -825,7 +825,7 @@ class VideoCallManager {
                 }
                 this.localStream.addTrack(newVideoTrack);
             }
-            
+
             // Replace track in peer connection
             if (this.peerConnection) {
                 const sender = this.peerConnection.getSenders().find(s => s.track?.kind === 'video');
@@ -833,11 +833,11 @@ class VideoCallManager {
                     await sender.replaceTrack(newVideoTrack);
                 }
             }
-            
+
             console.log('📹 Camera switched to:', this.facingMode);
             this.notifyControlsUpdate();
             return this.localStream;
-            
+
         } catch (error) {
             console.error('📹 Switch camera error:', error);
             // Revert facing mode
@@ -851,10 +851,10 @@ class VideoCallManager {
      */
     startCallTimer() {
         if (this.callTimer) return;
-        
+
         this.callStartTime = Date.now();
         this.callDuration = 0;
-        
+
         this.callTimer = setInterval(() => {
             this.callDuration = Math.floor((Date.now() - this.callStartTime) / 1000);
         }, 1000);
@@ -886,28 +886,28 @@ class VideoCallManager {
      */
     cleanup() {
         console.log('📹 Cleaning up...');
-        
+
         // Stop polling
         if (this.signalPollInterval) {
             clearInterval(this.signalPollInterval);
             this.signalPollInterval = null;
         }
-        
+
         // Stop timer
         this.stopCallTimer();
-        
+
         // Stop local stream
         if (this.localStream) {
             this.localStream.getTracks().forEach(track => track.stop());
             this.localStream = null;
         }
-        
+
         // Close peer connection
         if (this.peerConnection) {
             this.peerConnection.close();
             this.peerConnection = null;
         }
-        
+
         // Reset state
         this.remoteStream = null;
         this.currentCallId = null;
