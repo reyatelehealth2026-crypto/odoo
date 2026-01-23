@@ -2946,6 +2946,104 @@ try {
             break;
 
         // ============================================
+        // GET /get_chat_content - Get chat messages and user info for AJAX switching
+        // ============================================
+        case 'get_chat_content':
+            if ($method !== 'GET') {
+                sendError('Method not allowed', 405);
+            }
+
+            $userId = (int) ($_GET['user_id'] ?? 0);
+            $limit = min((int) ($_GET['limit'] ?? 50), 100);
+            $offset = (int) ($_GET['offset'] ?? 0);
+
+            if (!$userId) {
+                sendError('User ID is required');
+            }
+
+            try {
+                // Get user info
+                $userStmt = $db->prepare("
+                    SELECT u.*, 
+                           (SELECT COUNT(*) FROM messages WHERE user_id = u.id AND direction = 'incoming' AND is_read = 0) as unread_count
+                    FROM users u
+                    WHERE u.id = ? AND u.line_account_id = ?
+                ");
+                $userStmt->execute([$userId, $lineAccountId]);
+                $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$user) {
+                    sendError('User not found', 404);
+                }
+
+                // Get messages
+                $msgStmt = $db->prepare("
+                    SELECT id, direction, message_type, content, created_at, is_read, sent_by
+                    FROM messages 
+                    WHERE user_id = ? AND line_account_id = ?
+                    ORDER BY created_at ASC
+                    LIMIT ? OFFSET ?
+                ");
+                $msgStmt->execute([$userId, $lineAccountId, $limit, $offset]);
+                $messages = $msgStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Get total message count
+                $countStmt = $db->prepare("SELECT COUNT(*) FROM messages WHERE user_id = ? AND line_account_id = ?");
+                $countStmt->execute([$userId, $lineAccountId]);
+                $totalMessages = $countStmt->fetchColumn();
+
+                // Get user tags
+                $tagsStmt = $db->prepare("
+                    SELECT ut.id, ut.name, ut.color
+                    FROM user_tag_assignments uta
+                    JOIN user_tags ut ON uta.tag_id = ut.id
+                    WHERE uta.user_id = ?
+                ");
+                $tagsStmt->execute([$userId]);
+                $tags = $tagsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Get assignees
+                $assignStmt = $db->prepare("
+                    SELECT cma.admin_id, au.username, au.display_name
+                    FROM conversation_multi_assignees cma
+                    LEFT JOIN admin_users au ON cma.admin_id = au.id
+                    WHERE cma.user_id = ? AND cma.status = 'active'
+                ");
+                $assignStmt->execute([$userId]);
+                $assignees = $assignStmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Mark messages as read
+                $updateStmt = $db->prepare("
+                    UPDATE messages SET is_read = 1 
+                    WHERE user_id = ? AND line_account_id = ? AND direction = 'incoming' AND is_read = 0
+                ");
+                $updateStmt->execute([$userId, $lineAccountId]);
+
+                sendResponse([
+                    'success' => true,
+                    'data' => [
+                        'user' => [
+                            'id' => (int) $user['id'],
+                            'display_name' => $user['display_name'],
+                            'picture_url' => $user['picture_url'] ?? null,
+                            'phone' => $user['phone'] ?? null,
+                            'chat_status' => $user['chat_status'] ?? null,
+                            'unread_count' => (int) $user['unread_count']
+                        ],
+                        'messages' => $messages,
+                        'total_messages' => (int) $totalMessages,
+                        'tags' => $tags,
+                        'assignees' => $assignees,
+                        'has_more' => ($offset + count($messages)) < $totalMessages
+                    ]
+                ]);
+
+            } catch (Exception $e) {
+                sendError('Failed to get chat content: ' . $e->getMessage());
+            }
+            break;
+
+        // ============================================
         // Default - Unknown action
         // ============================================
         default:
