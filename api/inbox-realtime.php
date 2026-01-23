@@ -47,6 +47,7 @@ try {
          * Returns: hasNew, newCount, conversations (updated list)
          */
         case 'check_new':
+        case 'check_updates': // Alias for backward compatibility
             $lastCheck = $_GET['last_check'] ?? date('Y-m-d H:i:s', strtotime('-30 seconds'));
             $currentUserId = (int) ($_GET['current_user'] ?? 0);
 

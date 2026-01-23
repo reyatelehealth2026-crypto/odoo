@@ -3089,7 +3089,17 @@ try {
             try {
                 // Load LineAPI
                 require_once __DIR__ . '/../classes/LineAPI.php';
-                $lineAPI = new LineAPI($db, $lineAccountId);
+
+                // Get channel access token
+                $stmt = $db->prepare("SELECT channel_access_token FROM line_accounts WHERE id = ?");
+                $stmt->execute([$lineAccountId]);
+                $account = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$account || empty($account['channel_access_token'])) {
+                    sendError('LINE account token not found');
+                }
+
+                $lineAPI = new LineAPI($account['channel_access_token']);
 
                 // Build LINE message array & Prepare DB records
                 $lineMessages = [];
