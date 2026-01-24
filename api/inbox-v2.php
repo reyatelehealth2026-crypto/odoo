@@ -3111,11 +3111,21 @@ try {
 
                     if ($type === 'text') {
                         $content = trim($content);
-                        if (!empty($content)) {
+
+                        // Check for Magic Payment Template
+                        if ($content === '{{PAYMENT_TEMPLATE_V1}}') {
+                            $type = 'payment'; // Switch type to trigger Flex generation
+                        }
+
+                        // Only add if still text (wasnt switched) and not empty
+                        if ($type === 'text' && !empty($content)) {
                             $lineMessages[] = ['type' => 'text', 'text' => $content];
                             $dbRecords[] = ['type' => 'text', 'content' => $content];
                         }
-                    } elseif ($type === 'image') {
+                    }
+
+                    // Handle other types (including the switched 'payment' type)
+                    if ($type === 'image') {
                         if (!empty($msg['originalContentUrl']) && !empty($msg['previewImageUrl'])) {
                             $lineMessages[] = [
                                 'type' => 'image',
