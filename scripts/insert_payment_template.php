@@ -5,6 +5,26 @@ require_once __DIR__ . '/../config/database.php';
 try {
     $db = Database::getInstance()->getConnection();
 
+    // Create table if not exists
+    $sql = "CREATE TABLE IF NOT EXISTS `chat_templates` (
+      `id` int(11) NOT NULL AUTO_INCREMENT,
+      `name` varchar(255) NOT NULL,
+      `content` text NOT NULL,
+      `category` varchar(100) DEFAULT 'General',
+      `quick_reply` varchar(255) DEFAULT NULL,
+      `created_by` int(11) DEFAULT NULL,
+      `line_account_id` int(11) DEFAULT NULL,
+      `is_active` tinyint(1) DEFAULT 1,
+      `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+      `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+      PRIMARY KEY (`id`),
+      KEY `idx_category` (`category`),
+      KEY `idx_line_account_id` (`line_account_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+
+    $db->exec($sql);
+    echo "Ensured chat_templates table exists.\n";
+
     // Magic string for interception
     $magicContent = "{{PAYMENT_TEMPLATE_V1}}";
     $templateName = "✅ แจ้งยอดชำระ/เลขบัญชี (Payment)";
