@@ -785,7 +785,7 @@ class ChatPanelManager {
             throw new Error(data.message || 'Failed to send message');
         }
 
-        return data.data || data.message || {};
+        return data.data || data;
     }
 
     /**
