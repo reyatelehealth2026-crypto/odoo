@@ -1,11 +1,17 @@
 const WH_API_CANDIDATES=['api/odoo-webhooks-dashboard.php','/api/odoo-webhooks-dashboard.php','../api/odoo-webhooks-dashboard.php','../../api/odoo-webhooks-dashboard.php'];
 let WH_API_ACTIVE=WH_API_CANDIDATES[0];
+
 const EVENT_LABELS={'sale.order.created':'สร้างออเดอร์','sale.order.confirmed':'ยืนยันออเดอร์','sale.order.done':'ออเดอร์สำเร็จ','sale.order.cancelled':'ยกเลิกออเดอร์','delivery.validated':'เริ่มจัดเตรียม','delivery.in_transit':'กำลังจัดส่ง','delivery.done':'ส่งเสร็จแล้ว','delivery.cancelled':'ยกเลิกการส่ง','delivery.back_order':'ส่งบางส่วน','invoice.created':'สร้างใบแจ้งหนี้','invoice.posted':'ออกใบแจ้งหนี้','invoice.paid':'ชำระเงินแล้ว','invoice.cancelled':'ยกเลิกใบแจ้งหนี้','invoice.overdue':'เกินกำหนดชำระ','payment.received':'รับชำระเงิน','payment.confirmed':'ยืนยันชำระเงิน','order.validated':'ยืนยันออเดอร์','order.picker_assigned':'มอบหมาย Picker','order.picking':'กำลังจัดสินค้า','order.picked':'จัดสินค้าเสร็จ','order.packing':'กำลังแพ็ค','order.packed':'แพ็คเสร็จ','order.reserved':'จองสินค้าแล้ว','order.awaiting_payment':'รอชำระเงิน','order.paid':'ชำระเงินแล้ว','order.to_delivery':'เตรียมจัดส่ง','order.in_delivery':'กำลังจัดส่ง','order.delivered':'จัดส่งสำเร็จ','order.cancelled':'ยกเลิกออเดอร์'};
 const SKIP_REASON_LABELS={'disabled':'ปิดการแจ้งเตือน','no_line_user':'ไม่มี LINE','duplicate':'ซ้ำ','preference':'ตั้งค่าไม่รับ','no_preference':'ไม่พบการตั้งค่า','throttle':'จำกัดความถี่','invalid':'ข้อมูลไม่ถูกต้อง'};
 const EVENT_ICONS={'sale.order.confirmed':'🛒','sale.order.cancelled':'❌','sale.order.done':'✅','sale.order.created':'📝','delivery.validated':'📦','delivery.cancelled':'❌','delivery.back_order':'🔄','delivery.in_transit':'🚚','delivery.done':'✅','invoice.posted':'🧾','invoice.paid':'💰','invoice.cancelled':'❌','invoice.overdue':'⚠️','invoice.created':'📄','payment.received':'💳','payment.confirmed':'💳','order.validated':'✅','order.picker_assigned':'👤','order.picking':'📦','order.picked':'✅','order.packing':'📦','order.packed':'✅','order.reserved':'🔒','order.awaiting_payment':'💰','order.paid':'💳','order.to_delivery':'🚚','order.in_delivery':'🚚','order.delivered':'✅','order.cancelled':'❌'};
 
 function escapeHtml(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function webhookEventShortName(t){if(!t)return '-';const p=String(t).split('.');return p.length>1?p.slice(1).join('.'):t;}
+function generateOdooUrl(model,id){if(!model||id==null||id==='')return '';return ODOO_PROD_BASE+'/web#id='+encodeURIComponent(String(id))+'&model='+encodeURIComponent(String(model))+'&view_type=form';}
+function deliveryTypeBadge(deliveryType){const label=deliveryType==='company'?'สายส่ง':(deliveryType==='private'?'ขนส่งเอกชน':'-');const bg=deliveryType==='private'?'#fef3c7':'#e0f2fe';const clr=deliveryType==='private'?'#b45309':'#0369a1';return label==='-'?'<span style="color:var(--gray-300);font-size:0.75rem;">-</span>':'<span style="background:'+bg+';color:'+clr+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;">'+escapeHtml(label)+'</span>';}
+function matchConfidenceBadge(confidence){const map={exact_bdo:['#dcfce7','#166534','ตรง BDO'],bdo_prepayment:['#ede9fe','#6d28d9','มัดจำ BDO'],exact:['#dbeafe','#1d4ed8','ตรงยอด'],partial:['#fef3c7','#b45309','บางส่วน'],manual:['#f3f4f6','#4b5563','manual'],unmatched:['#fee2e2','#b91c1c','ยังไม่จับคู่']};const cfg=map[confidence]||['#f3f4f6','#4b5563',confidence||'-'];return '<span style="background:'+cfg[0]+';color:'+cfg[1]+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;">'+escapeHtml(cfg[2])+'</span>';}
+function slipBdoInfo(s){if(!(s.bdo_name||s.bdo_id))return '<span style="color:var(--gray-300);font-size:0.75rem;">-</span>';const bdoId=s.bdo_id||'';const bdoName=s.bdo_name||('BDO-'+bdoId);const raw=encodeURIComponent(JSON.stringify({bdo_id:bdoId,bdo_name:bdoName,amount_total:s.bdo_amount,delivery_type:s.delivery_type,customer_name:s.customer_name,odoo_id:s.bdo_odoo_id||s.bdo_id}));return '<a href="javascript:void(0)" onclick="openBdoDetail(\''+escapeHtml(String(bdoId))+'\',\''+escapeHtml(String(bdoName))+'\',decodeURIComponent(\''+raw+'\'))" class="ref-link">'+escapeHtml(String(bdoName))+'</a>';}
+
 function showSection(id){
     // 'webhooks-raw' maps to the same webhooks section but forces list mode
     let sectionId = id;
@@ -27,6 +33,7 @@ function showSection(id){
     else if(id==='slips'){if(!document.getElementById('slipList').querySelector('table'))loadSlips();}
     else if(id==='matching'){loadMatchingDashboard();}
 }
+
 async function whApiCall(data){
     const tried=[];
     const endpoints=[WH_API_ACTIVE,...WH_API_CANDIDATES.filter(u=>u!==WH_API_ACTIVE)];
@@ -50,6 +57,7 @@ async function whApiCall(data){
     }
     return{success:false,error:'API unreachable: '+tried.join(' | ')};
 }
+
 async function testConnection(){const el=document.getElementById('connectionStatus');try{const r=await whApiCall({action:'stats'});if(r&&r.success){el.className='status-badge online';el.innerHTML='<span class="status-dot"></span><span>เชื่อมต่อแล้ว</span>';}else{el.className='status-badge offline';el.innerHTML='<span class="status-dot"></span><span>ไม่สามารถเชื่อมต่อได้</span>';}}catch(e){el.className='status-badge offline';el.innerHTML='<span class="status-dot"></span><span>Error</span>';}}
 
 // ===== WEBHOOKS =====
@@ -1102,6 +1110,21 @@ async function autoSendApiCall(data) {
     } catch(e) {
         return {success: false, error: e.message};
     }
+
+    if(pendingBdoRes&&pendingBdoRes.success&&kpiBdo){
+        const bdos=pendingBdoRes.data?.orders||pendingBdoRes.data?.bdos||[];
+        const pendingTotal=bdos.reduce(function(sum,b){return sum+parseFloat(b.amount_total||b.amount_net_to_pay||0);},0);
+        kpiBdo.textContent=Number(bdos.length||0).toLocaleString();
+        const sub=kpiBdo.parentElement?.querySelector('.kpi-sub');
+        if(sub)sub.textContent='฿'+pendingTotal.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});
+    }
+
+    if(matchedTodayRes&&matchedTodayRes.success&&kpiPaid){
+        const slips=matchedTodayRes.data?.slips||[];
+        const today=(new Date()).toISOString().slice(0,10);
+        const paidToday=slips.filter(function(s){return String(s.matched_at||s.uploaded_at||'').slice(0,10)===today;}).reduce(function(sum,s){return sum+parseFloat(s.amount||0);},0);
+        kpiPaid.textContent='฿'+paidToday.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0});
+    }
 }
 
 async function loadAutoSendSettings() {
@@ -1648,12 +1671,10 @@ async function sendOneSlipToOdoo(id,retry){
     }
 }
 async function unMatchSlip(id){
-    if(!confirm('รีเซ็ตสลิปนี้กลับเป็นสถานะ "รอตรวจสอบ" ใช่ไหม?'))return;
-    const meta=window._slipMeta&&window._slipMeta[id];
-    const lineAccountId=meta?.line_account_id||0;
+    const reason=prompt('ระบุเหตุผลในการยกเลิกการจับคู่', 'Sales unmatch from dashboard');
+    if(reason===null)return;
     try{
-        const r=await fetch('api/slip-match-orders.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'unmatch',slip_id:id,line_account_id:lineAccountId})});
-        const json=await r.json();
+        const json=await requestSlipUnmatch(id, reason);
         if(json.success){
             loadSlips();
         }else{
@@ -2082,6 +2103,11 @@ async function openBdoDetail(bdoId, bdoName, rawBdo){
     }
 
     if(!bdo){
+        const detailResult=await whApiCall({action:'bdo_detail',bdo_id:bdoId,bdo_name:bdoName||''});
+        if(detailResult&&detailResult.success&&detailResult.data)bdo=detailResult.data;
+    }
+
+    if(!bdo){
         const result=await whApiCall({action:'odoo_bdos',limit:100,offset:0,search:bdoName||bdoId});
         if(result&&result.success&&result.data.bdos){
             bdo=result.data.bdos.find(function(b){
@@ -2094,6 +2120,12 @@ async function openBdoDetail(bdoId, bdoName, rawBdo){
 
     if(bdo){
         const _fmtDt=function(raw){if(!raw)return '-';const d=new Date(raw);if(isNaN(d))return String(raw).slice(0,10);return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'});};
+        const bdoAmount=parseFloat(bdo.amount_total||bdo.amount_net_to_pay||0);
+        const linkedSlips=Array.isArray(bdo.linked_slips)?bdo.linked_slips:(Array.isArray(bdo.slips)?bdo.slips:[]);
+        const paidAmount=linkedSlips.reduce(function(sum,slip){return sum+parseFloat(slip.amount||slip.matched_amount||0);},0);
+        const progressPct=bdoAmount>0?Math.min(100,(paidAmount/bdoAmount)*100):0;
+        const bdoUrl=generateOdooUrl('stock.picking', bdo.odoo_id||bdo.bdo_odoo_id||bdoId);
+        const soUrl=(bdo.order_id||bdo.sale_order_id)?generateOdooUrl('sale.order', bdo.order_id||bdo.sale_order_id):'';
 
         html+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.6rem;margin-bottom:1.25rem;">';
         html+='<div class="info-box"><div class="info-label">BDO</div><div class="info-value" style="font-size:0.9rem;">'+escapeHtml(bdo.bdo_name||'-')+'</div></div>';
@@ -2102,6 +2134,34 @@ async function openBdoDetail(bdoId, bdoName, rawBdo){
         html+='<div class="info-box"><div class="info-label">วันที่</div><div class="info-value" style="font-size:0.85rem;">'+_fmtDt(bdo.bdo_date||bdo.updated_at)+'</div></div>';
         html+='<div class="info-box"><div class="info-label">สถานะ</div><div class="info-value"><span class="badge-status badge-success">'+escapeHtml(bdo.state||'confirmed')+'</span></div></div>';
         if(bdo.customer_name) html+='<div class="info-box"><div class="info-label">ลูกค้า</div><div class="info-value" style="font-size:0.85rem;">'+escapeHtml(bdo.customer_name)+'</div></div>';
+        html+='</div>';
+
+        html+='<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin:-0.25rem 0 1rem;">';
+        if(bdoUrl) html+='<a class="chip" href="'+escapeHtml(bdoUrl)+'" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> เปิดใน Odoo</a>';
+        if(soUrl) html+='<a class="chip" href="'+escapeHtml(soUrl)+'" target="_blank" rel="noopener"><i class="bi bi-file-earmark-text"></i> เปิด SO</a>';
+        if(linkedSlips.length) html+='<button class="chip" onclick="unMatchSlip('+(linkedSlips[0].id||linkedSlips[0].slip_id||0)+')"><i class="bi bi-unlink"></i> ยกเลิกการจับคู่</button>';
+        html+='</div>';
+
+        html+='<div style="background:linear-gradient(135deg,#eff6ff 0%,#f8fafc 100%);border:1px solid #bfdbfe;border-radius:12px;padding:1rem;margin-bottom:1rem;">';
+        html+='<div style="display:flex;justify-content:space-between;gap:0.6rem;align-items:center;flex-wrap:wrap;">';
+        html+='<div style="font-weight:600;color:#1d4ed8;">ยอดชำระสะสม</div>';
+        html+='<div style="font-weight:700;color:#0f172a;">฿'+paidAmount.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})+' / ฿'+bdoAmount.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})+' ('+progressPct.toFixed(1)+'%)</div>';
+        html+='</div>';
+        html+='<div style="margin-top:0.6rem;height:10px;background:#dbeafe;border-radius:999px;overflow:hidden;"><div style="width:'+progressPct+'%;height:100%;background:linear-gradient(90deg,#2563eb,#16a34a);"></div></div>';
+        if(linkedSlips.length){
+            html+='<div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.45rem;">';
+            linkedSlips.forEach(function(slip){
+                const slipAmt=parseFloat(slip.amount||slip.matched_amount||0);
+                const slipId=slip.id||slip.slip_id||'';
+                html+='<div style="display:flex;justify-content:space-between;gap:0.75rem;font-size:0.8rem;border-bottom:1px solid #dbeafe;padding-bottom:0.35rem;">'
+                    +'<div><strong>Slip #'+escapeHtml(String(slipId||'-'))+'</strong> '+escapeHtml(slip.customer_name||slip.line_user_id||'')+'</div>'
+                    +'<div style="font-weight:600;color:#0369a1;">฿'+slipAmt.toLocaleString('th-TH',{minimumFractionDigits:2,maximumFractionDigits:2})+'</div>'
+                    +'</div>';
+            });
+            html+='</div>';
+        }else{
+            html+='<div style="margin-top:0.75rem;color:var(--gray-500);font-size:0.8rem;">ยังไม่มีสลิปที่จับคู่กับ BDO นี้</div>';
+        }
         html+='</div>';
 
         // Payment info section
@@ -2264,11 +2324,13 @@ let _overviewLoaded=false;
 async function loadTodayOverview(){
     _overviewLoaded=true;
     // Parallel fetch all data for the overview
-    const [statsRes, ordersRes, slipsRes, overdueRes] = await Promise.all([
+    const [statsRes, ordersRes, slipsRes, overdueRes, pendingBdoRes, matchedTodayRes] = await Promise.all([
         whApiCall({action:'stats'}),
         whApiCall({action:'order_grouped_today', limit:5, offset:0}),
         fetch('api/slips-list.php?status=pending&limit=5&offset=0').then(r=>r.json()).catch(()=>({success:false})),
-        whApiCall({action:'customer_list', invoice_filter:'overdue', limit:5, offset:0, sort_by:'due_desc'})
+        whApiCall({action:'customer_list', invoice_filter:'overdue', limit:5, offset:0, sort_by:'due_desc'}),
+        whApiCall({action:'pending_bdo_orders', limit:20, offset:0}),
+        fetch('api/slips-list.php?status=matched&limit=20&offset=0').then(r=>r.json()).catch(()=>({success:false}))
     ]);
 
     // ---- KPI Cards ----
@@ -2276,6 +2338,8 @@ async function loadTodayOverview(){
     const kpiSales=document.getElementById('kpiSalesToday');
     const kpiSlips=document.getElementById('kpiSlipsPending');
     const kpiOverdue=document.getElementById('kpiOverdueCustomers');
+    const kpiBdo=document.getElementById('kpiBdosPending');
+    const kpiPaid=document.getElementById('kpiPaymentsToday');
 
     if(statsRes&&statsRes.success){
         const s=statsRes.data;
@@ -2419,7 +2483,6 @@ async function loadTodayOverview(){
 }
 
 // ===== MATCHING DASHBOARD (Slip BDO) =====
-const ODOO_PROD_BASE = 'https://erp.cnyrxapp.com';
 let _matchSlips = [], _matchBdos = [], _matchSuggestions = [];
 let _matchSelectedSlips = new Set(), _matchSelectedBdos = new Set();
 let _matchMatchedToday = [];

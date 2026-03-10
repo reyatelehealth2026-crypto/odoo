@@ -499,7 +499,6 @@
                 <div class="kpi-card" onclick="showSection('webhooks')">
                     <div class="kpi-label">ออเดอร์วันนี้</div>
                     <div class="kpi-value" id="kpiOrdersToday" style="color:var(--primary);">-</div>
-                    <div class="kpi-sub">คลิกดูรายละเอียด</div>
                 </div>
                 <div class="kpi-card" onclick="showSection('webhooks')">
                     <div class="kpi-label">ยอดขายวันนี้</div>
@@ -510,6 +509,16 @@
                     <div class="kpi-label">สลิปรอตรวจสอบ</div>
                     <div class="kpi-value" id="kpiSlipsPending" style="color:#d97706;">-</div>
                     <div class="kpi-sub">คลิกจัดการ</div>
+                </div>
+                <div class="kpi-card" onclick="showSection('matching')">
+                    <div class="kpi-label">BDO รอชำระ</div>
+                    <div class="kpi-value" id="kpiBdosPending" style="color:#7c3aed;">-</div>
+                    <div class="kpi-sub">ยอดรอจับคู่</div>
+                </div>
+                <div class="kpi-card" onclick="showSection('matching')">
+                    <div class="kpi-label">ยอดชำระวันนี้</div>
+                    <div class="kpi-value" id="kpiPaymentsToday" style="color:#0891b2;">-</div>
+                    <div class="kpi-sub">จากสลิปที่จับคู่แล้ว</div>
                 </div>
                 <div class="kpi-card" onclick="showSection('customers')">
                     <div class="kpi-label">ลูกค้าค้างชำระ</div>
