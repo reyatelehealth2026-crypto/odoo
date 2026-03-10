@@ -609,29 +609,36 @@ async function showCustomerDetail(ref, partnerId, custName){
         } else {
             html += '<p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.75rem;">\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14 ' + Number(bdoRes.data.total||0).toLocaleString() + ' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23</p>';
             const ODOO_BASE = 'https://erp.cnyrxapp.com';
-            const BDO_PAY_STATUS = {pending:{bg:'#fef3c7',clr:'#d97706',lbl:'\u0e23\u0e2d\u0e0a\u0e33\u0e23\u0e30',icon:'clock'},slip_uploaded:{bg:'#dbeafe',clr:'#1d4ed8',lbl:'\u0e2d\u0e31\u0e1e\u0e2a\u0e25\u0e34\u0e1b\u0e41\u0e25\u0e49\u0e27',icon:'cloud-upload'},matched:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27',icon:'check-circle'},paid:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27',icon:'check-circle-fill'}};
+            const BDO_PAY_STATUS = {pending:{bg:'#fef3c7',clr:'#d97706',lbl:'\u0e23\u0e2d\u0e0a\u0e33\u0e23\u0e30',icon:'clock'},partial:{bg:'#ffedd5',clr:'#ea580c',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e1a\u0e32\u0e07\u0e2a\u0e48\u0e27\u0e19',icon:'hourglass-split'},slip_uploaded:{bg:'#dbeafe',clr:'#1d4ed8',lbl:'\u0e2d\u0e31\u0e1e\u0e2a\u0e25\u0e34\u0e1b\u0e41\u0e25\u0e49\u0e27',icon:'cloud-upload'},matched:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27',icon:'check-circle'},paid:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27',icon:'check-circle-fill'}};
             const PAYMENT_LABELS = {promptpay:'\u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e40\u0e1e\u0e22\u0e4c',bank_transfer:'\u0e42\u0e2d\u0e19\u0e40\u0e07\u0e34\u0e19'};
             html += '<div style="display:flex;flex-direction:column;gap:0.75rem;">';
-            bdos.forEach(function(bdo){
+            bdos.slice().sort(function(a, b){
+                const aState = normalizeBdoPaymentStatus(a);
+                const bState = normalizeBdoPaymentStatus(b);
+                const rank = {pending:0, partial:1, slip_uploaded:2, matched:3, paid:4};
+                return (rank[aState.key] ?? 99) - (rank[bState.key] ?? 99);
+            }).forEach(function(bdo){
                 const _bdoId = bdo.bdo_id || bdo.id || '';
                 const bdoName = bdo.bdo_name || ('BDO-'+_bdoId);
                 const orderName = bdo.order_name || '-';
                 const orderId = bdo.order_id || '';
                 const dt = _fmtDt(bdo.bdo_date || bdo.updated_at || bdo.synced_at || bdo.processed_at);
                 const amt = bdo.amount_total != null ? '\u0e3f'+Number(bdo.amount_total).toLocaleString() : '-';
-                const payStatus = bdo.payment_status || 'pending';
+                const paymentState = normalizeBdoPaymentStatus(bdo);
+                const payStatus = paymentState.key;
                 const ps = BDO_PAY_STATUS[payStatus] || BDO_PAY_STATUS.pending;
                 const payMethod = PAYMENT_LABELS[bdo.payment_method] || bdo.payment_method || '';
                 const deliveryTypeLabel = bdo.delivery_type === 'company' ? 'สายส่ง' : (bdo.delivery_type === 'private' ? 'ขนส่งเอกชน' : '');
                 const customerLabel = bdo.customer_name || bdo.customer_ref || '';
                 const statementUrl = 'api/odoo-dashboard-api.php?action=statement_pdf&bdo_id=' + encodeURIComponent(String(_bdoId));
-                const isPending = payStatus === 'pending';
+                const isPending = payStatus === 'pending' || payStatus === 'partial';
                 const isMatched = payStatus === 'matched' || payStatus === 'slip_uploaded';
+                const isPaid = payStatus === 'paid';
                 // Find linked slip for this BDO
                 const linkedSlip = slips.find(function(s){ return s.bdo_id && String(s.bdo_id) === String(_bdoId); });
                 const linkedInv = invoicesAll.find(function(inv){ return inv.order_name && inv.order_name === bdo.order_name; });
-                const cardBg = isPending ? '#fffbeb' : (isMatched ? '#f0fdf4' : 'white');
-                const cardBorder = isPending ? '#fde68a' : (isMatched ? '#bbf7d0' : 'var(--gray-200)');
+                const cardBg = isPending ? '#fffbeb' : (isMatched ? '#eff6ff' : (isPaid ? '#f0fdf4' : 'white'));
+                const cardBorder = isPending ? '#fde68a' : (isMatched ? '#bfdbfe' : (isPaid ? '#bbf7d0' : 'var(--gray-200)'));
 
                 html += '<div style="background:'+cardBg+';border:1.5px solid '+cardBorder+';border-radius:12px;padding:0.85rem 1rem;">';
                 // Row 1: BDO name + badge + ID
@@ -640,7 +647,7 @@ async function showCustomerDetail(ref, partnerId, custName){
                 html += '<div style="font-size:0.62rem;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">เลข BDO</div>';
                 html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
                 html += '<a class="ref-link" href="javascript:void(0)" onclick="openBdoDetail(\''+escapeHtml(String(_bdoId))+'\',\''+escapeHtml(bdoName)+'\', decodeURIComponent(\''+encodeURIComponent(JSON.stringify(bdo))+'\'))" style="font-weight:600;font-size:0.9rem;">'+escapeHtml(bdoName)+'</a>';
-                html += '<span style="background:'+ps.bg+';color:'+ps.clr+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;"><i class="bi bi-'+ps.icon+'" style="font-size:0.68rem;"></i> '+ps.lbl+'</span>';
+                html += '<span style="background:'+ps.bg+';color:'+ps.clr+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;"><i class="bi bi-'+ps.icon+'" style="font-size:0.68rem;"></i> '+escapeHtml(paymentState.label || ps.lbl)+'</span>';
                 if(deliveryTypeLabel){
                     html += '<span style="background:#f0f9ff;color:#0369a1;padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;border:1px solid #bae6fd;"><i class="bi bi-truck" style="font-size:0.68rem;"></i> '+escapeHtml(deliveryTypeLabel)+'</span>';
                 }
@@ -662,6 +669,7 @@ async function showCustomerDetail(ref, partnerId, custName){
                 }
                 html += '<span><i class="bi bi-calendar3" style="font-size:0.7rem;"></i> '+dt+'</span>';
                 if(payMethod) html += '<span>\u0e0a\u0e33\u0e23\u0e30: '+escapeHtml(payMethod)+'</span>';
+                if(paymentState.residual > 0) html += '<span>คงเหลือ: \u0e3f'+Number(paymentState.residual).toLocaleString()+'</span>';
                 if(bdo.statement_pdf_path){
                     html += '<a href="'+statementUrl+'" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:none;font-weight:500;"><i class="bi bi-file-earmark-pdf"></i> Statement PDF</a>';
                 }
@@ -671,8 +679,10 @@ async function showCustomerDetail(ref, partnerId, custName){
                 html += '<span style="font-weight:700;font-size:1rem;color:var(--gray-800);">'+amt+'</span>';
                 html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
                 if(isPending){
-                    const bdoDataAttr = escapeHtml(JSON.stringify({bdo_id:_bdoId,bdo_name:bdoName,order_name:orderName,amount_total:bdo.amount_total,payment_method:bdo.payment_method}));
-                    html += '<button onclick=\'openBdoSlipAttach('+escapeHtml(JSON.stringify({bdo_id:_bdoId,bdo_name:bdoName,order_name:orderName,amount_total:bdo.amount_total}))+','+escapeHtml(JSON.stringify(slips.filter(function(s){return s.status==="pending";})))+')\' style="background:#059669;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;"><i class="bi bi-paperclip"></i> \u0e41\u0e19\u0e1a\u0e2a\u0e25\u0e34\u0e1b</button>';
+                    html += '<button onclick=\'openBdoSlipAttach('+escapeHtml(JSON.stringify({bdo_id:_bdoId,bdo_name:bdoName,order_name:orderName,amount_total:bdo.amount_total,payment_method:bdo.payment_method,payment_status:payStatus,status_display:paymentState.label,amount_residual:paymentState.residual}))+','+escapeHtml(JSON.stringify(slips.filter(function(s){return s.status==="pending";})))+')\' style="background:#059669;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;"><i class="bi bi-paperclip"></i> \u0e41\u0e19\u0e1a\u0e2a\u0e25\u0e34\u0e1b</button>';
+                }
+                if(isPaid){
+                    html += '<span style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:4px 10px;font-size:0.75rem;font-weight:600;"><i class="bi bi-lock-fill"></i> ปิดแนบสลิปแล้ว</span>';
                 }
                 if(isMatched){
                     const slipUpId = linkedSlip ? (linkedSlip.id||'') : '';
@@ -2408,7 +2418,7 @@ async function loadTodayOverview(){
     }
 }
 
-// ===== MATCHING DASHBOARD (Slip ↔ BDO) =====
+// ===== MATCHING DASHBOARD (Slip BDO) =====
 const ODOO_PROD_BASE = 'https://erp.cnyrxapp.com';
 let _matchSlips = [], _matchBdos = [], _matchSuggestions = [];
 let _matchSelectedSlips = new Set(), _matchSelectedBdos = new Set();
@@ -2445,7 +2455,10 @@ async function loadMatchingDashboard(){
 
     // KPI
     const pendingSlips = _matchSlips.filter(function(s){ return s.status === 'pending' || s.status === 'new'; });
-    const pendingBdos = _matchBdos.filter(function(b){ return (b.payment_status || 'pending') === 'pending'; });
+    const pendingBdos = _matchBdos.filter(function(b){
+        const paymentState = normalizeBdoPaymentStatus(b);
+        return paymentState.key === 'pending' || paymentState.key === 'partial';
+    });
     const problemSlips = _matchSlips.filter(function(s){ return s.status === 'failed'; });
 
     const kpiPending = document.getElementById('matchKpiPending');
@@ -2606,13 +2619,13 @@ function _renderMatchBdoCard(bdo){
         + '<input type="checkbox" ' + (selected ? 'checked' : '') + ' onclick="event.stopPropagation();toggleMatchBdo(' + bdoId + ')" style="margin-top:0.2rem;">'
         + '<div style="flex:1;min-width:0;">'
         + '<div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">'
-        + '<div style="font-weight:700;font-size:0.88rem;color:var(--gray-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(bdoName) + '</div>'
+        + '<div style="font-weight:700;font-size:0.88rem;color:var(--gray-800);">' + escapeHtml(bdoName) + '</div>'
         + badge
         + '</div>'
         + '<div style="font-weight:700;font-size:0.95rem;color:#d97706;">' + amount + '</div>'
         + '<div style="font-size:0.8rem;color:var(--gray-800);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(customer.name) + '</div>'
         + '<div style="font-size:0.72rem;color:var(--gray-500);font-weight:500;">' + escapeHtml(customer.ref) + '</div>'
-        + '<div style="font-size:0.68rem;color:var(--gray-400);">' + escapeHtml(bdo.order_name || '-') + ' · ' + bdoDate + '</div>'
+        + '<div style="font-size:0.68rem;color:var(--gray-400);">' + escapeHtml(b.order_name||'-') + ' · ' + bdoDate + '</div>'
         + '</div>'
         + '</div>';
 }
@@ -2659,7 +2672,10 @@ function toggleMatchBdo(bdoId){
     renderMatchBdoList(_matchBdos.filter(function(b){
         return document.getElementById('matchFilterMode')?.value === 'matched'
             ? true
-            : ((b.payment_status || 'pending') === 'pending') && !_getSuggestionForBdo(b.bdo_id || b.id);
+            : (function(){
+                const paymentState = normalizeBdoPaymentStatus(b);
+                return (paymentState.key === 'pending' || paymentState.key === 'partial') && !_getSuggestionForBdo(b.bdo_id || b.id);
+            })();
     }));
     updateMatchSummaryBar();
 }
@@ -2746,7 +2762,10 @@ function computeSmartMatches(slips, bdos){
     const usedSlips = new Set();
     const usedBdos = new Set();
     const pendingSlips = slips.filter(function(s){ return s.status === 'pending' || s.status === 'new'; });
-    const pendingBdos = bdos.filter(function(b){ return (b.payment_status || 'pending') === 'pending'; });
+    const pendingBdos = bdos.filter(function(b){
+        const paymentState = normalizeBdoPaymentStatus(b);
+        return paymentState.key === 'pending' || paymentState.key === 'partial';
+    });
 
     // Priority 1: bdo_id direct match
     pendingSlips.forEach(function(slip, si){
@@ -3038,6 +3057,11 @@ async function unmatchFromDashboard(slipInboxId){
 let _bsaBdoData=null, _bsaSlips=[], _bsaSelectedSlipId=null, _bsaFileBase64=null;
 
 function openBdoSlipAttach(bdoData, pendingSlips){
+    const paymentState = normalizeBdoPaymentStatus(bdoData || {});
+    if(paymentState.key === 'paid'){
+        alert('BDO นี้ชำระแล้ว จึงปิดการแนบสลิป');
+        return;
+    }
     _bsaBdoData=bdoData;
     _bsaSlips=pendingSlips||[];
     _bsaSelectedSlipId=null;
@@ -3063,7 +3087,7 @@ function openBdoSlipAttach(bdoData, pendingSlips){
             if(thumb){
                 gh+='<img src="'+escapeHtml(thumb)+'" style="width:100%;height:70px;object-fit:cover;" onerror="this.style.display=\'none\'">';
             } else {
-                gh+='<div style="width:100%;height:70px;background:var(--gray-100);display:flex;align-items:center;justify-content:center;"><i class="bi bi-image" style="color:var(--gray-400);font-size:1.2rem;"></i></div>';
+                gh+='<div style="width:100%;height:70px;background:var(--gray-100);border-radius:8px;display:flex;align-items:center;justify-content:center;"><i class="bi bi-image" style="color:var(--gray-400);font-size:1.2rem;"></i></div>';
             }
             gh+='<div style="font-size:0.7rem;padding:3px;color:var(--gray-600);">'+amt+'</div>';
             gh+='</div>';
@@ -3121,6 +3145,12 @@ function bsaClearPreview(){
 
 async function bsaConfirmAttach(){
     if(!_bsaBdoData)return;
+    const paymentState = normalizeBdoPaymentStatus(_bsaBdoData || {});
+    if(paymentState.key === 'paid'){
+        alert('BDO นี้ชำระแล้ว จึงไม่สามารถแนบสลิปเพิ่มได้');
+        closeBdoSlipAttach();
+        return;
+    }
     const btn=document.getElementById('bsaConfirmBtn');
     btn.disabled=true;btn.innerHTML='<i class="bi bi-hourglass-split"></i> \u0e01\u0e33\u0e25\u0e31\u0e07\u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01...';
     try{

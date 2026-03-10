@@ -336,7 +336,7 @@ $results[] = testModule('File System', function() {
     
     // Check error_log - try multiple paths
     $errorLogPaths = [
-        '/var/www/vhosts/flexrich.site/logs/clinicya.re-ya.com/error_log',
+        '/var/www/vhosts/flexrich.site/logs/cny.re-ya.com/error_log',
         __DIR__ . '/error_log'
     ];
     $errorLogFound = false;
@@ -401,7 +401,7 @@ $results[] = testModule('Recent Errors', function() use ($db) {
     
     // Check PHP error log - try multiple paths
     $errorLogPaths = [
-        '/var/www/vhosts/flexrich.site/logs/clinicya.re-ya.com/error_log',
+        '/var/www/vhosts/flexrich.site/logs/cny.re-ya.com/error_log',
         __DIR__ . '/error_log'
     ];
     foreach ($errorLogPaths as $errorLog) {

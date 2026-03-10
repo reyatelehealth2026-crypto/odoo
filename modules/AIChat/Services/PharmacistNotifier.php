@@ -913,6 +913,6 @@ class PharmacistNotifier
         }
         
         // Fallback to direct URL
-        return "https://clinicya.re-ya.com/liff/";
+        return "https://cny.re-ya.com/liff/";
     }
 }

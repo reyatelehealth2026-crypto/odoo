@@ -1808,7 +1808,7 @@ class TriageEngine
     private function getCheckoutUrl(): string
     {
         // Use actual LIFF URL
-        return "https://clinicya.re-ya.com/liff/";
+        return "https://cny.re-ya.com/liff/";
     }
     
     // ==================== Utility Methods ====================

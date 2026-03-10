@@ -120,7 +120,7 @@ try {
 $phpErrorLog = '';
 $errorLogPath = ini_get('error_log');
 $possiblePaths = [
-    '/var/www/vhosts/flexrich.site/logs/clinicya.re-ya.com/error_log',  // Plesk server log
+    '/var/www/vhosts/flexrich.site/logs/cny.re-ya.com/error_log',  // Plesk server log
     __DIR__ . '/error_log',  // Local error_log
     $errorLogPath,
     __DIR__ . '/php_errors.log',
