@@ -9,6 +9,7 @@
 require_once 'config/config.php';
 require_once 'config/database.php';
 require_once 'classes/CRMManager.php';
+require_once 'classes/DripCampaignService.php';
 
 $db = Database::getInstance()->getConnection();
 $pageTitle = 'Drip Campaigns';
@@ -37,8 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Include header to get $currentBotId
 require_once 'includes/header.php';
 
-// Initialize CRM after header
+// Initialize services after header
 $crm = new CRMManager($db, $currentBotId ?? null);
+$dripService = new DripCampaignService($db, $currentBotId ?? null);
 
 // Handle create campaign (after header because it needs $crm)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create_campaign') {
@@ -91,7 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$campaigns = $crm->getCampaigns();
+$campaigns = $dripService->listCampaignsWithStats();
+$queueSummary = $dripService->getQueueSummary();
 
 // Check if editing a campaign
 $editCampaignId = (int)($_GET['edit'] ?? 0);
@@ -100,12 +103,10 @@ $editSteps = [];
 $nextStepOrder = 1;
 
 if ($editCampaignId) {
-    $stmt = $db->prepare("SELECT * FROM drip_campaigns WHERE id = ?");
-    $stmt->execute([$editCampaignId]);
-    $editCampaign = $stmt->fetch(PDO::FETCH_ASSOC);
+    $editCampaign = $dripService->getCampaign($editCampaignId);
     
     if ($editCampaign) {
-        $editSteps = $crm->getCampaignSteps($editCampaignId);
+        $editSteps = $dripService->getCampaignSteps($editCampaignId);
         $nextStepOrder = count($editSteps) + 1;
     }
 }

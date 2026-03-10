@@ -13,6 +13,8 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../classes/LineAPI.php';
 require_once __DIR__ . '/../classes/LineAccountManager.php';
+require_once __DIR__ . '/../classes/FacebookMessengerAPI.php';
+require_once __DIR__ . '/../classes/TikTokShopAPI.php';
 
 $db = Database::getInstance()->getConnection();
 $currentBotId = $_SESSION['current_bot_id'] ?? 1;
@@ -149,7 +151,8 @@ try {
             break;
 
         case 'send':
-            // Send message
+            // Send message to LINE only (don't save to database)
+            // Next.js will handle saving to Prisma database
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 throw new Exception('POST required');
             }
@@ -157,13 +160,28 @@ try {
             $userId = intval($_POST['user_id'] ?? 0);
             $message = trim($_POST['message'] ?? '');
             $messageType = $_POST['type'] ?? 'text';
+            $sentByParam = $_POST['sent_by'] ?? null;
 
-            if (!$userId || !$message) {
+            $replyToId = intval($_POST['reply_to_id'] ?? 0);
+            // Accept quote_token from request (passed from Next.js API)
+            $quoteTokenFromRequest = trim($_POST['quote_token'] ?? '');
+
+            if ($userId <= 0 || empty($message)) {
                 throw new Exception('user_id and message required');
             }
+            if (mb_strlen($message) > 2000) {
+                throw new Exception('Message content is too long (max 2000 characters)');
+            }
 
-            // Get user info
-            $stmt = $db->prepare("SELECT line_user_id, line_account_id, reply_token, reply_token_expires FROM users WHERE id = ?");
+            // Get user info including platform
+            $stmt = $db->prepare("
+                SELECT line_user_id, line_account_id, reply_token, reply_token_expires,
+                       COALESCE(platform, 'line') AS platform,
+                       platform_user_id,
+                       facebook_account_id,
+                       tiktok_account_id
+                FROM users WHERE id = ?
+            ");
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -171,91 +189,192 @@ try {
                 throw new Exception('User not found');
             }
 
-            // Send via LINE
-            $lineManager = new LineAccountManager($db);
-            $line = $lineManager->getLineAPI($user['line_account_id']);
+            $platform = $user['platform'] ?? 'line';
 
-            if (method_exists($line, 'sendMessage')) {
-                $result = $line->sendMessage(
-                    $user['line_user_id'],
-                    $message,
-                    $user['reply_token'] ?? null,
-                    $user['reply_token_expires'] ?? null,
-                    $db,
-                    $userId
-                );
+            // ----------------------------------------------------------------
+            // Platform-aware send routing
+            // ----------------------------------------------------------------
+
+            if ($platform === 'facebook') {
+                // --- Facebook Messenger ---
+                $fbAccountId = (int) ($user['facebook_account_id'] ?? 0);
+                $fbStmt = $db->prepare("SELECT * FROM facebook_accounts WHERE id = ? AND is_active = 1 LIMIT 1");
+                $fbStmt->execute([$fbAccountId]);
+                $fbAccount = $fbStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$fbAccount) {
+                    throw new Exception('Facebook account not found or inactive');
+                }
+
+                $fbApi  = new FacebookMessengerAPI($fbAccount);
+                $psid   = $user['platform_user_id'] ?? $user['line_user_id'];
+                $result = $fbApi->sendTextMessage($psid, $message);
+
+                if (!($result['success'] ?? false)) {
+                    throw new Exception('Facebook API Error: ' . json_encode($result['error'] ?? 'Unknown'));
+                }
+
+                echo json_encode([
+                    'success'  => true,
+                    'message'  => 'Message sent to Facebook Messenger successfully',
+                    'platform' => 'facebook',
+                ]);
+
+            } elseif ($platform === 'tiktok') {
+                // --- TikTok Shop ---
+                $tkAccountId = (int) ($user['tiktok_account_id'] ?? 0);
+                $tkStmt = $db->prepare("SELECT * FROM tiktok_shop_accounts WHERE id = ? AND is_active = 1 LIMIT 1");
+                $tkStmt->execute([$tkAccountId]);
+                $tkAccount = $tkStmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$tkAccount) {
+                    throw new Exception('TikTok Shop account not found or inactive');
+                }
+
+                $tkApi          = new TikTokShopAPI($tkAccount);
+                $conversationId = $user['platform_user_id'] ?? $user['line_user_id'];
+                $result         = $tkApi->sendMessage($conversationId, $message);
+
+                if (!($result['success'] ?? false)) {
+                    throw new Exception('TikTok API Error: ' . json_encode($result['message'] ?? 'Unknown'));
+                }
+
+                echo json_encode([
+                    'success'  => true,
+                    'message'  => 'Message sent to TikTok Shop successfully',
+                    'platform' => 'tiktok',
+                ]);
+
             } else {
-                $result = $line->pushMessage($user['line_user_id'], [['type' => 'text', 'text' => $message]]);
-                $result['method'] = 'push';
+                // --- LINE (default) ---
+
+                // Get quoteToken - prioritize from request, then try database
+                $quoteToken = null;
+                if (!empty($quoteTokenFromRequest)) {
+                    $quoteToken = $quoteTokenFromRequest;
+                } elseif ($replyToId > 0) {
+                    try {
+                        $check = $db->query("SHOW COLUMNS FROM messages LIKE 'quote_token'");
+                        if ($check->rowCount() > 0) {
+                            $stmt = $db->prepare("SELECT quote_token FROM messages WHERE id = ?");
+                            $stmt->execute([$replyToId]);
+                            $quoteToken = $stmt->fetchColumn();
+                        }
+
+                        if (!$quoteToken) {
+                            $stmt = $db->prepare("SELECT metadata FROM messages WHERE id = ?");
+                            $stmt->execute([$replyToId]);
+                            $metadata = $stmt->fetchColumn();
+                            if ($metadata) {
+                                $metadataObj = json_decode($metadata, true);
+                                if (isset($metadataObj['quoteToken'])) {
+                                    $quoteToken = $metadataObj['quoteToken'];
+                                }
+                            }
+                        }
+                    } catch (Exception $e) {
+                        // Ignore if column doesn't exist
+                    }
+                }
+
+                $messagePayload = $message;
+                if ($quoteToken) {
+                    $messagePayload = [
+                        'type'       => $messageType,
+                        'text'       => $message,
+                        'quoteToken' => $quoteToken,
+                    ];
+                }
+
+                $lineManager = new LineAccountManager($db);
+                $line        = $lineManager->getLineAPI($user['line_account_id']);
+
+                if (method_exists($line, 'sendMessage')) {
+                    $result = $line->sendMessage(
+                        $user['line_user_id'],
+                        $messagePayload,
+                        $user['reply_token'] ?? null,
+                        $user['reply_token_expires'] ?? null,
+                        $db,
+                        $userId
+                    );
+                } else {
+                    $msgs   = is_array($messagePayload) ? [$messagePayload] : [['type' => 'text', 'text' => $messagePayload]];
+                    $result = $line->pushMessage($user['line_user_id'], $msgs);
+                    $result['method'] = 'push';
+                }
+
+                if ($result['code'] !== 200) {
+                    throw new Exception('LINE API Error: ' . ($result['error'] ?? 'Unknown'));
+                }
+
+                // Extract sentMessages from LINE API response
+                // LINE returns: { "sentMessages": [{ "id": "LINE_MSG_ID", "quoteToken": "..." }] }
+                $sentMessages = $result['body']['sentMessages'] ?? [];
+                $sentLineMessageId = $sentMessages[0]['id'] ?? null;
+                $sentQuoteToken = $sentMessages[0]['quoteToken'] ?? null;
+
+                echo json_encode([
+                    'success'        => true,
+                    'message'        => 'Message sent to LINE successfully',
+                    'method'         => $result['method'] ?? 'push',
+                    'line_sent'      => true,
+                    'platform'       => 'line',
+                    'lineMessageId'  => $sentLineMessageId,
+                    'quoteToken'     => $sentQuoteToken,
+                    'sentMessages'   => $sentMessages,
+                ]);
             }
-
-            if ($result['code'] !== 200) {
-                throw new Exception('LINE API Error: ' . ($result['error'] ?? 'Unknown'));
-            }
-
-            // Save to database - ใช้ username เป็นหลัก เพราะ display_name อาจว่าง
-            $adminUser = $_SESSION['admin_user'] ?? [];
-            $adminName = !empty($adminUser['username']) ? $adminUser['username'] : (!empty($adminUser['display_name']) ? $adminUser['display_name'] : 'Admin');
-            $sentBy = 'admin:' . $adminName;
-
-            // Check if sent_by column exists
-            $hasSentBy = false;
-            try {
-                $checkCol = $db->query("SHOW COLUMNS FROM messages LIKE 'sent_by'");
-                $hasSentBy = $checkCol->rowCount() > 0;
-            } catch (Exception $e) {
-            }
-
-            if ($hasSentBy) {
-                $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, sent_by, created_at, is_read) 
-                                      VALUES (?, ?, 'outgoing', ?, ?, ?, NOW(), 1)");
-                $stmt->execute([$user['line_account_id'], $userId, $messageType, $message, $sentBy]);
-            } else {
-                $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, created_at, is_read) 
-                                      VALUES (?, ?, 'outgoing', ?, ?, NOW(), 1)");
-                $stmt->execute([$user['line_account_id'], $userId, $messageType, $message]);
-            }
-
-
-
-            $messageId = $db->lastInsertId();
-
-            // Log activity
-            require_once __DIR__ . '/../classes/ActivityLogger.php';
-            $activityLogger = ActivityLogger::getInstance($db);
-            $activityLogger->logMessage(ActivityLogger::ACTION_SEND, 'ส่งข้อความถึงลูกค้า', [
-                'user_id' => $userId,
-                'message_id' => $messageId,
-                'message_type' => $messageType,
-                'content' => $message,
-                'sent_by' => $sentBy
-            ]);
-
-            echo json_encode([
-                'success' => true,
-                'message_id' => $messageId,
-                'content' => $message,
-                'time' => date('H:i'),
-                'method' => $result['method'] ?? 'push',
-                'sent_by' => $sentBy
-            ]);
             break;
 
         case 'mark_read':
-            // Mark messages as read
+            // Mark messages as read in local database
             $userId = intval($_POST['user_id'] ?? $_GET['user_id'] ?? 0);
 
             if (!$userId) {
                 throw new Exception('user_id required');
             }
 
+            // Get markAsReadTokens before updating database
+            $tokens = [];
+            try {
+                $stmt = $db->prepare("SELECT mark_as_read_token FROM messages WHERE user_id = ? AND direction = 'incoming' AND is_read = 0 AND mark_as_read_token IS NOT NULL");
+                $stmt->execute([$userId]);
+                $tokens = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            } catch (Exception $e) {
+                // Ignore if column doesn't exist
+            }
+
+            // Update local database
             $stmt = $db->prepare("UPDATE messages SET is_read = 1 WHERE user_id = ? AND direction = 'incoming' AND is_read = 0");
             $stmt->execute([$userId]);
             $affected = $stmt->rowCount();
 
+            // Notify LINE to mark as read
+            if (!empty($tokens)) {
+                try {
+                    // Get bot ID for this user
+                    $stmt = $db->prepare("SELECT line_account_id FROM users WHERE id = ?");
+                    $stmt->execute([$userId]);
+                    $lineAccountId = $stmt->fetchColumn();
+
+                    if ($lineAccountId) {
+                        $lineManager = new LineAccountManager($db);
+                        $line = $lineManager->getLineAPI($lineAccountId);
+                        if (method_exists($line, 'markMultipleAsRead')) {
+                            $line->markMultipleAsRead($tokens);
+                        }
+                    }
+                } catch (Exception $e) {
+                    // Log error but don't fail the request
+                    error_log("Failed to mark messages as read on LINE: " . $e->getMessage());
+                }
+            }
+
             echo json_encode([
                 'success' => true,
-                'marked' => $affected
+                'marked' => $affected,
+                'line_marked' => count($tokens)
             ]);
             break;
 

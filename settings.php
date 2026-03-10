@@ -345,6 +345,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $accountId = (int) ($currentBotId ?: 0);
             $emailAddresses = trim($_POST['email_addresses'] ?? '');
             $notifyAdminUsers = isset($_POST['notify_admin_users']) ? implode(',', $_POST['notify_admin_users']) : '';
+            $odooEvents = isset($_POST['odoo_liff_notify_events']) && is_array($_POST['odoo_liff_notify_events'])
+                ? implode(',', array_map('trim', $_POST['odoo_liff_notify_events']))
+                : '';
 
             $data = [
                 $accountId,
@@ -360,6 +363,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 isset($_POST['email_notify_daily_report']) ? 1 : 0,
                 isset($_POST['email_notify_low_stock']) ? 1 : 0,
                 isset($_POST['telegram_enabled']) ? 1 : 0,
+                isset($_POST['odoo_liff_notify_enabled']) ? 1 : 0,
+                $odooEvents,
                 $notifyAdminUsers
             ];
 
@@ -367,8 +372,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (line_account_id, line_notify_enabled, line_notify_new_order, line_notify_payment, 
                  line_notify_urgent, line_notify_appointment, line_notify_low_stock,
                  email_enabled, email_addresses, email_notify_urgent, email_notify_daily_report, email_notify_low_stock,
-                 telegram_enabled, notify_admin_users)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 telegram_enabled, odoo_liff_notify_enabled, odoo_liff_notify_events, notify_admin_users)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE 
                 line_notify_enabled = VALUES(line_notify_enabled),
                 line_notify_new_order = VALUES(line_notify_new_order),
@@ -382,10 +387,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 email_notify_daily_report = VALUES(email_notify_daily_report),
                 email_notify_low_stock = VALUES(email_notify_low_stock),
                 telegram_enabled = VALUES(telegram_enabled),
+                odoo_liff_notify_enabled = VALUES(odoo_liff_notify_enabled),
+                odoo_liff_notify_events = VALUES(odoo_liff_notify_events),
                 notify_admin_users = VALUES(notify_admin_users)";
 
             $stmt = $db->prepare($sql);
-            $stmt->execute($data);
             $stmt->execute($data);
             $success = 'บันทึกการตั้งค่าการแจ้งเตือนสำเร็จ';
 
@@ -396,6 +402,102 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } catch (Exception $e) {
             $error = 'เกิดข้อผิดพลาด: ' . $e->getMessage();
+        }
+        $activeTab = 'notifications';
+    }
+    elseif ($action === 'test_odoo_liff_notification') {
+        try {
+            $currentBotId = $_SESSION['current_bot_id'] ?? null;
+            $accountId = (int) ($currentBotId ?: 0);
+            $lineUserId = trim($_POST['test_line_user_id'] ?? '');
+            $eventCode = trim($_POST['test_odoo_event'] ?? 'order.validated');
+            $orderRef = trim($_POST['test_order_ref'] ?? 'SO-TEST-001');
+            $customerName = trim($_POST['test_customer_name'] ?? 'ลูกค้าทดสอบ');
+
+            if ($lineUserId === '') {
+                throw new Exception('กรุณาระบุ LINE User ID ที่ต้องการทดสอบส่ง');
+            }
+
+            $eventLabels = [
+                'order.validated' => 'ยืนยันออเดอร์',
+                'order.awaiting_payment' => 'รอชำระเงิน',
+                'order.paid' => 'ชำระเงินแล้ว',
+                'order.to_delivery' => 'เตรียมส่ง',
+                'order.in_delivery' => 'กำลังจัดส่ง',
+                'order.delivered' => 'จัดส่งสำเร็จ',
+                'invoice.created' => 'ออกใบแจ้งหนี้',
+                'invoice.overdue' => 'ใบแจ้งหนี้เกินกำหนด',
+            ];
+            if (!isset($eventLabels[$eventCode])) {
+                throw new Exception('สถานะทดสอบไม่ถูกต้อง');
+            }
+
+            $stmt = $db->prepare("SELECT channel_access_token FROM line_accounts WHERE id = ? LIMIT 1");
+            $stmt->execute([$accountId]);
+            $lineAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+            $channelAccessToken = trim($lineAccount['channel_access_token'] ?? '');
+
+            if ($channelAccessToken === '') {
+                $stmt = $db->query("SELECT channel_access_token FROM line_accounts WHERE is_default = 1 LIMIT 1");
+                $lineAccount = $stmt->fetch(PDO::FETCH_ASSOC);
+                $channelAccessToken = trim($lineAccount['channel_access_token'] ?? '');
+            }
+
+            if ($channelAccessToken === '') {
+                throw new Exception('ไม่พบ Channel Access Token สำหรับส่งข้อความ');
+            }
+
+            require_once __DIR__ . '/classes/OdooFlexTemplates.php';
+
+            $message = "[TEST] " . ($eventLabels[$eventCode] ?? $eventCode);
+            $flexBubble = OdooFlexTemplates::odooStatusUpdate($eventCode, [
+                'order_ref' => $orderRef,
+                'event_time' => date('d/m/Y H:i:s'),
+                'amount_total' => 3790.50,
+                'customer' => [
+                    'name' => $customerName,
+                ],
+            ], $message, false);
+
+            $payload = [
+                'to' => $lineUserId,
+                'messages' => [
+                    [
+                        'type' => 'flex',
+                        'altText' => '🧪 ทดสอบแจ้งเตือน Odoo ' . ($eventLabels[$eventCode] ?? $eventCode),
+                        'contents' => $flexBubble,
+                    ]
+                ]
+            ];
+
+            $ch = curl_init('https://api.line.me/v2/bot/message/push');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                CURLOPT_HTTPHEADER => [
+                    'Content-Type: application/json',
+                    'Authorization: Bearer ' . $channelAccessToken,
+                ],
+                CURLOPT_TIMEOUT => 20,
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+
+            if ($curlError) {
+                throw new Exception('เกิดข้อผิดพลาดเครือข่าย: ' . $curlError);
+            }
+
+            if ($httpCode !== 200) {
+                throw new Exception('LINE API ตอบกลับไม่สำเร็จ (' . $httpCode . '): ' . ($response ?: 'no response'));
+            }
+
+            $success = 'ส่งข้อความทดสอบ Odoo → LIFF สำเร็จแล้ว';
+        } catch (Exception $e) {
+            $error = 'ทดสอบส่งแจ้งเตือนไม่สำเร็จ: ' . $e->getMessage();
         }
         $activeTab = 'notifications';
     }

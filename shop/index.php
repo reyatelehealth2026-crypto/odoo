@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../includes/shop-data-source.php';
 if (file_exists(__DIR__ . '/../classes/UnifiedShop.php')) {
     require_once __DIR__ . '/../classes/UnifiedShop.php';
 }
@@ -16,6 +17,8 @@ $currentBotId = $_SESSION['current_bot_id'] ?? 1;
 // Initialize UnifiedShop
 $shop = new UnifiedShop($db, null, $currentBotId);
 $settings = $shop->getSettings();
+$orderDataSource = getShopOrderDataSource($db, $currentBotId);
+$isOdooMode = $orderDataSource === 'odoo';
 
 // Get statistics
 $stats = [
@@ -29,6 +32,8 @@ $stats = [
     'revenue_today' => 0,
     'revenue_month' => 0
 ];
+
+$recentOrders = [];
 
 $productsTable = $shop->getItemsTable();
 $ordersTable = $shop->getOrdersTable();
@@ -51,7 +56,7 @@ if ($productsTable) {
     } catch (Exception $e) {}
 }
 
-if ($ordersTable) {
+if ($ordersTable && !$isOdooMode) {
     try {
         // Order stats
         $stmt = $db->prepare("SELECT 
@@ -81,11 +86,86 @@ if ($ordersTable) {
         $stats['revenue_today'] = $revenueStats['today'] ?? 0;
         $stats['revenue_month'] = $revenueStats['month'] ?? 0;
     } catch (Exception $e) {}
+} elseif ($isOdooMode) {
+    try {
+        $db->query("SELECT 1 FROM odoo_webhooks_log LIMIT 1");
+
+        $orderKeyExpr = "COALESCE(CAST(order_id AS CHAR), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_name')), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_ref')))";
+        $stateExpr = "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.new_state')), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.state')), ''))";
+        $amountExpr = "CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.amount_total')), '0') AS DECIMAL(12,2))";
+        $customerExpr = "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.name')), '-')";
+
+        $where = "status = 'success' AND {$orderKeyExpr} IS NOT NULL AND {$orderKeyExpr} != ''";
+        $params = [];
+        if ($shop->hasColumn('odoo_webhooks_log', 'line_account_id')) {
+            $where .= " AND (line_account_id = ? OR line_account_id IS NULL)";
+            $params[] = $currentBotId;
+        }
+
+        $baseSubquery = "
+            SELECT
+                {$orderKeyExpr} AS order_key,
+                processed_at,
+                {$amountExpr} AS amount_total,
+                {$stateExpr} AS order_state,
+                {$customerExpr} AS customer_name
+            FROM odoo_webhooks_log
+            WHERE {$where}
+        ";
+
+        $statsSql = "
+            SELECT
+                COUNT(*) AS total,
+                SUM(DATE(created_at) = CURDATE()) AS today,
+                SUM(status IN ('draft','sent','pending','confirmed')) AS pending,
+                COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() AND status NOT IN ('cancel','cancelled') THEN amount_total ELSE 0 END), 0) AS revenue_today,
+                COALESCE(SUM(CASE WHEN MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE()) AND status NOT IN ('cancel','cancelled') THEN amount_total ELSE 0 END), 0) AS revenue_month
+            FROM (
+                SELECT
+                    order_key,
+                    MIN(processed_at) AS created_at,
+                    MAX(amount_total) AS amount_total,
+                    SUBSTRING_INDEX(GROUP_CONCAT(order_state ORDER BY processed_at DESC), ',', 1) AS status
+                FROM ({$baseSubquery}) s
+                GROUP BY order_key
+            ) o
+        ";
+
+        $stmt = $db->prepare($statsSql);
+        $stmt->execute($params);
+        $odooStats = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        $stats['orders_total'] = (int) ($odooStats['total'] ?? 0);
+        $stats['orders_today'] = (int) ($odooStats['today'] ?? 0);
+        $stats['orders_pending'] = (int) ($odooStats['pending'] ?? 0);
+        $stats['revenue_today'] = (float) ($odooStats['revenue_today'] ?? 0);
+        $stats['revenue_month'] = (float) ($odooStats['revenue_month'] ?? 0);
+
+        $recentSql = "
+            SELECT
+                order_key AS order_number,
+                MIN(processed_at) AS created_at,
+                MAX(amount_total) AS total_amount,
+                SUBSTRING_INDEX(GROUP_CONCAT(order_state ORDER BY processed_at DESC), ',', 1) AS status,
+                SUBSTRING_INDEX(GROUP_CONCAT(customer_name ORDER BY processed_at DESC), ',', 1) AS display_name
+            FROM ({$baseSubquery}) s
+            GROUP BY order_key
+            ORDER BY created_at DESC
+            LIMIT 5
+        ";
+
+        $stmt = $db->prepare($recentSql);
+        $stmt->execute($params);
+        $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $ordersTable = 'odoo_webhooks_log';
+    } catch (Exception $e) {
+        $recentOrders = [];
+    }
 }
 
 // Get recent orders
-$recentOrders = [];
-if ($ordersTable) {
+if ($ordersTable && !$isOdooMode) {
     try {
         $stmt = $db->prepare("SELECT * FROM {$ordersTable} 
             WHERE line_account_id = ? OR line_account_id IS NULL 
@@ -111,28 +191,35 @@ if ($productsTable) {
 // Get pending slips count
 $pendingSlips = 0;
 $ordersWithPendingSlips = [];
-try {
-    $stmt = $db->prepare("SELECT DISTINCT t.id, t.order_number, t.grand_total, t.created_at, ps.image_url
-        FROM transactions t 
-        INNER JOIN payment_slips ps ON ps.transaction_id = t.id 
-        WHERE ps.status = 'pending' AND (t.line_account_id = ? OR t.line_account_id IS NULL)
-        ORDER BY ps.created_at DESC LIMIT 5");
-    $stmt->execute([$currentBotId]);
-    $ordersWithPendingSlips = $stmt->fetchAll();
-    $pendingSlips = count($ordersWithPendingSlips);
-    
-    // Get total count
-    $stmt = $db->prepare("SELECT COUNT(DISTINCT t.id) FROM transactions t 
-        INNER JOIN payment_slips ps ON ps.transaction_id = t.id 
-        WHERE ps.status = 'pending' AND (t.line_account_id = ? OR t.line_account_id IS NULL)");
-    $stmt->execute([$currentBotId]);
-    $pendingSlips = $stmt->fetchColumn() ?: 0;
-} catch (Exception $e) {}
+if (!$isOdooMode) {
+    try {
+        $stmt = $db->prepare("SELECT DISTINCT t.id, t.order_number, t.grand_total, t.created_at, ps.image_url
+            FROM transactions t 
+            INNER JOIN payment_slips ps ON ps.transaction_id = t.id 
+            WHERE ps.status = 'pending' AND (t.line_account_id = ? OR t.line_account_id IS NULL)
+            ORDER BY ps.created_at DESC LIMIT 5");
+        $stmt->execute([$currentBotId]);
+        $ordersWithPendingSlips = $stmt->fetchAll();
+        $pendingSlips = count($ordersWithPendingSlips);
+        
+        // Get total count
+        $stmt = $db->prepare("SELECT COUNT(DISTINCT t.id) FROM transactions t 
+            INNER JOIN payment_slips ps ON ps.transaction_id = t.id 
+            WHERE ps.status = 'pending' AND (t.line_account_id = ? OR t.line_account_id IS NULL)");
+        $stmt->execute([$currentBotId]);
+        $pendingSlips = $stmt->fetchColumn() ?: 0;
+    } catch (Exception $e) {}
+}
 
 require_once '../includes/header.php';
 
 // Status colors
 $statusColors = [
+    'draft' => 'gray',
+    'sent' => 'blue',
+    'sale' => 'green',
+    'done' => 'green',
+    'cancel' => 'red',
     'pending' => 'yellow',
     'confirmed' => 'blue',
     'paid' => 'green',
@@ -145,6 +232,11 @@ $statusColors = [
 ];
 
 $statusLabels = [
+    'draft' => 'รอดำเนินการ',
+    'sent' => 'ส่งใบเสนอราคา',
+    'sale' => 'ยืนยันแล้ว',
+    'done' => 'เสร็จสิ้น',
+    'cancel' => 'ยกเลิก',
     'pending' => 'รอชำระเงิน',
     'confirmed' => 'ยืนยันแล้ว',
     'paid' => 'ชำระแล้ว',
@@ -203,6 +295,16 @@ $paymentStatusLabels = [
         </a>
     </div>
 </div>
+
+<?php if ($isOdooMode): ?>
+<div class="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-800">
+    <div class="flex items-center gap-2">
+        <i class="fas fa-database"></i>
+        <span class="font-semibold">โหมดข้อมูล: Odoo</span>
+    </div>
+    <p class="text-sm mt-1">Dashboard นี้ดึงยอดขาย/ออเดอร์จากข้อมูลที่รับเข้าจาก Odoo</p>
+</div>
+<?php endif; ?>
 
 <!-- Stats Grid -->
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -365,8 +467,13 @@ $paymentStatusLabels = [
                 $label = $statusLabels[$status] ?? $status;
                 $orderNum = str_replace('ORD', '', $order['order_number']);
                 $grandTotal = $order['grand_total'] ?? $order['total_amount'] ?? 0;
+                $detailUrl = (!$isOdooMode && !empty($order['id'])) ? ('order-detail.php?id=' . $order['id']) : null;
             ?>
-            <a href="order-detail.php?id=<?= $order['id'] ?>" class="p-4 flex items-center justify-between hover:bg-gray-50">
+            <?php if ($detailUrl): ?>
+            <a href="<?= $detailUrl ?>" class="p-4 flex items-center justify-between hover:bg-gray-50">
+            <?php else: ?>
+            <div class="p-4 flex items-center justify-between">
+            <?php endif; ?>
                 <div>
                     <p class="font-medium">#<?= $orderNum ?></p>
                     <p class="text-sm text-gray-500"><?= date('d/m/Y H:i', strtotime($order['created_at'])) ?></p>
@@ -375,7 +482,11 @@ $paymentStatusLabels = [
                     <p class="font-bold text-green-600">฿<?= number_format($grandTotal) ?></p>
                     <span class="inline-block px-2 py-1 text-xs rounded-full bg-<?= $color ?>-100 text-<?= $color ?>-700"><?= $label ?></span>
                 </div>
+            <?php if ($detailUrl): ?>
             </a>
+            <?php else: ?>
+            </div>
+            <?php endif; ?>
             <?php endforeach; ?>
             <?php endif; ?>
         </div>
@@ -444,7 +555,7 @@ $paymentStatusLabels = [
         </div>
         <div>
             <p class="text-gray-500">โหมด</p>
-            <p class="font-medium"><?= $shop->isV25() ? 'V2.5 (Business Items)' : 'Legacy (Products)' ?></p>
+            <p class="font-medium"><?= $isOdooMode ? 'Odoo (Webhook Data)' : 'Shop (Local DB)' ?></p>
         </div>
     </div>
 </div>

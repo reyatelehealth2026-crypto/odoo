@@ -5,41 +5,25 @@
  */
 require_once 'config/config.php';
 require_once 'config/database.php';
+require_once 'classes/LinkTrackingService.php';
 
 $db = Database::getInstance()->getConnection();
 $pageTitle = 'Link Tracking';
 $currentBotId = $_SESSION['current_bot_id'] ?? null;
 
-// Ensure table exists
-try {
-    $db->query("SELECT 1 FROM tracked_links LIMIT 1");
-} catch (Exception $e) {
-    $db->exec("CREATE TABLE IF NOT EXISTS tracked_links (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        line_account_id INT DEFAULT NULL,
-        short_code VARCHAR(20) NOT NULL UNIQUE,
-        original_url TEXT NOT NULL,
-        title VARCHAR(255),
-        click_count INT DEFAULT 0,
-        unique_clicks INT DEFAULT 0,
-        last_clicked_at TIMESTAMP NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_short_code (short_code),
-        INDEX idx_account (line_account_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-}
+$filters = [
+    'search' => trim($_GET['search'] ?? ''),
+    'date_from' => trim($_GET['date_from'] ?? ''),
+    'date_to' => trim($_GET['date_to'] ?? '')
+];
 
-// Get links
-$links = [];
-try {
-    $stmt = $db->prepare("SELECT * FROM tracked_links WHERE line_account_id = ? OR line_account_id IS NULL ORDER BY created_at DESC");
-    $stmt->execute([$currentBotId]);
-    $links = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+$linkService = new LinkTrackingService($db, $currentBotId);
+$links = $linkService->getLinks($filters);
+$stats = $linkService->getStats();
+$usageRatio = $linkService->getUsageRatio();
+$usagePercent = min(100, max(0, round($usageRatio * 100, 1)));
 
 $baseUrl = rtrim(BASE_URL ?? '', '/');
-$totalClicks = array_sum(array_column($links, 'click_count'));
-$uniqueClicks = array_sum(array_column($links, 'unique_clicks'));
 
 require_once 'includes/header.php';
 ?>

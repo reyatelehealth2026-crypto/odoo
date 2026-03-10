@@ -7,24 +7,32 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Prevent direct web access to this include file
+if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) {
+    http_response_code(403);
+    exit('403 Forbidden');
+}
+
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/auth_check.php';
+require_once __DIR__ . '/shop-data-source.php';
 
 /**
  * Get current user's role for menu access control
  * Maps database roles to menu system roles
  * @return string Role: owner, admin, pharmacist, staff, marketing, tech
  */
-function getCurrentUserRole() {
+function getCurrentUserRole()
+{
     global $currentUser;
-    
+
     if (!isset($currentUser['role'])) {
         return 'staff'; // Default role
     }
-    
+
     $dbRole = $currentUser['role'];
-    
+
     // Map database roles to menu system roles
     switch ($dbRole) {
         case 'super_admin':
@@ -48,22 +56,39 @@ function getCurrentUserRole() {
  * @param array $menuItem Menu item with optional 'roles' key
  * @return bool True if user can access the menu item
  */
-function hasMenuAccess($menuItem) {
+function hasMenuAccess($menuItem)
+{
     // If no roles specified, everyone can access
     if (!isset($menuItem['roles']) || empty($menuItem['roles'])) {
         return true;
     }
-    
+
     $userRole = getCurrentUserRole();
-    
+
     // Check if user's role is in the allowed roles array
     return in_array($userRole, $menuItem['roles']);
 }
 
 // Helper function to generate clean URLs (without .php)
-function cleanUrl($url) {
+function cleanUrl($url)
+{
     // Remove .php extension for clean URLs
     return preg_replace('/\.php$/', '', $url);
+}
+
+/**
+ * Log catches that are intentionally empty so we can audit errors.
+ */
+function logHeaderException(Throwable $exception, string $context = 'header.php'): void
+{
+    error_log(sprintf(
+        "[header][%s] %s: %s in %s:%d",
+        $context,
+        get_class($exception),
+        $exception->getMessage(),
+        $exception->getFile(),
+        $exception->getLine()
+    ));
 }
 
 // ถ้าเป็น User ทั่วไป ให้ redirect ไปหน้า User Dashboard
@@ -91,7 +116,7 @@ $baseUrl = '/';
 
 // Handle bot switching
 if (isset($_GET['switch_bot'])) {
-    $_SESSION['current_bot_id'] = (int)$_GET['switch_bot'];
+    $_SESSION['current_bot_id'] = (int) $_GET['switch_bot'];
     $redirectUrl = strtok($_SERVER['REQUEST_URI'], '?');
     header("Location: " . $redirectUrl);
     exit;
@@ -115,10 +140,10 @@ $lineAccounts = [];
 $currentBot = null;
 try {
     $db = Database::getInstance()->getConnection();
-    
+
     // Use getAccessibleBots() which respects user permissions
     $lineAccounts = getAccessibleBots();
-    
+
     if (!empty($lineAccounts)) {
         // Check if current bot is accessible
         if (isset($_SESSION['current_bot_id'])) {
@@ -132,15 +157,26 @@ try {
         // If current bot not accessible or not set, use first accessible
         if (!$currentBot) {
             foreach ($lineAccounts as $acc) {
-                if (!empty($acc['is_default'])) { $currentBot = $acc; break; }
+                if (!empty($acc['is_default'])) {
+                    $currentBot = $acc;
+                    break;
+                }
             }
-            if (!$currentBot) $currentBot = $lineAccounts[0];
+            if (!$currentBot)
+                $currentBot = $lineAccounts[0];
             $_SESSION['current_bot_id'] = $currentBot['id'];
         }
     }
-} catch (Exception $e) {}
+} catch (Exception $e) {
+    logHeaderException($e);
+}
 
 $currentBotId = $currentBot['id'] ?? null;
+$orderDataSource = getShopOrderDataSource($db, $currentBotId);
+$isOdooMode = $orderDataSource === 'odoo';
+$ordersMenuLabel = $isOdooMode ? 'ออเดอร์ (Odoo)' : 'ออเดอร์';
+$dashboardMenuLabel = $isOdooMode ? 'จัดการลูกค้า Odoo' : 'แดชบอร์ดผู้บริหาร';
+$dashboardDefaultHref = $isOdooMode ? '/dashboard?tab=odoo-customers' : '/dashboard?tab=executive';
 
 // Initialize Vibe Selling Helper for v2 toggle (Requirements: 10.6)
 $vibeSellingHelper = null;
@@ -150,6 +186,7 @@ try {
     $vibeSellingHelper = VibeSellingHelper::getInstance($db);
     $inboxUrl = $vibeSellingHelper->isV2Enabled($currentBotId) ? '/inbox-v2' : '/inbox';
 } catch (Exception $e) {
+    logHeaderException($e, 'header-vibe-helper');
     // Fallback to v1 if helper fails
     $inboxUrl = '/inbox';
 }
@@ -162,18 +199,28 @@ try {
     $stmt = $db->prepare("SELECT COUNT(*) FROM messages WHERE is_read = 0 AND direction = 'incoming' AND (line_account_id = ? OR line_account_id IS NULL)");
     $stmt->execute([$currentBotId]);
     $unreadMessages = $stmt->fetchColumn() ?: 0;
-    
+
     // Check orders table
     $ordersTable = null;
-    try { $db->query("SELECT 1 FROM orders LIMIT 1"); $ordersTable = 'orders'; } catch (Exception $e) {}
-    if (!$ordersTable) { try { $db->query("SELECT 1 FROM transactions LIMIT 1"); $ordersTable = 'transactions'; } catch (Exception $e) {} }
-    
+    try {
+        $db->query("SELECT 1 FROM orders LIMIT 1");
+        $ordersTable = 'orders';
+    } catch (Exception $e) {
+    }
+    if (!$ordersTable) {
+        try {
+            $db->query("SELECT 1 FROM transactions LIMIT 1");
+            $ordersTable = 'transactions';
+        } catch (Exception $e) {
+        }
+    }
+
     if ($ordersTable) {
         $stmt = $db->prepare("SELECT COUNT(*) FROM {$ordersTable} WHERE status = 'pending' AND (line_account_id = ? OR line_account_id IS NULL)");
         $stmt->execute([$currentBotId]);
         $pendingOrders = $stmt->fetchColumn() ?: 0;
     }
-    
+
     // Count pending slips
     try {
         $stmt = $db->prepare("SELECT COUNT(DISTINCT ps.transaction_id) FROM payment_slips ps 
@@ -181,8 +228,12 @@ try {
             WHERE ps.status = 'pending' AND (t.line_account_id = ? OR t.line_account_id IS NULL)");
         $stmt->execute([$currentBotId]);
         $pendingSlips = $stmt->fetchColumn() ?: 0;
-    } catch (Exception $e) {}
-} catch (Exception $e) {}
+    } catch (Exception $e) {
+        logHeaderException($e, 'header-count-slips');
+    }
+} catch (Exception $e) {
+    logHeaderException($e, 'header-counts');
+}
 
 // ==================== Quick Access - User Customizable ====================
 // Available quick access menus (using clean URLs without .php)
@@ -191,52 +242,53 @@ try {
 $quickAccessMenus = [
     // ==================== Clinical Station - Unified Care Chat ====================
     'messages' => ['icon' => 'fa-inbox', 'label' => 'กล่องข้อความ', 'url' => $inboxUrl, 'page' => 'inbox', 'badge' => $unreadMessages, 'color' => 'green', 'roles' => ['owner', 'admin', 'pharmacist', 'staff']],
-    'quick-reply' => ['icon' => 'fa-reply-all', 'label' => 'Quick Reply', 'url' => $inboxUrl . '?tab=templates', 'page' => 'inbox', 'color' => 'blue', 'roles' => ['owner', 'admin', 'pharmacist', 'staff']],
+    'quick-reply' => ['icon' => 'fa-comments', 'label' => 'แชทหลัก', 'url' => '/inbox-master', 'page' => 'inbox-master', 'color' => 'blue', 'roles' => ['owner', 'admin', 'pharmacist', 'staff']],
     'chat-analytics' => ['icon' => 'fa-chart-bar', 'label' => 'สถิติแชท', 'url' => $inboxUrl . '?tab=analytics', 'page' => 'inbox', 'color' => 'purple', 'roles' => ['owner', 'admin']],
     'video-call' => ['icon' => 'fa-video', 'label' => 'Video Call', 'url' => '/video-call', 'page' => 'video-call', 'color' => 'red', 'roles' => ['pharmacist', 'staff']],
     'auto-reply' => ['icon' => 'fa-robot', 'label' => 'ตอบอัตโนมัติ', 'url' => '/auto-reply', 'page' => 'auto-reply', 'color' => 'pink', 'roles' => ['pharmacist', 'staff']],
-    
+
     // ==================== Clinical Station - Roster & Shifts (all staff) ====================
     'pharmacist-dashboard' => ['icon' => 'fa-user-md', 'label' => 'Dashboard เภสัชกร', 'url' => '/pharmacy?tab=dashboard', 'page' => 'pharmacy', 'color' => 'emerald'],
     'pharmacists' => ['icon' => 'fa-users', 'label' => 'จัดการเภสัชกร', 'url' => '/pharmacy?tab=pharmacists', 'page' => 'pharmacy', 'color' => 'teal'],
     'appointments' => ['icon' => 'fa-calendar-check', 'label' => 'นัดหมาย', 'url' => '/appointments-admin', 'page' => 'appointments-admin', 'color' => 'amber'],
-    
+
     // ==================== Clinical Station - Medical Copilot AI ====================
     'ai-chat' => ['icon' => 'fa-comments', 'label' => 'AI ตอบแชท', 'url' => '/ai-chat?tab=settings', 'page' => 'ai-chat', 'color' => 'fuchsia', 'roles' => ['pharmacist']],
     'ai-studio' => ['icon' => 'fa-wand-magic-sparkles', 'label' => 'AI Studio', 'url' => '/ai-chat?tab=studio', 'page' => 'ai-chat', 'color' => 'rose', 'roles' => ['pharmacist']],
     'ai-pharmacy' => ['icon' => 'fa-cog', 'label' => 'ตั้งค่า AI เภสัช', 'url' => '/ai-pharmacy-settings', 'page' => 'ai-pharmacy-settings', 'color' => 'purple', 'roles' => ['pharmacist']],
-    
+
     // ==================== Insights & Overview ====================
-    'executive' => ['icon' => 'fa-chart-line', 'label' => 'แดชบอร์ดผู้บริหาร', 'url' => '/dashboard?tab=executive', 'page' => 'dashboard', 'color' => 'indigo', 'roles' => ['owner', 'admin']],
+    'executive' => ['icon' => 'fa-chart-line', 'label' => $dashboardMenuLabel, 'url' => $dashboardDefaultHref, 'page' => 'dashboard', 'color' => 'indigo', 'roles' => ['owner', 'admin']],
     'crm-dashboard' => ['icon' => 'fa-users-cog', 'label' => 'CRM Dashboard', 'url' => '/dashboard?tab=crm', 'page' => 'dashboard', 'color' => 'blue', 'roles' => ['owner', 'admin']],
+    'odoo-customers' => ['icon' => 'fa-file-invoice-dollar', 'label' => 'จัดการลูกค้า Odoo', 'url' => '/dashboard?tab=odoo-customers', 'page' => 'dashboard', 'color' => 'violet', 'roles' => ['owner', 'admin'], 'condition' => $isOdooMode],
     'triage' => ['icon' => 'fa-stethoscope', 'label' => 'สถิติการรักษา', 'url' => '/triage-analytics', 'page' => 'triage-analytics', 'color' => 'emerald', 'roles' => ['pharmacist', 'owner']],
     'drug-interactions' => ['icon' => 'fa-pills', 'label' => 'ยาตีกัน', 'url' => '/pharmacy?tab=interactions', 'page' => 'pharmacy', 'color' => 'red', 'roles' => ['pharmacist', 'owner']],
     'activity-logs' => ['icon' => 'fa-history', 'label' => 'ประวัติการใช้งาน', 'url' => '/activity-logs', 'page' => 'activity-logs', 'color' => 'slate', 'roles' => ['owner']],
-    
+
     // ==================== Patient & Journey - EHR ====================
     'users' => ['icon' => 'fa-users', 'label' => 'รายชื่อลูกค้า', 'url' => '/users', 'page' => 'users', 'color' => 'cyan', 'roles' => ['pharmacist']],
     'user-tags' => ['icon' => 'fa-tags', 'label' => 'แท็กลูกค้า', 'url' => '/user-tags', 'page' => 'user-tags', 'color' => 'sky', 'roles' => ['pharmacist']],
-    
+
     // ==================== Patient & Journey - Membership (all staff) ====================
     'members' => ['icon' => 'fa-id-card', 'label' => 'จัดการสมาชิก', 'url' => '/membership?tab=members', 'page' => 'membership', 'color' => 'rose'],
     'rewards' => ['icon' => 'fa-gift', 'label' => 'รางวัลแลกแต้ม', 'url' => '/membership?tab=rewards', 'page' => 'membership', 'color' => 'fuchsia'],
     'points-settings' => ['icon' => 'fa-coins', 'label' => 'ตั้งค่าแต้ม', 'url' => '/membership?tab=settings', 'page' => 'membership', 'color' => 'yellow'],
-    
+
     // ==================== Patient & Journey - Care Journey ====================
     'broadcast' => ['icon' => 'fa-paper-plane', 'label' => 'บรอดแคสต์', 'url' => '/broadcast', 'page' => 'broadcast', 'color' => 'purple', 'roles' => ['admin', 'marketing']],
     'broadcast-catalog' => ['icon' => 'fa-layer-group', 'label' => 'แคตตาล็อก', 'url' => '/broadcast?tab=catalog', 'page' => 'broadcast', 'color' => 'violet', 'roles' => ['admin', 'marketing']],
     'drip-campaigns' => ['icon' => 'fa-water', 'label' => 'Drip Campaign', 'url' => '/drip-campaigns', 'page' => 'drip-campaigns', 'color' => 'blue', 'roles' => ['admin', 'marketing']],
     'templates' => ['icon' => 'fa-file-alt', 'label' => 'Templates', 'url' => '/templates', 'page' => 'templates', 'color' => 'slate', 'roles' => ['admin', 'marketing']],
-    
+
     // ==================== Patient & Journey - Digital Front Door ====================
     'rich-menu' => ['icon' => 'fa-th-large', 'label' => 'Rich Menu', 'url' => '/rich-menu', 'page' => 'rich-menu', 'color' => 'teal', 'roles' => ['admin', 'marketing']],
     'dynamic-rich-menu' => ['icon' => 'fa-random', 'label' => 'Dynamic Rich Menu', 'url' => '/rich-menu?tab=dynamic', 'page' => 'rich-menu', 'color' => 'cyan', 'roles' => ['admin', 'marketing']],
     'liff-settings' => ['icon' => 'fa-mobile-screen', 'label' => 'ตั้งค่า LIFF', 'url' => '/liff-settings', 'page' => 'liff-settings', 'color' => 'lime', 'roles' => ['admin', 'marketing']],
-    
+
     // ==================== Supply & Revenue - Billing & Orders ====================
-    'orders' => ['icon' => 'fa-receipt', 'label' => 'ออเดอร์', 'url' => '/shop/orders', 'page' => 'orders', 'badge' => $pendingOrders, 'badgeColor' => 'yellow', 'color' => 'orange', 'roles' => ['admin', 'staff']],
+    'orders' => ['icon' => 'fa-receipt', 'label' => $ordersMenuLabel, 'url' => '/shop/orders', 'page' => 'orders', 'badge' => $pendingOrders, 'badgeColor' => 'yellow', 'color' => 'orange', 'roles' => ['admin', 'staff']],
     'promotions' => ['icon' => 'fa-star', 'label' => 'โปรโมชั่น', 'url' => '/shop/promotions', 'page' => 'promotions', 'color' => 'amber', 'roles' => ['admin', 'staff']],
-    
+
     // ==================== Supply & Revenue - Inventory ====================
     'products' => ['icon' => 'fa-box', 'label' => 'สินค้า', 'url' => '/inventory?tab=products', 'page' => 'inventory', 'color' => 'blue', 'roles' => ['admin', 'pharmacist']],
     'categories' => ['icon' => 'fa-folder', 'label' => 'หมวดหมู่', 'url' => '/shop/categories', 'page' => 'categories', 'color' => 'lime', 'roles' => ['admin', 'pharmacist']],
@@ -249,33 +301,33 @@ $quickAccessMenus = [
     'locations' => ['icon' => 'fa-map-marker-alt', 'label' => 'ตำแหน่งจัดเก็บ', 'url' => '/inventory?tab=locations', 'page' => 'inventory', 'color' => 'teal', 'roles' => ['admin', 'pharmacist', 'staff']],
     'batches' => ['icon' => 'fa-layer-group', 'label' => 'Batch/Lot', 'url' => '/inventory?tab=batches', 'page' => 'inventory', 'color' => 'amber', 'roles' => ['admin', 'pharmacist', 'staff']],
     'put-away' => ['icon' => 'fa-inbox', 'label' => 'Put Away', 'url' => '/inventory?tab=put-away', 'page' => 'inventory', 'color' => 'violet', 'roles' => ['admin', 'pharmacist', 'staff']],
-    
+
     // ==================== Supply & Revenue - Procurement ====================
     'purchase-orders' => ['icon' => 'fa-file-invoice', 'label' => 'ใบสั่งซื้อ (PO)', 'url' => '/procurement?tab=po', 'page' => 'procurement', 'color' => 'violet', 'roles' => ['admin', 'owner']],
     'goods-receive' => ['icon' => 'fa-truck-loading', 'label' => 'รับสินค้า (GR)', 'url' => '/procurement?tab=gr', 'page' => 'procurement', 'color' => 'teal', 'roles' => ['admin', 'owner']],
     'suppliers' => ['icon' => 'fa-truck', 'label' => 'Suppliers', 'url' => '/procurement?tab=suppliers', 'page' => 'procurement', 'color' => 'slate', 'roles' => ['admin', 'owner']],
-    
+
     // ==================== Supply & Revenue - Accounting ====================
     'accounting' => ['icon' => 'fa-calculator', 'label' => 'บัญชี', 'url' => '/accounting', 'page' => 'accounting', 'color' => 'emerald', 'roles' => ['admin', 'owner']],
     'accounting-ap' => ['icon' => 'fa-file-invoice-dollar', 'label' => 'เจ้าหนี้ (AP)', 'url' => '/accounting?tab=ap', 'page' => 'accounting', 'color' => 'red', 'roles' => ['admin', 'owner']],
     'accounting-ar' => ['icon' => 'fa-hand-holding-usd', 'label' => 'ลูกหนี้ (AR)', 'url' => '/accounting?tab=ar', 'page' => 'accounting', 'color' => 'green', 'roles' => ['admin', 'owner']],
     'accounting-expenses' => ['icon' => 'fa-receipt', 'label' => 'ค่าใช้จ่าย', 'url' => '/accounting?tab=expenses', 'page' => 'accounting', 'color' => 'orange', 'roles' => ['admin', 'owner']],
-    
+
     // ==================== Facility Setup - Facility Profile ====================
     'shop-settings' => ['icon' => 'fa-store', 'label' => 'ข้อมูลสถานพยาบาล', 'url' => '/shop/settings', 'page' => 'settings', 'color' => 'emerald', 'roles' => ['admin', 'owner']],
     'landing-settings' => ['icon' => 'fa-home', 'label' => 'Landing Page', 'url' => '/admin/landing-settings', 'page' => 'landing-settings', 'color' => 'sky', 'roles' => ['admin', 'owner']],
-    
+
     // ==================== Facility Setup - Staff & Roles ====================
     'admin-users' => ['icon' => 'fa-users-cog', 'label' => 'บุคลากร & สิทธิ์', 'url' => '/admin-users2', 'page' => 'admin-users2', 'color' => 'indigo', 'roles' => ['owner', 'admin']],
-    
+
     // ==================== Facility Setup - Integrations ====================
     'line-accounts' => ['icon' => 'fa-layer-group', 'label' => 'บัญชี LINE', 'url' => '/settings?tab=line', 'page' => 'settings', 'color' => 'green', 'roles' => ['owner', 'admin', 'tech']],
     'telegram' => ['icon' => 'fab fa-telegram', 'label' => 'Telegram', 'url' => '/settings?tab=telegram', 'page' => 'settings', 'color' => 'blue', 'roles' => ['owner', 'admin', 'tech']],
     'ai-settings' => ['icon' => 'fa-key', 'label' => 'ตั้งค่า API Key', 'url' => '/ai-settings', 'page' => 'ai-settings', 'color' => 'violet', 'roles' => ['owner', 'admin', 'tech']],
-    
+
     // ==================== Facility Setup - Consent & PDPA ====================
     'consent-management' => ['icon' => 'fa-shield-alt', 'label' => 'Consent & PDPA', 'url' => '/consent-management', 'page' => 'consent-management', 'color' => 'rose', 'roles' => ['owner', 'admin']],
-    
+
     // ==================== Facility Setup - Reports ====================
     'scheduled-reports' => ['icon' => 'fa-calendar-alt', 'label' => 'รายงานอัตโนมัติ', 'url' => '/scheduled?tab=reports', 'page' => 'scheduled', 'color' => 'amber', 'roles' => ['owner', 'admin']],
 ];
@@ -292,6 +344,7 @@ if ($adminUserId) {
             $userQuickAccess = $userMenuKeys;
         }
     } catch (Exception $e) {
+        logHeaderException($e);
         // Table doesn't exist yet, use defaults
     }
 }
@@ -311,6 +364,19 @@ foreach ($userQuickAccess as $key) {
 // Menu structure with nested submenus - Final Menu Structure V3
 // โครงสร้างเมนู 6 กลุ่มหลัก พร้อม submenus แบบ nested
 // DEBUG: Menu version 2026-01-03-thai
+$supplyMenus = [
+    ['title' => 'POS ขายหน้าร้าน', 'icon' => '🛒', 'href' => '/pos'],
+    ['title' => $isOdooMode ? 'รายการสั่งซื้อ (Odoo)' : 'รายการสั่งซื้อ', 'icon' => '🧾', 'href' => '/shop/orders', 'badge' => $pendingOrders],
+    ['title' => 'คลังสินค้า', 'icon' => '📦', 'href' => '/inventory'],
+    ['title' => 'จัดซื้อ', 'icon' => '🚚', 'href' => '/procurement'],
+    ['title' => 'บัญชี', 'icon' => '💰', 'href' => '/accounting'],
+];
+
+if ($isOdooMode) {
+    $supplyMenus[] = ['title' => 'Odoo Dashboard', 'icon' => '🛰️', 'href' => '/odoo-dashboard'];
+    $supplyMenus[] = ['title' => 'Odoo Webhooks', 'icon' => '🪝', 'href' => '/odoo-webhooks-dashboard'];
+}
+
 $menuGroups = [
     [
         'group_id' => 'insights',
@@ -318,7 +384,15 @@ $menuGroups = [
         'group_icon' => '📊',
         'roles' => ['owner', 'admin'],
         'menus' => [
-            ['title' => 'หน้าภาพรวม', 'icon' => '🏠', 'href' => '/dashboard'],
+            [
+                'title' => 'Dashboard',
+                'icon' => '🏠',
+                'submenus' => array_filter([
+                    ['title' => $isOdooMode ? 'Odoo Overview' : 'Executive Overview', 'href' => $dashboardDefaultHref],
+                    ['title' => 'CRM Dashboard', 'href' => '/dashboard?tab=crm'],
+                    $isOdooMode ? ['title' => 'จัดการลูกค้า Odoo', 'href' => '/dashboard?tab=odoo-customers'] : null,
+                ])
+            ],
             ['title' => 'วิเคราะห์ข้อมูล', 'icon' => '📈', 'href' => '/analytics'],
             ['title' => 'ประวัติการใช้งาน', 'icon' => '📋', 'href' => '/activity-logs'],
         ]
@@ -341,7 +415,7 @@ $menuGroups = [
         'roles' => ['owner', 'admin', 'marketing', 'staff'],
         'menus' => [
             ['title' => 'กล่องข้อความ', 'icon' => '💬', 'href' => $inboxUrl, 'badge' => $unreadMessages],
-            ['title' => 'Quick Reply', 'icon' => '⚡', 'href' => $inboxUrl . '?tab=templates'],
+            ['title' => 'แชทหลัก', 'icon' => '💬', 'href' => '/inbox-master'],
             ['title' => 'สถิติแชท', 'icon' => '📊', 'href' => $inboxUrl . '?tab=analytics'],
             ['title' => 'รายชื่อลูกค้า', 'icon' => '📇', 'href' => '/users'],
             ['title' => 'บรอดแคสต์', 'icon' => '📢', 'href' => '/broadcast'],
@@ -353,13 +427,7 @@ $menuGroups = [
         'group_title' => 'คลังสินค้าและยอดขาย',
         'group_icon' => '📦',
         'roles' => ['owner', 'admin', 'staff'],
-        'menus' => [
-            ['title' => 'POS ขายหน้าร้าน', 'icon' => '🛒', 'href' => '/pos'],
-            ['title' => 'รายการสั่งซื้อ', 'icon' => '🧾', 'href' => '/shop/orders', 'badge' => $pendingOrders],
-            ['title' => 'คลังสินค้า', 'icon' => '📦', 'href' => '/inventory'],
-            ['title' => 'จัดซื้อ', 'icon' => '🚚', 'href' => '/procurement'],
-            ['title' => 'บัญชี', 'icon' => '💰', 'href' => '/accounting'],
-        ]
+        'menus' => $supplyMenus
     ],
     [
         'group_id' => 'facility',
@@ -378,9 +446,11 @@ $menuGroups = [
 ?>
 <!DOCTYPE html>
 <html lang="th">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="mobile-web-app-capable" content="yes">
@@ -388,31 +458,41 @@ $menuGroups = [
     <meta name="base-url" content="<?= $baseUrl ?>">
     <meta name="line-account-id" content="<?= $_SESSION['current_bot_id'] ?? $_SESSION['line_account_id'] ?? 1 ?>">
     <title><?= htmlspecialchars($adminFullTitle) ?></title>
-    
+
     <!-- Favicon & Icons -->
     <?php if (!empty($adminFaviconUrl)): ?>
-    <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
-    <link rel="shortcut icon" type="image/x-icon" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
-    <link rel="apple-touch-icon" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
-    <link rel="apple-touch-icon-precomposed" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
+        <link rel="icon" type="image/x-icon" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
+        <link rel="shortcut icon" type="image/x-icon" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
+        <link rel="apple-touch-icon" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
+        <link rel="apple-touch-icon-precomposed" href="<?= htmlspecialchars($adminFaviconUrl) ?>">
     <?php else: ?>
-    <link rel="icon" type="image/png" href="/assets/images/3.png?v=2">
-    <link rel="shortcut icon" type="image/png" href="/assets/images/3.png?v=2">
-    <link rel="apple-touch-icon" href="/assets/images/3.png?v=2">
-    <link rel="apple-touch-icon-precomposed" href="/assets/images/3.png?v=2">
+        <link rel="icon" type="image/png" href="/assets/images/3.png?v=2">
+        <link rel="shortcut icon" type="image/png" href="/assets/images/3.png?v=2">
+        <link rel="apple-touch-icon" href="/assets/images/3.png?v=2">
+        <link rel="apple-touch-icon-precomposed" href="/assets/images/3.png?v=2">
     <?php endif; ?>
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <style>
         :root {
-            --primary: #06C755;
-            --primary-dark: #05a648;
+            --primary: #00B900;
+            --primary-dark: #00A000;
+            --primary-light: #00C300;
             --sidebar-width: 260px;
+            --sidebar-bg: #ffffff;
+            --sidebar-border: #e5e7eb;
+            --sidebar-text: #374151;
+            --sidebar-text-muted: #6b7280;
+            --sidebar-hover: #f3f4f6;
+            --sidebar-active-bg: #ecfdf5;
+            --sidebar-active-text: #047857;
         }
         
         body { 
@@ -435,14 +515,14 @@ $menuGroups = [
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         
-        /* Sidebar - Simple Gray Theme */
+        /* Sidebar - Clean White Theme (inbox-master style) */
         .sidebar {
             width: 220px !important;
             min-width: 220px !important;
             max-width: 220px !important;
             flex: 0 0 220px !important;
-            background: #1f2937;
-            border-right: none;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--sidebar-border);
             transition: transform 0.3s ease;
             height: 100vh;
             overflow-y: auto;
@@ -451,34 +531,34 @@ $menuGroups = [
         
         .sidebar-brand {
             padding: 12px 14px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            background: #1f2937;
+            border-bottom: 1px solid var(--sidebar-border);
+            background: var(--sidebar-bg);
         }
         
         /* Bot Selector */
         .bot-selector {
             padding: 8px 12px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
+            border-bottom: 1px solid var(--sidebar-border);
         }
         
         .bot-card {
             display: flex;
             align-items: center;
             padding: 8px 10px;
-            background: rgba(255,255,255,0.05);
+            background: #f9fafb;
             border-radius: 8px;
             cursor: pointer;
             transition: all 0.2s;
-            border: 1px solid transparent;
+            border: 1px solid var(--sidebar-border);
         }
         
-        .bot-card:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.15); }
+        .bot-card:hover { background: var(--sidebar-hover); border-color: #d1d5db; }
         
         .bot-avatar {
             width: 32px;
             height: 32px;
             border-radius: 8px;
-            background: linear-gradient(135deg, #4b5563 0%, #374151 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -495,7 +575,7 @@ $menuGroups = [
         .menu-section-title {
             font-size: 9px;
             font-weight: 600;
-            color: rgba(255,255,255,0.35);
+            color: #9ca3af;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             padding: 8px 10px 4px;
@@ -508,7 +588,7 @@ $menuGroups = [
             padding: 7px 10px;
             margin: 1px 6px;
             border-radius: 6px;
-            color: rgba(255,255,255,0.65);
+            color: var(--sidebar-text);
             font-size: 12px;
             font-weight: 400;
             transition: all 0.15s ease;
@@ -517,25 +597,25 @@ $menuGroups = [
         }
         
         .menu-item:hover { 
-            background: rgba(255,255,255,0.08); 
-            color: white; 
+            background: var(--sidebar-hover); 
+            color: #111827; 
         }
-        .menu-item:hover .menu-icon { color: #9ca3af; }
+        .menu-item:hover .menu-icon { color: #374151; }
         
         .menu-item.active {
-            background: #374151;
-            color: white;
+            background: var(--sidebar-active-bg);
+            color: var(--sidebar-active-text);
             font-weight: 500;
         }
         
-        .menu-item.active .menu-icon { color: white; }
-        .menu-item.active:hover { background: #4b5563; }
+        .menu-item.active .menu-icon { color: var(--sidebar-active-text); }
+        .menu-item.active:hover { background: #d1fae5; }
         
         .menu-icon {
             width: 18px;
             margin-right: 8px;
             font-size: 12px;
-            color: rgba(255,255,255,0.45);
+            color: var(--sidebar-text-muted);
             text-align: center;
         }
         
@@ -568,7 +648,7 @@ $menuGroups = [
             padding: 7px 10px;
             flex: 1;
             border-radius: 6px;
-            color: rgba(255,255,255,0.8);
+            color: var(--sidebar-text);
             font-size: 11px;
             font-weight: 500;
             cursor: pointer;
@@ -577,14 +657,14 @@ $menuGroups = [
         }
         
         .menu-parent:hover { 
-            background: rgba(255,255,255,0.06); 
-            color: white; 
+            background: var(--sidebar-hover); 
+            color: #111827; 
         }
         
         /* Sidebar Footer */
         .sidebar-footer {
             padding: 8px 10px;
-            border-top: 1px solid rgba(255,255,255,0.08);
+            border-top: 1px solid var(--sidebar-border);
         }
         
         .sidebar-footer-info {
@@ -592,7 +672,7 @@ $menuGroups = [
             align-items: center;
             justify-content: space-between;
             font-size: 9px;
-            color: rgba(255,255,255,0.35);
+            color: #9ca3af;
         }
         
         .menu-parent-icon {
@@ -606,7 +686,7 @@ $menuGroups = [
         
         .menu-arrow {
             font-size: 9px;
-            color: rgba(255,255,255,0.35);
+            color: #9ca3af;
             transition: transform 0.2s ease;
         }
         
@@ -646,7 +726,7 @@ $menuGroups = [
             padding: 6px 10px 6px 32px;
             margin: 1px 6px;
             border-radius: 5px;
-            color: rgba(255,255,255,0.6);
+            color: var(--sidebar-text-muted);
             font-size: 11px;
             font-weight: 400;
             cursor: pointer;
@@ -655,8 +735,8 @@ $menuGroups = [
         }
         
         .nested-menu-parent:hover { 
-            background: rgba(255,255,255,0.06); 
-            color: white;
+            background: var(--sidebar-hover); 
+            color: #111827;
         }
         
         .nested-menu-icon {
@@ -673,14 +753,14 @@ $menuGroups = [
         
         .nested-menu-note {
             font-size: 8px;
-            color: rgba(255,255,255,0.35);
+            color: #9ca3af;
             margin-right: 4px;
             font-weight: 400;
         }
         
         .nested-arrow {
             font-size: 7px;
-            color: rgba(255,255,255,0.35);
+            color: #9ca3af;
             transition: transform 0.2s ease;
         }
         
@@ -705,7 +785,7 @@ $menuGroups = [
             padding: 6px 10px 6px 46px;
             margin: 1px 6px;
             border-radius: 5px;
-            color: rgba(255,255,255,0.55);
+            color: var(--sidebar-text-muted);
             font-size: 11px;
             text-decoration: none;
             transition: all 0.15s ease;
@@ -723,13 +803,13 @@ $menuGroups = [
         }
         
         .nested-menu-item:hover {
-            background: rgba(255,255,255,0.06);
-            color: white;
+            background: var(--sidebar-hover);
+            color: #111827;
         }
         
         .nested-menu-item.active {
-            background: #374151;
-            color: white;
+            background: var(--sidebar-active-bg);
+            color: var(--sidebar-active-text);
             font-weight: 500;
         }
         
@@ -955,7 +1035,7 @@ $menuGroups = [
                 transform: translateX(-100%) !important;
                 display: flex !important;
                 flex-direction: column !important;
-                background: #1e1b4b !important;
+                background: #ffffff !important;
                 border-right: none !important;
                 transition: transform 0.3s ease !important;
             }
@@ -1184,172 +1264,183 @@ $menuGroups = [
         }
     </style>
 </head>
+
 <body>
     <div id="mobileOverlay" class="mobile-overlay" onclick="toggleSidebar()"></div>
-    
+
     <div class="app-layout">
         <!-- Sidebar -->
         <aside id="sidebar" class="sidebar flex flex-col">
             <!-- Brand -->
             <div class="sidebar-brand flex items-center">
-                <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                    style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);">
                     <i class="fab fa-line text-white text-xl"></i>
                 </div>
                 <div class="ml-3 flex-1">
-                    <div class="font-bold text-white text-sm"><?= APP_NAME ?></div>
-                    <div class="text-xs text-white/70">Admin Panel v3.0</div>
+                    <div class="font-bold text-gray-800 text-sm"><?= APP_NAME ?></div>
+                    <div class="text-xs text-gray-400">Admin Panel v3.0</div>
                 </div>
-                <button onclick="toggleSidebar()" class="md:hidden text-white/70 hover:text-white">
+                <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-gray-700">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
 
             <!-- Bot Selector -->
             <?php if (!empty($lineAccounts)): ?>
-            <div class="bot-selector relative">
-                <div class="bot-card" onclick="toggleBotDropdown()">
-                    <div class="bot-avatar">
-                        <?php if ($currentBot && !empty($currentBot['picture_url'])): ?>
-                        <img src="<?= htmlspecialchars($currentBot['picture_url']) ?>" alt="">
-                        <?php else: ?>
-                        <i class="fab fa-line"></i>
-                        <?php endif; ?>
-                    </div>
-                    <div class="flex-1 ml-3 min-w-0">
-                        <div class="text-sm font-semibold text-gray-800 truncate"><?= htmlspecialchars($currentBot['name'] ?? 'Select Bot') ?></div>
-                        <div class="text-xs text-gray-400 truncate"><?= htmlspecialchars($currentBot['basic_id'] ?? '') ?></div>
-                    </div>
-                    <i class="fas fa-chevron-down text-gray-400 text-xs ml-2"></i>
-                </div>
-                <div id="botDropdown" class="dropdown-menu">
-                    <?php foreach ($lineAccounts as $acc): ?>
-                    <a href="?switch_bot=<?= $acc['id'] ?>" class="dropdown-item <?= ($currentBot && $currentBot['id'] == $acc['id']) ? 'active' : '' ?>">
-                        <div class="bot-avatar" style="width:32px;height:32px;font-size:14px;">
-                            <?php if (!empty($acc['picture_url'])): ?>
-                            <img src="<?= htmlspecialchars($acc['picture_url']) ?>" alt="">
+                <div class="bot-selector relative">
+                    <div class="bot-card" onclick="toggleBotDropdown()">
+                        <div class="bot-avatar">
+                            <?php if ($currentBot && !empty($currentBot['picture_url'])): ?>
+                                <img src="<?= htmlspecialchars($currentBot['picture_url']) ?>" alt="">
                             <?php else: ?>
-                            <i class="fab fa-line"></i>
+                                <i class="fab fa-line"></i>
                             <?php endif; ?>
                         </div>
-                        <div class="ml-3 flex-1 min-w-0">
-                            <div class="text-sm font-medium text-gray-700 truncate"><?= htmlspecialchars($acc['name']) ?></div>
+                        <div class="flex-1 ml-3 min-w-0">
+                            <div class="text-sm font-semibold text-gray-700 truncate">
+                                <?= htmlspecialchars($currentBot['name'] ?? 'Select Bot') ?></div>
+                            <div class="text-xs text-gray-400 truncate">
+                                <?= htmlspecialchars($currentBot['basic_id'] ?? '') ?></div>
                         </div>
-                        <?php if ($acc['is_default']): ?>
-                        <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">Default</span>
-                        <?php endif; ?>
-                    </a>
-                    <?php endforeach; ?>
+                        <i class="fas fa-chevron-down text-gray-400 text-xs ml-2"></i>
+                    </div>
+                    <div id="botDropdown" class="dropdown-menu">
+                        <?php foreach ($lineAccounts as $acc): ?>
+                            <a href="?switch_bot=<?= $acc['id'] ?>"
+                                class="dropdown-item <?= ($currentBot && $currentBot['id'] == $acc['id']) ? 'active' : '' ?>">
+                                <div class="bot-avatar" style="width:32px;height:32px;font-size:14px;">
+                                    <?php if (!empty($acc['picture_url'])): ?>
+                                        <img src="<?= htmlspecialchars($acc['picture_url']) ?>" alt="">
+                                    <?php else: ?>
+                                        <i class="fab fa-line"></i>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="ml-3 flex-1 min-w-0">
+                                    <div class="text-sm font-medium text-gray-700 truncate">
+                                        <?= htmlspecialchars($acc['name']) ?></div>
+                                </div>
+                                <?php if ($acc['is_default']): ?>
+                                    <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">Default</span>
+                                <?php endif; ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
                 </div>
-            </div>
             <?php endif; ?>
-            
+
             <!-- Navigation -->
             <nav class="flex-1 overflow-y-auto py-2">
                 <!-- Quick Access Section -->
                 <?php if (!empty($quickAccessItems)): ?>
-                <div class="quick-access-section">
-                    <div class="flex items-center justify-between mb-2">
-                        <div class="menu-section-title mb-0">⚡ Quick Access</div>
-                        <a href="<?= $baseUrl ?>settings.php?tab=quick-access" class="text-xs text-gray-400 hover:text-green-600" title="ตั้งค่า Quick Access">
-                            <i class="fas fa-cog"></i>
-                        </a>
+                    <div class="quick-access-section">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="menu-section-title mb-0">⚡ Quick Access</div>
+                            <a href="<?= $baseUrl ?>settings.php?tab=quick-access"
+                                class="text-xs text-gray-400 hover:text-green-600" title="ตั้งค่า Quick Access">
+                                <i class="fas fa-cog"></i>
+                            </a>
+                        </div>
+                        <div class="grid grid-cols-4 gap-1">
+                            <?php foreach ($quickAccessItems as $item):
+                                $itemUrl = $baseUrl . ltrim($item['url'], '/');
+                                ?>
+                                <a href="<?= $itemUrl ?>" class="quick-item">
+                                    <div class="quick-icon <?= $item['color'] ?? 'green' ?>">
+                                        <i class="fas <?= $item['icon'] ?>"></i>
+                                    </div>
+                                    <span class="quick-label"><?= $item['label'] ?></span>
+                                    <?php if (!empty($item['badge']) && $item['badge'] > 0): ?>
+                                        <span
+                                            class="quick-badge <?= $item['badgeColor'] ?? '' ?>"><?= $item['badge'] > 99 ? '99+' : $item['badge'] ?></span>
+                                    <?php endif; ?>
+                                </a>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
-                    <div class="grid grid-cols-4 gap-1">
-                        <?php foreach ($quickAccessItems as $item): 
-                            $itemUrl = $baseUrl . ltrim($item['url'], '/');
-                        ?>
-                        <a href="<?= $itemUrl ?>" class="quick-item">
-                            <div class="quick-icon <?= $item['color'] ?? 'green' ?>">
-                                <i class="fas <?= $item['icon'] ?>"></i>
-                            </div>
-                            <span class="quick-label"><?= $item['label'] ?></span>
-                            <?php if (!empty($item['badge']) && $item['badge'] > 0): ?>
-                            <span class="quick-badge <?= $item['badgeColor'] ?? '' ?>"><?= $item['badge'] > 99 ? '99+' : $item['badge'] ?></span>
-                            <?php endif; ?>
-                        </a>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
                 <?php endif; ?>
-                
+
                 <!-- Main Menu Groups -->
-                <?php 
+                <?php
                 $userRole = getCurrentUserRole();
-                foreach ($menuGroups as $group): 
+                foreach ($menuGroups as $group):
                     // ตรวจสอบ role ก่อนแสดง group
                     if (isset($group['roles']) && !in_array($userRole, $group['roles'])) {
                         continue; // ข้าม group นี้ถ้าไม่มีสิทธิ์
                     }
-                ?>
-                <div class="menu-section">
-                    <!-- Group Header -->
-                    <div class="menu-parent" onclick="toggleSubmenu('group_<?= $group['group_id'] ?>')">
-                        <span class="menu-parent-icon"><?= $group['group_icon'] ?></span>
-                        <span class="menu-parent-label"><?= $group['group_title'] ?></span>
-                        <i class="fas fa-chevron-down menu-arrow"></i>
-                    </div>
-                    
-                    <!-- Group Menus -->
-                    <div id="group_<?= $group['group_id'] ?>" class="menu-submenu">
-                        <?php foreach ($group['menus'] as $menuIndex => $menu): ?>
-                        <?php if (isset($menu['href'])): ?>
-                            <!-- Direct link menu (no submenus) -->
-                            <?php 
-                                $menuUrl = $baseUrl . ltrim($menu['href'], '/');
-                                $isActive = strpos($currentPath, $menu['href']) !== false;
-                            ?>
-                            <a href="<?= $menuUrl ?>" class="nested-menu-item direct-link <?= $isActive ? 'active' : '' ?>">
-                                <span class="nested-menu-icon"><?= $menu['icon'] ?></span>
-                                <span><?= $menu['title'] ?></span>
-                                <?php if (!empty($menu['badge']) && $menu['badge'] > 0): ?>
-                                <span class="menu-badge"><?= $menu['badge'] > 99 ? '99+' : $menu['badge'] ?></span>
-                                <?php endif; ?>
-                            </a>
-                        <?php elseif (isset($menu['submenus']) && is_array($menu['submenus'])): ?>
-                        <div class="nested-menu-group">
-                            <!-- Menu Title with Submenus -->
-                            <div class="nested-menu-parent" onclick="toggleNestedSubmenu('submenu_<?= $group['group_id'] ?>_<?= $menuIndex ?>')">
-                                <span class="nested-menu-icon"><?= $menu['icon'] ?></span>
-                                <span class="nested-menu-label"><?= $menu['title'] ?></span>
-                                <?php if (!empty($menu['note'])): ?>
-                                <span class="nested-menu-note"><?= $menu['note'] ?></span>
-                                <?php endif; ?>
-                                <i class="fas fa-chevron-right nested-arrow"></i>
-                            </div>
-                            
-                            <!-- Submenus -->
-                            <div id="submenu_<?= $group['group_id'] ?>_<?= $menuIndex ?>" class="nested-submenu">
-                                <?php foreach ($menu['submenus'] as $submenu): 
-                                    $submenuUrl = $baseUrl . ltrim($submenu['href'], '/');
-                                    $isActive = strpos($currentPath, $submenu['href']) !== false;
-                                ?>
-                                <a href="<?= $submenuUrl ?>" class="nested-menu-item <?= $isActive ? 'active' : '' ?>">
-                                    <span><?= $submenu['title'] ?></span>
-                                    <?php if (!empty($submenu['badge']) && $submenu['badge'] > 0): ?>
-                                    <span class="menu-badge"><?= $submenu['badge'] > 99 ? '99+' : $submenu['badge'] ?></span>
-                                    <?php endif; ?>
-                                </a>
-                                <?php endforeach; ?>
-                            </div>
+                    ?>
+                    <div class="menu-section">
+                        <!-- Group Header -->
+                        <div class="menu-parent" onclick="toggleSubmenu('group_<?= $group['group_id'] ?>')">
+                            <span class="menu-parent-icon"><?= $group['group_icon'] ?></span>
+                            <span class="menu-parent-label"><?= $group['group_title'] ?></span>
+                            <i class="fas fa-chevron-down menu-arrow"></i>
                         </div>
-                        <?php endif; ?>
-                        <?php endforeach; ?>
+
+                        <!-- Group Menus -->
+                        <div id="group_<?= $group['group_id'] ?>" class="menu-submenu">
+                            <?php foreach ($group['menus'] as $menuIndex => $menu): ?>
+                                <?php if (isset($menu['href'])): ?>
+                                    <!-- Direct link menu (no submenus) -->
+                                    <?php
+                                    $menuUrl = $baseUrl . ltrim($menu['href'], '/');
+                                    $isActive = strpos($currentPath, $menu['href']) !== false;
+                                    ?>
+                                    <a href="<?= $menuUrl ?>" class="nested-menu-item direct-link <?= $isActive ? 'active' : '' ?>">
+                                        <span class="nested-menu-icon"><?= $menu['icon'] ?></span>
+                                        <span><?= $menu['title'] ?></span>
+                                        <?php if (!empty($menu['badge']) && $menu['badge'] > 0): ?>
+                                            <span class="menu-badge"><?= $menu['badge'] > 99 ? '99+' : $menu['badge'] ?></span>
+                                        <?php endif; ?>
+                                    </a>
+                                <?php elseif (isset($menu['submenus']) && is_array($menu['submenus'])): ?>
+                                    <div class="nested-menu-group">
+                                        <!-- Menu Title with Submenus -->
+                                        <div class="nested-menu-parent"
+                                            onclick="toggleNestedSubmenu('submenu_<?= $group['group_id'] ?>_<?= $menuIndex ?>')">
+                                            <span class="nested-menu-icon"><?= $menu['icon'] ?></span>
+                                            <span class="nested-menu-label"><?= $menu['title'] ?></span>
+                                            <?php if (!empty($menu['note'])): ?>
+                                                <span class="nested-menu-note"><?= $menu['note'] ?></span>
+                                            <?php endif; ?>
+                                            <i class="fas fa-chevron-right nested-arrow"></i>
+                                        </div>
+
+                                        <!-- Submenus -->
+                                        <div id="submenu_<?= $group['group_id'] ?>_<?= $menuIndex ?>" class="nested-submenu">
+                                            <?php foreach ($menu['submenus'] as $submenu):
+                                                $submenuUrl = $baseUrl . ltrim($submenu['href'], '/');
+                                                $isActive = strpos($currentPath, $submenu['href']) !== false;
+                                                ?>
+                                                <a href="<?= $submenuUrl ?>" class="nested-menu-item <?= $isActive ? 'active' : '' ?>">
+                                                    <span><?= $submenu['title'] ?></span>
+                                                    <?php if (!empty($submenu['badge']) && $submenu['badge'] > 0): ?>
+                                                        <span
+                                                            class="menu-badge"><?= $submenu['badge'] > 99 ? '99+' : $submenu['badge'] ?></span>
+                                                    <?php endif; ?>
+                                                </a>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endforeach; ?>
+                        </div>
                     </div>
-                </div>
                 <?php endforeach; ?>
             </nav>
-            
+
             <!-- Sidebar Footer -->
             <div class="sidebar-footer">
                 <div class="sidebar-footer-info">
                     <span>LINE CRM Pro v3.5</span>
                     <div class="flex items-center gap-2">
-                        <a href="<?= $baseUrl ?>help.php" class="hover:text-white" title="Help"><i class="fas fa-question-circle"></i></a>
+                        <a href="<?= $baseUrl ?>help.php" class="hover:text-white" title="Help"><i
+                                class="fas fa-question-circle"></i></a>
                     </div>
                 </div>
             </div>
         </aside>
-        
+
         <!-- Main Content -->
         <div class="main-content">
             <!-- Top Header -->
@@ -1360,47 +1451,71 @@ $menuGroups = [
                     </button>
                     <h1 class="page-title"><?= $pageTitle ?? 'Dashboard' ?></h1>
                 </div>
-                
+
                 <div class="header-actions">
+                    <?php if ($isOdooMode): ?>
+                    <!-- Odoo Dashboard Shortcut -->
+                    <a href="/odoo-dashboard" class="header-btn" title="Odoo Dashboard"
+                       style="background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%); color: white; width: auto; padding: 0 14px; gap: 6px; font-size: 12px; font-weight: 600; text-decoration: none;">
+                        <i class="fas fa-satellite-dish" style="font-size: 13px;"></i>
+                        <span class="hidden sm:inline">Odoo</span>
+                    </a>
+                    <?php endif; ?>
+
                     <!-- Quick Access Dropdown -->
                     <div class="relative" x-data="{ open: false }">
-                        <button @click="open = !open" class="header-btn" title="Quick Access" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
+                        <button @click="open = !open" class="header-btn" title="Quick Access"
+                            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white;">
                             <i class="fas fa-bolt"></i>
                         </button>
                         <div x-show="open" @click.away="open = false" x-transition
-                             class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                            <?php foreach ($quickAccessItems as $item): 
+                            class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
+                            <?php foreach ($quickAccessItems as $item):
                                 $itemUrl = $baseUrl . ltrim($item['url'], '/');
                                 $colorClass = [
-                                    'green' => 'text-green-500', 'orange' => 'text-orange-500', 'blue' => 'text-blue-500',
-                                    'purple' => 'text-purple-500', 'cyan' => 'text-cyan-500', 'pink' => 'text-pink-500',
-                                    'indigo' => 'text-indigo-500', 'teal' => 'text-teal-500', 'amber' => 'text-amber-500',
-                                    'emerald' => 'text-emerald-500', 'sky' => 'text-sky-500', 'violet' => 'text-violet-500',
-                                    'rose' => 'text-rose-500', 'lime' => 'text-lime-500', 'slate' => 'text-slate-500',
+                                    'green' => 'text-green-500',
+                                    'orange' => 'text-orange-500',
+                                    'blue' => 'text-blue-500',
+                                    'purple' => 'text-purple-500',
+                                    'cyan' => 'text-cyan-500',
+                                    'pink' => 'text-pink-500',
+                                    'indigo' => 'text-indigo-500',
+                                    'teal' => 'text-teal-500',
+                                    'amber' => 'text-amber-500',
+                                    'emerald' => 'text-emerald-500',
+                                    'sky' => 'text-sky-500',
+                                    'violet' => 'text-violet-500',
+                                    'rose' => 'text-rose-500',
+                                    'lime' => 'text-lime-500',
+                                    'slate' => 'text-slate-500',
                                 ][$item['color'] ?? 'gray'] ?? 'text-gray-500';
-                            ?>
-                            <a href="<?= $itemUrl ?>" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
-                                <i class="fas <?= $item['icon'] ?> <?= $colorClass ?>"></i>
-                                <span class="text-sm"><?= htmlspecialchars($item['label']) ?></span>
-                            </a>
+                                ?>
+                                <a href="<?= $itemUrl ?>"
+                                    class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
+                                    <i class="fas <?= $item['icon'] ?> <?= $colorClass ?>"></i>
+                                    <span class="text-sm"><?= htmlspecialchars($item['label']) ?></span>
+                                </a>
                             <?php endforeach; ?>
                             <div class="border-t my-1"></div>
-                            <a href="<?= $baseUrl ?>settings.php?tab=quick-access" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition text-gray-500">
+                            <a href="<?= $baseUrl ?>settings.php?tab=quick-access"
+                                class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition text-gray-500">
                                 <i class="fas fa-cog"></i>
                                 <span class="text-sm">ตั้งค่า Quick Access</span>
                             </a>
                         </div>
                     </div>
-                    
+
                     <!-- AI Tools Dropdown -->
                     <div class="relative" x-data="{ open: false }">
-                        <button @click="open = !open" class="header-btn ai-tools-btn" title="AI Tools" style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white;">
+                        <button @click="open = !open" class="header-btn ai-tools-btn" title="AI Tools"
+                            style="background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); color: white;">
                             <i class="fas fa-brain"></i>
                             <i class="fas fa-chevron-down text-xs ml-1"></i>
                         </button>
                         <div x-show="open" @click.away="open = false" x-transition
-                             class="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                            <a href="<?= $baseUrl ?>ai-chat.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
+                            class="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
+                            <a href="<?= $baseUrl ?>ai-chat.php"
+                                class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
                                 <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
                                     <i class="fas fa-comments text-blue-600"></i>
                                 </div>
@@ -1409,7 +1524,8 @@ $menuGroups = [
                                     <div class="text-xs text-gray-500">คุยกับ AI ทั่วไป</div>
                                 </div>
                             </a>
-                            <a href="<?= $baseUrl ?>onboarding-assistant.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
+                            <a href="<?= $baseUrl ?>onboarding-assistant.php"
+                                class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
                                 <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
                                     <i class="fas fa-robot text-purple-600"></i>
                                 </div>
@@ -1418,7 +1534,8 @@ $menuGroups = [
                                     <div class="text-xs text-gray-500">ผู้ช่วยตั้งค่าระบบ</div>
                                 </div>
                             </a>
-                            <a href="<?= $baseUrl ?>ai-settings.php" class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
+                            <a href="<?= $baseUrl ?>ai-settings.php"
+                                class="flex items-center gap-3 px-4 py-2 hover:bg-gray-50 transition">
                                 <div class="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center">
                                     <i class="fas fa-cog text-gray-600"></i>
                                 </div>
@@ -1429,29 +1546,31 @@ $menuGroups = [
                             </a>
                         </div>
                     </div>
-                    
+
                     <!-- Quick Actions -->
-                    <a href="<?= $baseUrl ?><?= ltrim($inboxUrl, '/') ?>.php" class="header-btn" title="Inbox<?= ($vibeSellingHelper && $vibeSellingHelper->shouldShowV2Badge($currentBotId)) ? ' V2' : '' ?>">
+                    <a href="<?= $baseUrl ?><?= ltrim($inboxUrl, '/') ?>.php" class="header-btn"
+                        title="Inbox<?= ($vibeSellingHelper && $vibeSellingHelper->shouldShowV2Badge($currentBotId)) ? ' V2' : '' ?>">
                         <i class="fas fa-inbox"></i>
                         <?php if ($unreadMessages > 0): ?>
-                        <span class="badge"><?= $unreadMessages > 99 ? '99+' : $unreadMessages ?></span>
+                            <span class="badge"><?= $unreadMessages > 99 ? '99+' : $unreadMessages ?></span>
                         <?php endif; ?>
                         <?php if ($vibeSellingHelper && $vibeSellingHelper->shouldShowV2Badge($currentBotId)): ?>
-                        <span class="absolute -top-1 -right-1 text-[8px] bg-purple-500 text-white px-1 rounded">V2</span>
+                            <span
+                                class="absolute -top-1 -right-1 text-[8px] bg-purple-500 text-white px-1 rounded">V2</span>
                         <?php endif; ?>
                     </a>
-                    
+
                     <a href="<?= $baseUrl ?>shop/orders.php" class="header-btn" title="Orders">
                         <i class="fas fa-shopping-bag"></i>
                         <?php if ($pendingOrders > 0): ?>
-                        <span class="badge" style="background:#f59e0b"><?= $pendingOrders ?></span>
+                            <span class="badge" style="background:#f59e0b"><?= $pendingOrders ?></span>
                         <?php endif; ?>
                     </a>
-                    
+
                     <div class="header-btn" onclick="toggleTheme()" title="Toggle Theme">
                         <i class="fas fa-moon"></i>
                     </div>
-                    
+
                     <!-- User Menu -->
                     <div class="relative">
                         <div class="user-menu" onclick="toggleUserMenu()">
@@ -1463,21 +1582,27 @@ $menuGroups = [
                             </span>
                             <i class="fas fa-chevron-down text-gray-400 text-xs ml-2 hidden sm:block"></i>
                         </div>
-                        <div id="userMenu" class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
+                        <div id="userMenu"
+                            class="hidden absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
                             <div class="px-4 py-3 border-b border-gray-100">
-                                <div class="font-semibold text-sm text-gray-800"><?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'] ?? 'Admin') ?></div>
+                                <div class="font-semibold text-sm text-gray-800">
+                                    <?= htmlspecialchars($currentUser['display_name'] ?? $currentUser['username'] ?? 'Admin') ?>
+                                </div>
                                 <div class="text-xs text-gray-400"><?= ucfirst($currentUser['role'] ?? 'Admin') ?></div>
                             </div>
-                            <a href="<?= $baseUrl ?>admin-users.php" class="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                            <a href="<?= $baseUrl ?>admin-users.php"
+                                class="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
                                 <i class="fas fa-user-cog w-5 text-gray-400"></i>
                                 <span class="ml-2">Account Settings</span>
                             </a>
-                            <a href="<?= $baseUrl ?>help.php" class="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                            <a href="<?= $baseUrl ?>help.php"
+                                class="flex items-center px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
                                 <i class="fas fa-question-circle w-5 text-gray-400"></i>
                                 <span class="ml-2">Help & Support</span>
                             </a>
                             <div class="border-t border-gray-100 mt-2 pt-2">
-                                <a href="<?= $baseUrl ?>auth/logout.php" class="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50">
+                                <a href="<?= $baseUrl ?>auth/logout.php"
+                                    class="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-red-50">
                                     <i class="fas fa-sign-out-alt w-5"></i>
                                     <span class="ml-2">Logout</span>
                                 </a>
@@ -1486,227 +1611,227 @@ $menuGroups = [
                     </div>
                 </div>
             </header>
-            
+
             <!-- Content Area -->
             <div class="content-area">
 
-<script>
-function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('mobileOverlay').classList.toggle('open');
-}
+                <script>
+                    function toggleSidebar() {
+                        document.getElementById('sidebar').classList.toggle('open');
+                        document.getElementById('mobileOverlay').classList.toggle('open');
+                    }
 
-function toggleBotDropdown() {
-    document.getElementById('botDropdown').classList.toggle('open');
-}
+                    function toggleBotDropdown() {
+                        document.getElementById('botDropdown').classList.toggle('open');
+                    }
 
-// Get current user ID for localStorage key prefix
-const currentUserId = '<?= $adminUserId ?? "guest" ?>';
-const menuStorageKey = `openMenus_${currentUserId}`;
-const nestedMenuStorageKey = `openNestedMenus_${currentUserId}`;
+                    // Get current user ID for localStorage key prefix
+                    const currentUserId = '<?= $adminUserId ?? "guest" ?>';
+                    const menuStorageKey = `openMenus_${currentUserId}`;
+                    const nestedMenuStorageKey = `openNestedMenus_${currentUserId}`;
 
-function toggleSubmenu(id) {
-    const submenu = document.getElementById(id);
-    const parent = submenu.previousElementSibling;
-    const arrow = parent?.querySelector('.menu-arrow');
-    
-    if (submenu) {
-        submenu.classList.toggle('open');
-        if (arrow) {
-            arrow.classList.toggle('rotate');
-        }
-    }
-    
-    // Save state to localStorage (per user)
-    const openMenus = JSON.parse(localStorage.getItem(menuStorageKey) || '{}');
-    openMenus[id] = submenu.classList.contains('open');
-    localStorage.setItem(menuStorageKey, JSON.stringify(openMenus));
-}
+                    function toggleSubmenu(id) {
+                        const submenu = document.getElementById(id);
+                        const parent = submenu.previousElementSibling;
+                        const arrow = parent?.querySelector('.menu-arrow');
 
-function toggleNestedSubmenu(id) {
-    const submenu = document.getElementById(id);
-    const parent = submenu.previousElementSibling;
-    const arrow = parent?.querySelector('.nested-arrow');
-    
-    if (submenu) {
-        submenu.classList.toggle('open');
-        if (arrow) {
-            arrow.classList.toggle('rotate');
-        }
-    }
-    
-    // Save state to localStorage (per user)
-    const openNestedMenus = JSON.parse(localStorage.getItem(nestedMenuStorageKey) || '{}');
-    openNestedMenus[id] = submenu.classList.contains('open');
-    localStorage.setItem(nestedMenuStorageKey, JSON.stringify(openNestedMenus));
-}
+                        if (submenu) {
+                            submenu.classList.toggle('open');
+                            if (arrow) {
+                                arrow.classList.toggle('rotate');
+                            }
+                        }
 
-// Restore menu state on page load
-document.addEventListener('DOMContentLoaded', function() {
-    const openMenus = JSON.parse(localStorage.getItem(menuStorageKey) || '{}');
-    const openNestedMenus = JSON.parse(localStorage.getItem(nestedMenuStorageKey) || '{}');
-    
-    // Get all submenus
-    document.querySelectorAll('.menu-submenu').forEach(submenu => {
-        const id = submenu.id;
-        const parent = submenu.previousElementSibling;
-        const arrow = parent?.querySelector('.menu-arrow');
-        
-        // Check if this submenu has an active item
-        const hasActiveItem = submenu.querySelector('.nested-menu-item.active') !== null;
-        
-        if (hasActiveItem) {
-            // Always expand group with active item
-            submenu.classList.add('open');
-            if (arrow) arrow.classList.add('rotate');
-        } else if (openMenus[id] !== undefined) {
-            // Restore saved state for non-active groups
-            if (openMenus[id]) {
-                submenu.classList.add('open');
-                if (arrow) arrow.classList.add('rotate');
-            } else {
-                submenu.classList.remove('open');
-                if (arrow) arrow.classList.remove('rotate');
-            }
-        }
-    });
-    
-    // Restore nested submenu states
-    document.querySelectorAll('.nested-submenu').forEach(submenu => {
-        const id = submenu.id;
-        const parent = submenu.previousElementSibling;
-        const arrow = parent?.querySelector('.nested-arrow');
-        
-        // Check if this nested submenu has an active item
-        const hasActiveItem = submenu.querySelector('.nested-menu-item.active') !== null;
-        
-        if (hasActiveItem) {
-            // Always expand nested group with active item
-            submenu.classList.add('open');
-            if (arrow) arrow.classList.add('rotate');
-            
-            // Also expand parent group
-            const parentGroup = submenu.closest('.menu-submenu');
-            if (parentGroup) {
-                parentGroup.classList.add('open');
-                const parentArrow = parentGroup.previousElementSibling?.querySelector('.menu-arrow');
-                if (parentArrow) parentArrow.classList.add('rotate');
-            }
-        } else if (openNestedMenus[id] !== undefined) {
-            if (openNestedMenus[id]) {
-                submenu.classList.add('open');
-                if (arrow) arrow.classList.add('rotate');
-            } else {
-                submenu.classList.remove('open');
-                if (arrow) arrow.classList.remove('rotate');
-            }
-        }
-    });
-});
+                        // Save state to localStorage (per user)
+                        const openMenus = JSON.parse(localStorage.getItem(menuStorageKey) || '{}');
+                        openMenus[id] = submenu.classList.contains('open');
+                        localStorage.setItem(menuStorageKey, JSON.stringify(openMenus));
+                    }
 
-function toggleUserMenu() {
-    document.getElementById('userMenu').classList.toggle('hidden');
-}
+                    function toggleNestedSubmenu(id) {
+                        const submenu = document.getElementById(id);
+                        const parent = submenu.previousElementSibling;
+                        const arrow = parent?.querySelector('.nested-arrow');
 
-function toggleTheme() {
-    // Placeholder for theme toggle
-    document.body.classList.toggle('dark');
-}
+                        if (submenu) {
+                            submenu.classList.toggle('open');
+                            if (arrow) {
+                                arrow.classList.toggle('rotate');
+                            }
+                        }
 
-// Close dropdowns on outside click
-document.addEventListener('click', function(e) {
-    const botDropdown = document.getElementById('botDropdown');
-    const botCard = e.target.closest('.bot-card');
-    if (botDropdown && !botCard && !botDropdown.contains(e.target)) {
-        botDropdown.classList.remove('open');
-    }
-    
-    const userMenu = document.getElementById('userMenu');
-    const userMenuBtn = e.target.closest('.user-menu');
-    if (userMenu && !userMenuBtn && !userMenu.contains(e.target)) {
-        userMenu.classList.add('hidden');
-    }
-});
+                        // Save state to localStorage (per user)
+                        const openNestedMenus = JSON.parse(localStorage.getItem(nestedMenuStorageKey) || '{}');
+                        openNestedMenus[id] = submenu.classList.contains('open');
+                        localStorage.setItem(nestedMenuStorageKey, JSON.stringify(openNestedMenus));
+                    }
 
-// Keyboard shortcuts
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        document.getElementById('botDropdown')?.classList.remove('open');
-        document.getElementById('userMenu')?.classList.add('hidden');
-        document.getElementById('sidebar')?.classList.remove('open');
-        document.getElementById('mobileOverlay')?.classList.remove('open');
-    }
-});
+                    // Restore menu state on page load
+                    document.addEventListener('DOMContentLoaded', function () {
+                        const openMenus = JSON.parse(localStorage.getItem(menuStorageKey) || '{}');
+                        const openNestedMenus = JSON.parse(localStorage.getItem(nestedMenuStorageKey) || '{}');
 
-// Mobile: Prevent body scroll when sidebar is open
-function toggleSidebarScroll(isOpen) {
-    if (isOpen) {
-        document.body.style.overflow = 'hidden';
-        document.body.style.position = 'fixed';
-        document.body.style.width = '100%';
-        document.body.style.height = '100%';
-    } else {
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.width = '';
-        document.body.style.height = '';
-    }
-}
+                        // Get all submenus
+                        document.querySelectorAll('.menu-submenu').forEach(submenu => {
+                            const id = submenu.id;
+                            const parent = submenu.previousElementSibling;
+                            const arrow = parent?.querySelector('.menu-arrow');
 
-// Override toggleSidebar for mobile scroll handling
-const originalToggleSidebar = toggleSidebar;
-toggleSidebar = function() {
-    const sidebar = document.getElementById('sidebar');
-    const willBeOpen = !sidebar.classList.contains('open');
-    originalToggleSidebar();
-    
-    if (window.innerWidth <= 768) {
-        toggleSidebarScroll(willBeOpen);
-    }
-};
+                            // Check if this submenu has an active item
+                            const hasActiveItem = submenu.querySelector('.nested-menu-item.active') !== null;
 
-// Handle resize - close sidebar on desktop
-window.addEventListener('resize', function() {
-    if (window.innerWidth > 768) {
-        document.getElementById('sidebar')?.classList.remove('open');
-        document.getElementById('mobileOverlay')?.classList.remove('open');
-        toggleSidebarScroll(false);
-    }
-});
+                            if (hasActiveItem) {
+                                // Always expand group with active item
+                                submenu.classList.add('open');
+                                if (arrow) arrow.classList.add('rotate');
+                            } else if (openMenus[id] !== undefined) {
+                                // Restore saved state for non-active groups
+                                if (openMenus[id]) {
+                                    submenu.classList.add('open');
+                                    if (arrow) arrow.classList.add('rotate');
+                                } else {
+                                    submenu.classList.remove('open');
+                                    if (arrow) arrow.classList.remove('rotate');
+                                }
+                            }
+                        });
 
-// Touch swipe to close sidebar
-let touchStartX = 0;
-let touchEndX = 0;
+                        // Restore nested submenu states
+                        document.querySelectorAll('.nested-submenu').forEach(submenu => {
+                            const id = submenu.id;
+                            const parent = submenu.previousElementSibling;
+                            const arrow = parent?.querySelector('.nested-arrow');
 
-document.addEventListener('touchstart', function(e) {
-    touchStartX = e.changedTouches[0].screenX;
-}, { passive: true });
+                            // Check if this nested submenu has an active item
+                            const hasActiveItem = submenu.querySelector('.nested-menu-item.active') !== null;
 
-document.addEventListener('touchend', function(e) {
-    touchEndX = e.changedTouches[0].screenX;
-    handleSwipe();
-}, { passive: true });
+                            if (hasActiveItem) {
+                                // Always expand nested group with active item
+                                submenu.classList.add('open');
+                                if (arrow) arrow.classList.add('rotate');
 
-function handleSwipe() {
-    const sidebar = document.getElementById('sidebar');
-    const swipeDistance = touchStartX - touchEndX;
-    
-    // Swipe left to close sidebar (when open)
-    if (swipeDistance > 80 && sidebar?.classList.contains('open')) {
-        toggleSidebar();
-    }
-    
-    // Swipe right from edge to open sidebar (when closed)
-    if (swipeDistance < -80 && touchStartX < 30 && !sidebar?.classList.contains('open')) {
-        toggleSidebar();
-    }
-}
+                                // Also expand parent group
+                                const parentGroup = submenu.closest('.menu-submenu');
+                                if (parentGroup) {
+                                    parentGroup.classList.add('open');
+                                    const parentArrow = parentGroup.previousElementSibling?.querySelector('.menu-arrow');
+                                    if (parentArrow) parentArrow.classList.add('rotate');
+                                }
+                            } else if (openNestedMenus[id] !== undefined) {
+                                if (openNestedMenus[id]) {
+                                    submenu.classList.add('open');
+                                    if (arrow) arrow.classList.add('rotate');
+                                } else {
+                                    submenu.classList.remove('open');
+                                    if (arrow) arrow.classList.remove('rotate');
+                                }
+                            }
+                        });
+                    });
 
-// Fix iOS 100vh issue
-function setVH() {
-    let vh = window.innerHeight * 0.01;
-    document.documentElement.style.setProperty('--vh', `${vh}px`);
-}
-setVH();
-window.addEventListener('resize', setVH);
-</script>
+                    function toggleUserMenu() {
+                        document.getElementById('userMenu').classList.toggle('hidden');
+                    }
+
+                    function toggleTheme() {
+                        // Placeholder for theme toggle
+                        document.body.classList.toggle('dark');
+                    }
+
+                    // Close dropdowns on outside click
+                    document.addEventListener('click', function (e) {
+                        const botDropdown = document.getElementById('botDropdown');
+                        const botCard = e.target.closest('.bot-card');
+                        if (botDropdown && !botCard && !botDropdown.contains(e.target)) {
+                            botDropdown.classList.remove('open');
+                        }
+
+                        const userMenu = document.getElementById('userMenu');
+                        const userMenuBtn = e.target.closest('.user-menu');
+                        if (userMenu && !userMenuBtn && !userMenu.contains(e.target)) {
+                            userMenu.classList.add('hidden');
+                        }
+                    });
+
+                    // Keyboard shortcuts
+                    document.addEventListener('keydown', function (e) {
+                        if (e.key === 'Escape') {
+                            document.getElementById('botDropdown')?.classList.remove('open');
+                            document.getElementById('userMenu')?.classList.add('hidden');
+                            document.getElementById('sidebar')?.classList.remove('open');
+                            document.getElementById('mobileOverlay')?.classList.remove('open');
+                        }
+                    });
+
+                    // Mobile: Prevent body scroll when sidebar is open
+                    function toggleSidebarScroll(isOpen) {
+                        if (isOpen) {
+                            document.body.style.overflow = 'hidden';
+                            document.body.style.position = 'fixed';
+                            document.body.style.width = '100%';
+                            document.body.style.height = '100%';
+                        } else {
+                            document.body.style.overflow = '';
+                            document.body.style.position = '';
+                            document.body.style.width = '';
+                            document.body.style.height = '';
+                        }
+                    }
+
+                    // Override toggleSidebar for mobile scroll handling
+                    const originalToggleSidebar = toggleSidebar;
+                    toggleSidebar = function () {
+                        const sidebar = document.getElementById('sidebar');
+                        const willBeOpen = !sidebar.classList.contains('open');
+                        originalToggleSidebar();
+
+                        if (window.innerWidth <= 768) {
+                            toggleSidebarScroll(willBeOpen);
+                        }
+                    };
+
+                    // Handle resize - close sidebar on desktop
+                    window.addEventListener('resize', function () {
+                        if (window.innerWidth > 768) {
+                            document.getElementById('sidebar')?.classList.remove('open');
+                            document.getElementById('mobileOverlay')?.classList.remove('open');
+                            toggleSidebarScroll(false);
+                        }
+                    });
+
+                    // Touch swipe to close sidebar
+                    let touchStartX = 0;
+                    let touchEndX = 0;
+
+                    document.addEventListener('touchstart', function (e) {
+                        touchStartX = e.changedTouches[0].screenX;
+                    }, { passive: true });
+
+                    document.addEventListener('touchend', function (e) {
+                        touchEndX = e.changedTouches[0].screenX;
+                        handleSwipe();
+                    }, { passive: true });
+
+                    function handleSwipe() {
+                        const sidebar = document.getElementById('sidebar');
+                        const swipeDistance = touchStartX - touchEndX;
+
+                        // Swipe left to close sidebar (when open)
+                        if (swipeDistance > 80 && sidebar?.classList.contains('open')) {
+                            toggleSidebar();
+                        }
+
+                        // Swipe right from edge to open sidebar (when closed)
+                        if (swipeDistance < -80 && touchStartX < 30 && !sidebar?.classList.contains('open')) {
+                            toggleSidebar();
+                        }
+                    }
+
+                    // Fix iOS 100vh issue
+                    function setVH() {
+                        let vh = window.innerHeight * 0.01;
+                        document.documentElement.style.setProperty('--vh', `${vh}px`);
+                    }
+                    setVH();
+                    window.addEventListener('resize', setVH);
+                </script>

@@ -23,11 +23,20 @@ try {
         email_notify_daily_report TINYINT(1) DEFAULT 0,
         email_notify_low_stock TINYINT(1) DEFAULT 0,
         telegram_enabled TINYINT(1) DEFAULT 0,
+        odoo_liff_notify_enabled TINYINT(1) DEFAULT 1,
+        odoo_liff_notify_events TEXT DEFAULT NULL,
         notify_admin_users TEXT DEFAULT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_account (line_account_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $columns = $db->query("SHOW COLUMNS FROM notification_settings")->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('odoo_liff_notify_enabled', $columns, true)) {
+        $db->exec("ALTER TABLE notification_settings ADD COLUMN odoo_liff_notify_enabled TINYINT(1) DEFAULT 1 AFTER telegram_enabled");
+    }
+    if (!in_array('odoo_liff_notify_events', $columns, true)) {
+        $db->exec("ALTER TABLE notification_settings ADD COLUMN odoo_liff_notify_events TEXT DEFAULT NULL AFTER odoo_liff_notify_enabled");
+    }
     $db->exec("UPDATE notification_settings SET line_account_id = 0 WHERE line_account_id IS NULL");
 } catch (Exception $e) {}
 
@@ -60,8 +69,25 @@ $emailNotifyUrgent = $notifySettings['email_notify_urgent'] ?? 1;
 $emailNotifyDailyReport = $notifySettings['email_notify_daily_report'] ?? 0;
 $emailNotifyLowStock = $notifySettings['email_notify_low_stock'] ?? 0;
 $telegramEnabled = $notifySettings['telegram_enabled'] ?? 0;
+$odooLiffNotifyEnabled = $notifySettings['odoo_liff_notify_enabled'] ?? 1;
+$odooLiffNotifyEventsRaw = $notifySettings['odoo_liff_notify_events'] ?? '';
+$odooLiffNotifyEvents = array_filter(array_map('trim', explode(',', $odooLiffNotifyEventsRaw)));
+if (empty($odooLiffNotifyEvents)) {
+    $odooLiffNotifyEvents = ['order.validated', 'order.awaiting_payment', 'order.paid', 'order.in_delivery', 'order.delivered'];
+}
 $notifyAdminUsersRaw = $notifySettings['notify_admin_users'] ?? '';
 $notifyAdminUsers = array_filter(array_map('intval', explode(',', $notifyAdminUsersRaw)));
+
+$odooEventOptions = [
+    'order.validated' => 'ยืนยันออเดอร์',
+    'order.awaiting_payment' => 'รอชำระเงิน',
+    'order.paid' => 'ชำระเงินแล้ว',
+    'order.to_delivery' => 'เตรียมส่ง',
+    'order.in_delivery' => 'กำลังจัดส่ง',
+    'order.delivered' => 'จัดส่งสำเร็จ',
+    'invoice.created' => 'ออกใบแจ้งหนี้',
+    'invoice.overdue' => 'ใบแจ้งหนี้เกินกำหนด',
+];
 ?>
 
 <style>
@@ -88,7 +114,6 @@ $notifyAdminUsers = array_filter(array_map('intval', explode(',', $notifyAdminUs
     </div>
 
     <form method="POST">
-        <input type="hidden" name="action" value="save_notifications">
         
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2 space-y-6">
@@ -216,6 +241,150 @@ $notifyAdminUsers = array_filter(array_map('intval', explode(',', $notifyAdminUs
                     <p class="text-sm text-gray-500 mb-4">ตั้งค่า Telegram Bot ได้ที่แท็บ "Telegram"</p>
                 </div>
 
+                <!-- Odoo LIFF Notifications -->
+                <div class="notify-setting-card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
+                            <div class="notify-channel-icon bg-emerald-100">
+                                <i class="fas fa-paper-plane text-emerald-600 text-xl"></i>
+                            </div>
+                            Odoo → LIFF Notification
+                        </h3>
+                        <label class="notify-toggle-switch">
+                            <input type="checkbox" name="odoo_liff_notify_enabled" <?= $odooLiffNotifyEnabled ? 'checked' : '' ?>>
+                            <span class="notify-toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <p class="text-sm text-gray-500 mb-4">เลือกสถานะที่ต้องการส่งแจ้งเตือนไปยังผู้ใช้ LIFF</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <?php foreach ($odooEventOptions as $eventCode => $eventLabel): ?>
+                            <label class="notify-item cursor-pointer hover:bg-gray-100">
+                                <input type="checkbox" name="odoo_liff_notify_events[]" value="<?= htmlspecialchars($eventCode) ?>" class="mr-3 w-4 h-4 text-emerald-600"
+                                    <?= in_array($eventCode, $odooLiffNotifyEvents, true) ? 'checked' : '' ?>>
+                                <div class="flex-1">
+                                    <p class="font-medium"><?= htmlspecialchars($eventLabel) ?></p>
+                                    <p class="text-xs text-gray-500"><?= htmlspecialchars($eventCode) ?></p>
+                                </div>
+                            </label>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <!-- Odoo Notification Preferences (NEW) -->
+                <div class="notify-setting-card p-6 border-2 border-emerald-200">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <div class="notify-channel-icon bg-gradient-to-br from-emerald-500 to-teal-500">
+                            <i class="fas fa-cog text-white text-xl"></i>
+                        </div>
+                        การตั้งค่าการแจ้งเตือน Odoo (ขั้นสูง)
+                        <span class="ml-auto text-xs bg-emerald-100 text-emerald-700 px-3 py-1 rounded-full">NEW</span>
+                    </h3>
+
+                    <div class="bg-gradient-to-r from-emerald-50 to-teal-50 p-4 rounded-lg mb-4">
+                        <div class="flex items-start gap-3">
+                            <i class="fas fa-info-circle text-emerald-600 mt-1"></i>
+                            <div class="text-sm text-gray-700">
+                                <p class="font-semibold mb-1">🎯 Roadmap Batching</p>
+                                <p>ระบบจะรวมการแจ้งเตือนหลายสถานะเป็น timeline เดียว เมื่อถึงสถานะ <strong>order.packed (แพ็คเสร็จ)</strong></p>
+                                <p class="mt-2 text-xs text-gray-600">
+                                    ตัวอย่าง: picker_assigned → picking → picked → packing → <strong>packed</strong> = ส่ง 1 ข้อความแทน 5 ข้อความ
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="notify-item">
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800">📊 สถานะระบบ</p>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    <a href="/tests/check-system.php" target="_blank" class="text-emerald-600 hover:underline">
+                                        <i class="fas fa-external-link-alt mr-1"></i>ตรวจสอบสถานะระบบ
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="notify-item">
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800">🔧 Worker Status</p>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    <a href="/api/notification-queue-status.php" target="_blank" class="text-emerald-600 hover:underline">
+                                        <i class="fas fa-external-link-alt mr-1"></i>ดูสถานะ Queue & Worker
+                                    </a>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="notify-item">
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800">📝 Notification Logs</p>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    ดูประวัติการส่งแจ้งเตือนทั้งหมดใน database: <code class="text-xs bg-gray-100 px-2 py-1 rounded">odoo_notification_log</code>
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="notify-item">
+                            <div class="flex-1">
+                                <p class="font-medium text-gray-800">⚙️ User Preferences</p>
+                                <p class="text-sm text-gray-500 mt-1">
+                                    ผู้ใช้สามารถตั้งค่าการแจ้งเตือนส่วนตัวได้ที่ LIFF Notification Settings
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p class="text-sm text-yellow-800">
+                            <i class="fas fa-exclamation-triangle mr-2"></i>
+                            <strong>หมายเหตุ:</strong> ระบบ Roadmap Batching ทำงานอัตโนมัติผ่าน NotificationRouter และ Worker
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Odoo Notification Test -->
+                <div class="notify-setting-card p-6">
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                        <div class="notify-channel-icon bg-indigo-100">
+                            <i class="fas fa-vial text-indigo-600 text-xl"></i>
+                        </div>
+                        ทดสอบส่งแจ้งเตือน Odoo → LIFF
+                    </h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-2">LINE User ID ปลายทาง</label>
+                            <input type="text" name="test_line_user_id" class="notify-input-field" placeholder="Uxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-2">สถานะที่ต้องการทดสอบ</label>
+                            <select name="test_odoo_event" class="notify-input-field">
+                                <?php foreach ($odooEventOptions as $eventCode => $eventLabel): ?>
+                                    <option value="<?= htmlspecialchars($eventCode) ?>"><?= htmlspecialchars($eventLabel) ?> (<?= htmlspecialchars($eventCode) ?>)</option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-2">เลขที่ออเดอร์ (ตัวอย่าง)</label>
+                            <input type="text" name="test_order_ref" class="notify-input-field" placeholder="SO-TEST-001">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-600 mb-2">ชื่อผู้รับ (ตัวอย่าง)</label>
+                            <input type="text" name="test_customer_name" class="notify-input-field" placeholder="ลูกค้าทดสอบ">
+                        </div>
+                    </div>
+
+                    <button type="submit" name="action" value="test_odoo_liff_notification" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                        <i class="fas fa-paper-plane mr-2"></i>ส่งข้อความทดสอบ
+                    </button>
+                </div>
+
                 <!-- Notification Recipients -->
                 <div class="notify-setting-card p-6">
                     <h3 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -261,7 +430,7 @@ $notifyAdminUsers = array_filter(array_map('intval', explode(',', $notifyAdminUs
             <div class="space-y-6">
                 <!-- Save Button -->
                 <div class="notify-setting-card p-6">
-                    <button type="submit" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-semibold hover:opacity-90 transition-all">
+                    <button type="submit" name="action" value="save_notifications" class="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl font-semibold hover:opacity-90 transition-all">
                         <i class="fas fa-save mr-2"></i>บันทึกการตั้งค่า
                     </button>
                 </div>

@@ -9,8 +9,566 @@
 if (file_exists(__DIR__ . '/../../classes/UnifiedShop.php')) {
     require_once __DIR__ . '/../../classes/UnifiedShop.php';
 }
+if (file_exists(__DIR__ . '/../../classes/OdooProductService.php')) {
+    require_once __DIR__ . '/../../classes/OdooProductService.php';
+}
+if (file_exists(__DIR__ . '/../shop-data-source.php')) {
+    require_once __DIR__ . '/../shop-data-source.php';
+}
 
 $currentBotId = $_SESSION['current_bot_id'] ?? 1;
+$orderDataSource = function_exists('getShopOrderDataSource') ? getShopOrderDataSource($db, $currentBotId) : 'shop';
+$isOdooMode = $orderDataSource === 'odoo';
+
+if ($isOdooMode) {
+    $cacheTable = 'odoo_products_cache';
+    $syncStateTable = 'odoo_products_sync_state';
+    $odooError = null;
+
+    try {
+        $db->exec("CREATE TABLE IF NOT EXISTS {$cacheTable} (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            line_account_id INT NOT NULL,
+            product_id VARCHAR(64) DEFAULT NULL,
+            product_code VARCHAR(64) NOT NULL,
+            sku VARCHAR(100) DEFAULT NULL,
+            name VARCHAR(255) DEFAULT NULL,
+            generic_name VARCHAR(255) DEFAULT NULL,
+            barcode VARCHAR(100) DEFAULT NULL,
+            category VARCHAR(150) DEFAULT NULL,
+            list_price DECIMAL(12,2) DEFAULT 0,
+            online_price DECIMAL(12,2) DEFAULT 0,
+            saleable_qty DECIMAL(12,2) DEFAULT 0,
+            is_active TINYINT(1) DEFAULT 1,
+            last_synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uk_line_product_code (line_account_id, product_code),
+            INDEX idx_line_name (line_account_id, name),
+            INDEX idx_line_sku (line_account_id, sku),
+            INDEX idx_line_category (line_account_id, category),
+            INDEX idx_line_updated (line_account_id, updated_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+        $db->exec("CREATE TABLE IF NOT EXISTS {$syncStateTable} (
+            line_account_id INT NOT NULL PRIMARY KEY,
+            next_offset INT NOT NULL DEFAULT 1,
+            last_incremental_sync_at DATETIME DEFAULT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    } catch (Exception $e) {
+        $odooError = 'ไม่สามารถเตรียมตาราง cache ได้: ' . $e->getMessage();
+    }
+
+    $syncStart = max(1, (int) ($_GET['sync_start'] ?? 1));
+    $syncLimit = (int) ($_GET['sync_limit'] ?? 100);
+    if (!in_array($syncLimit, [100, 200, 500], true)) {
+        $syncLimit = 100;
+    }
+    $incrementalLimit = (int) ($_GET['incremental_limit'] ?? 100);
+    if (!in_array($incrementalLimit, [50, 100, 200], true)) {
+        $incrementalLimit = 100;
+    }
+    $syncMaxCode = max(100, (int) ($_GET['sync_max_code'] ?? 9999));
+
+    if (
+        $_SERVER['REQUEST_METHOD'] === 'POST'
+        && in_array(($_POST['action'] ?? ''), ['odoo_sync_cache', 'odoo_sync_incremental'], true)
+        && !$odooError
+    ) {
+        $action = $_POST['action'];
+        $syncStart = max(1, (int) ($_POST['sync_start'] ?? 1));
+        $syncLimit = (int) ($_POST['sync_limit'] ?? 100);
+        if (!in_array($syncLimit, [100, 200, 500], true)) {
+            $syncLimit = 100;
+        }
+        $incrementalLimit = (int) ($_POST['incremental_limit'] ?? 100);
+        if (!in_array($incrementalLimit, [50, 100, 200], true)) {
+            $incrementalLimit = 100;
+        }
+        $syncMaxCode = max(100, (int) ($_POST['sync_max_code'] ?? 9999));
+
+        try {
+            $service = new OdooProductService($db, $currentBotId);
+            $upsertStmt = $db->prepare("INSERT INTO {$cacheTable}
+                (line_account_id, product_id, product_code, sku, name, generic_name, barcode, category, list_price, online_price, saleable_qty, is_active, last_synced_at)
+                VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                ON DUPLICATE KEY UPDATE
+                    product_id = VALUES(product_id),
+                    sku = VALUES(sku),
+                    name = VALUES(name),
+                    generic_name = VALUES(generic_name),
+                    barcode = VALUES(barcode),
+                    category = VALUES(category),
+                    list_price = VALUES(list_price),
+                    online_price = VALUES(online_price),
+                    saleable_qty = VALUES(saleable_qty),
+                    is_active = VALUES(is_active),
+                    last_synced_at = NOW()");
+
+            $savedCount = 0;
+            $fetchedCount = 0;
+
+            if ($action === 'odoo_sync_incremental') {
+                $stateStmt = $db->prepare("SELECT next_offset FROM {$syncStateTable} WHERE line_account_id = ? LIMIT 1");
+                $stateStmt->execute([(int) $currentBotId]);
+                $nextOffset = (int) $stateStmt->fetchColumn();
+                if ($nextOffset <= 0) {
+                    $nextOffset = 1;
+                }
+                $syncStart = $nextOffset;
+                $syncLimit = $incrementalLimit;
+            }
+
+            $cursor = $syncStart;
+            $remaining = $syncLimit;
+
+            while ($remaining > 0) {
+                $chunkSize = min(50, $remaining);
+                $result = $service->getProductsByRange($cursor, $chunkSize);
+                $chunkProducts = $result['products'] ?? [];
+                $fetchedCount += count($chunkProducts);
+
+                foreach ($chunkProducts as $product) {
+                    $upsertStmt->execute([
+                        (int) $currentBotId,
+                        (string) ($product['product_id'] ?? ''),
+                        (string) ($product['product_code'] ?? ''),
+                        (string) ($product['sku'] ?? ''),
+                        (string) ($product['name'] ?? ''),
+                        (string) ($product['generic_name'] ?? ''),
+                        (string) ($product['barcode'] ?? ''),
+                        (string) ($product['category'] ?? ''),
+                        (float) ($product['list_price'] ?? 0),
+                        (float) ($product['online_price'] ?? 0),
+                        (float) ($product['saleable_qty'] ?? 0),
+                        !empty($product['active']) ? 1 : 0,
+                    ]);
+                    $savedCount++;
+                }
+
+                $cursor += $chunkSize;
+                $remaining -= $chunkSize;
+            }
+
+            if ($action === 'odoo_sync_incremental') {
+                $nextOffset = $syncStart + $syncLimit;
+                if ($nextOffset > $syncMaxCode) {
+                    $nextOffset = 1;
+                }
+
+                $saveStateStmt = $db->prepare("INSERT INTO {$syncStateTable} (line_account_id, next_offset, last_incremental_sync_at)
+                    VALUES (?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        next_offset = VALUES(next_offset),
+                        last_incremental_sync_at = NOW()");
+                $saveStateStmt->execute([(int) $currentBotId, (int) $nextOffset]);
+
+                $_SESSION['odoo_sync_message'] = "Incremental sync สำเร็จ: ช่วง {$syncStart}-" . ($syncStart + $syncLimit - 1) . " | ดึง {$fetchedCount} รายการ | บันทึก {$savedCount} รายการ | รอบถัดไปเริ่ม {$nextOffset}";
+            } else {
+                $_SESSION['odoo_sync_message'] = "Sync สำเร็จ: ดึง {$fetchedCount} รายการ และบันทึก cache {$savedCount} รายการ";
+            }
+        } catch (Exception $e) {
+            $_SESSION['odoo_sync_error'] = 'Sync ไม่สำเร็จ: ' . $e->getMessage();
+        }
+
+        $redirectParams = array_merge($_GET, [
+            'tab' => 'products',
+            'sync_start' => $syncStart,
+            'sync_limit' => $syncLimit,
+            'incremental_limit' => $incrementalLimit,
+            'sync_max_code' => $syncMaxCode,
+            'page' => 1,
+        ]);
+        unset($redirectParams['_']);
+        echo "<script>window.location.href='?" . http_build_query($redirectParams) . "';</script>";
+        exit;
+    }
+
+    $odooSyncMessage = $_SESSION['odoo_sync_message'] ?? null;
+    $odooSyncError = $_SESSION['odoo_sync_error'] ?? null;
+    unset($_SESSION['odoo_sync_message'], $_SESSION['odoo_sync_error']);
+
+    if (!$odooError) {
+        try {
+            $countStmt = $db->prepare("SELECT COUNT(*) FROM {$cacheTable} WHERE line_account_id = ?");
+            $countStmt->execute([(int) $currentBotId]);
+            $cachedTotal = (int) $countStmt->fetchColumn();
+
+            if ($cachedTotal === 0) {
+                $service = new OdooProductService($db, $currentBotId);
+                $upsertStmt = $db->prepare("INSERT INTO {$cacheTable}
+                    (line_account_id, product_id, product_code, sku, name, generic_name, barcode, category, list_price, online_price, saleable_qty, is_active, last_synced_at)
+                    VALUES
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    ON DUPLICATE KEY UPDATE
+                        product_id = VALUES(product_id),
+                        sku = VALUES(sku),
+                        name = VALUES(name),
+                        generic_name = VALUES(generic_name),
+                        barcode = VALUES(barcode),
+                        category = VALUES(category),
+                        list_price = VALUES(list_price),
+                        online_price = VALUES(online_price),
+                        saleable_qty = VALUES(saleable_qty),
+                        is_active = VALUES(is_active),
+                        last_synced_at = NOW()");
+
+                $seedResult = $service->getProductsByRange(1, 50);
+                $seedProducts = $seedResult['products'] ?? [];
+
+                $seedResult2 = $service->getProductsByRange(51, 50);
+                $seedProducts = array_merge($seedProducts, $seedResult2['products'] ?? []);
+
+                $seedSaved = 0;
+                foreach ($seedProducts as $product) {
+                    $upsertStmt->execute([
+                        (int) $currentBotId,
+                        (string) ($product['product_id'] ?? ''),
+                        (string) ($product['product_code'] ?? ''),
+                        (string) ($product['sku'] ?? ''),
+                        (string) ($product['name'] ?? ''),
+                        (string) ($product['generic_name'] ?? ''),
+                        (string) ($product['barcode'] ?? ''),
+                        (string) ($product['category'] ?? ''),
+                        (float) ($product['list_price'] ?? 0),
+                        (float) ($product['online_price'] ?? 0),
+                        (float) ($product['saleable_qty'] ?? 0),
+                        !empty($product['active']) ? 1 : 0,
+                    ]);
+                    $seedSaved++;
+                }
+
+                if ($seedSaved > 0 && !$odooSyncMessage) {
+                    $odooSyncMessage = "โหลดข้อมูลเริ่มต้นอัตโนมัติแล้ว {$seedSaved} รายการ";
+                }
+            }
+        } catch (Exception $e) {
+            $odooError = $e->getMessage();
+        }
+    }
+
+    $searchFilter = trim($_GET['search'] ?? '');
+    $categoryFilter = trim($_GET['category'] ?? '');
+    $statusFilter = $_GET['status'] ?? 'all';
+    if (!in_array($statusFilter, ['all', 'active', 'inactive'], true)) {
+        $statusFilter = 'all';
+    }
+
+    $sortBy = $_GET['sort'] ?? 'updated_at';
+    $sortDir = strtoupper($_GET['dir'] ?? 'DESC');
+    $allowedSorts = ['updated_at', 'name', 'product_code', 'sku', 'list_price', 'online_price', 'saleable_qty'];
+    if (!in_array($sortBy, $allowedSorts, true)) {
+        $sortBy = 'updated_at';
+    }
+    $sortDir = $sortDir === 'ASC' ? 'ASC' : 'DESC';
+
+    $viewMode = $_GET['view'] ?? 'table';
+    if (!in_array($viewMode, ['table', 'grid', 'json'], true)) {
+        $viewMode = 'table';
+    }
+
+    $page = max(1, (int) ($_GET['page'] ?? 1));
+    $perPage = (int) ($_GET['per_page'] ?? 50);
+    if (!in_array($perPage, [20, 50, 100, 200], true)) {
+        $perPage = 50;
+    }
+    $offset = ($page - 1) * $perPage;
+
+    $baseWhere = " FROM {$cacheTable} WHERE line_account_id = ?";
+    $queryParams = [(int) $currentBotId];
+
+    if ($categoryFilter !== '') {
+        $baseWhere .= " AND category = ?";
+        $queryParams[] = $categoryFilter;
+    }
+    if ($statusFilter === 'active') {
+        $baseWhere .= " AND is_active = 1";
+    } elseif ($statusFilter === 'inactive') {
+        $baseWhere .= " AND is_active = 0";
+    }
+    if ($searchFilter !== '') {
+        $baseWhere .= " AND (name LIKE ? OR sku LIKE ? OR product_code LIKE ? OR barcode LIKE ? OR generic_name LIKE ?)";
+        $like = "%{$searchFilter}%";
+        $queryParams[] = $like;
+        $queryParams[] = $like;
+        $queryParams[] = $like;
+        $queryParams[] = $like;
+        $queryParams[] = $like;
+    }
+
+    $totalProducts = 0;
+    $odooProducts = [];
+    $lastSyncedAt = null;
+    $lastIncrementalSyncedAt = null;
+    $nextIncrementalOffset = 1;
+    $categories = [];
+
+    if (!$odooError) {
+        try {
+            $countStmt = $db->prepare("SELECT COUNT(*)" . $baseWhere);
+            $countStmt->execute($queryParams);
+            $totalProducts = (int) $countStmt->fetchColumn();
+
+            $dataStmt = $db->prepare("SELECT *" . $baseWhere . " ORDER BY {$sortBy} {$sortDir} LIMIT {$perPage} OFFSET {$offset}");
+            $dataStmt->execute($queryParams);
+            $odooProducts = $dataStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $syncStmt = $db->prepare("SELECT MAX(last_synced_at) FROM {$cacheTable} WHERE line_account_id = ?");
+            $syncStmt->execute([(int) $currentBotId]);
+            $lastSyncedAt = $syncStmt->fetchColumn();
+
+            $syncStateStmt = $db->prepare("SELECT next_offset, last_incremental_sync_at FROM {$syncStateTable} WHERE line_account_id = ? LIMIT 1");
+            $syncStateStmt->execute([(int) $currentBotId]);
+            $syncState = $syncStateStmt->fetch(PDO::FETCH_ASSOC);
+            if ($syncState) {
+                $nextIncrementalOffset = max(1, (int) ($syncState['next_offset'] ?? 1));
+                $lastIncrementalSyncedAt = $syncState['last_incremental_sync_at'] ?? null;
+            }
+
+            $catStmt = $db->prepare("SELECT DISTINCT category FROM {$cacheTable} WHERE line_account_id = ? AND category IS NOT NULL AND category <> '' ORDER BY category ASC");
+            $catStmt->execute([(int) $currentBotId]);
+            $categories = $catStmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Exception $e) {
+            $odooError = $e->getMessage();
+        }
+    }
+
+    $totalPages = max(1, (int) ceil(max(1, $totalProducts) / $perPage));
+    $lastSyncedText = $lastSyncedAt ? date('d/m/Y H:i', strtotime($lastSyncedAt)) : '-';
+    $lastIncrementalSyncedText = $lastIncrementalSyncedAt ? date('d/m/Y H:i', strtotime($lastIncrementalSyncedAt)) : '-';
+
+    if (!function_exists('buildOdooCacheQuery')) {
+        function buildOdooCacheQuery($overrides = [])
+        {
+            $params = array_merge($_GET, $overrides);
+            $params['tab'] = 'products';
+            unset($params['_']);
+            return http_build_query($params);
+        }
+    }
+
+    ?>
+    <div class="space-y-4">
+        <div class="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-800">
+            <div class="font-semibold">โหมด Odoo (Read-only)</div>
+            <div class="mt-1">หน้านี้ใช้ข้อมูลสินค้า Odoo จากฐานข้อมูล cache เพื่อให้โหลดเร็วขึ้น และยังไม่รองรับการเพิ่ม/แก้ไข/ลบจากระบบนี้</div>
+            <div class="mt-1 text-xs">ข้อมูลล่าสุด sync เมื่อ: <b><?= htmlspecialchars($lastSyncedText) ?></b></div>
+            <div class="mt-1 text-xs">Incremental ล่าสุด: <b><?= htmlspecialchars($lastIncrementalSyncedText) ?></b> | รอบถัดไปเริ่มรหัส: <b><?= number_format($nextIncrementalOffset) ?></b></div>
+        </div>
+
+        <?php if ($odooSyncMessage): ?>
+            <div class="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-700">
+                <?= htmlspecialchars($odooSyncMessage) ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($odooSyncError): ?>
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+                <?= htmlspecialchars($odooSyncError) ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($odooError): ?>
+            <div class="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+                ไม่สามารถโหลดข้อมูลสินค้า Odoo ได้: <?= htmlspecialchars($odooError) ?>
+            </div>
+        <?php endif; ?>
+
+        <div class="bg-white rounded-xl shadow p-4">
+            <form method="POST" class="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="tab" value="products">
+                <label class="text-sm text-gray-600">เริ่มรหัสสินค้า</label>
+                <input type="number" name="sync_start" min="1" value="<?= (int) $syncStart ?>" class="px-3 py-2 border rounded-lg w-28">
+
+                <label class="text-sm text-gray-600">จำนวน</label>
+                <select name="sync_limit" class="px-3 py-2 border rounded-lg">
+                    <?php foreach ([100, 200, 500] as $size): ?>
+                        <option value="<?= $size ?>" <?= $syncLimit === $size ? 'selected' : '' ?>><?= $size ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <button type="submit" name="action" value="odoo_sync_cache" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    <i class="fas fa-sync mr-1"></i>Sync รายการ
+                </button>
+
+                <label class="text-sm text-gray-600 ml-2">Incremental</label>
+                <select name="incremental_limit" class="px-3 py-2 border rounded-lg">
+                    <?php foreach ([50, 100, 200] as $size): ?>
+                        <option value="<?= $size ?>" <?= $incrementalLimit === $size ? 'selected' : '' ?>><?= $size ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <input type="number" name="sync_max_code" min="100" value="<?= (int) $syncMaxCode ?>" class="px-3 py-2 border rounded-lg w-28" title="รหัสสูงสุดก่อนวนกลับ">
+
+                <button type="submit" name="action" value="odoo_sync_incremental" class="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                    <i class="fas fa-bolt mr-1"></i>Sync เฉพาะที่เปลี่ยนล่าสุด
+                </button>
+            </form>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-4">
+            <form method="GET" class="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="tab" value="products">
+                <input type="text" name="search" value="<?= htmlspecialchars($searchFilter) ?>" placeholder="ค้นหา SKU/รหัส/ชื่อ/บาร์โค้ด/generic" class="px-3 py-2 border rounded-lg w-72">
+
+                <select name="category" class="px-3 py-2 border rounded-lg">
+                    <option value="">ทุกหมวดหมู่</option>
+                    <?php foreach ($categories as $catName): ?>
+                        <option value="<?= htmlspecialchars((string) $catName) ?>" <?= $categoryFilter === (string) $catName ? 'selected' : '' ?>><?= htmlspecialchars((string) $catName) ?></option>
+                    <?php endforeach; ?>
+                </select>
+
+                <select name="status" class="px-3 py-2 border rounded-lg">
+                    <option value="all" <?= $statusFilter === 'all' ? 'selected' : '' ?>>ทุกสถานะ</option>
+                    <option value="active" <?= $statusFilter === 'active' ? 'selected' : '' ?>>active</option>
+                    <option value="inactive" <?= $statusFilter === 'inactive' ? 'selected' : '' ?>>inactive</option>
+                </select>
+
+                <select name="per_page" class="px-3 py-2 border rounded-lg">
+                    <?php foreach ([20, 50, 100, 200] as $size): ?>
+                        <option value="<?= $size ?>" <?= $perPage === $size ? 'selected' : '' ?>><?= $size ?>/หน้า</option>
+                    <?php endforeach; ?>
+                </select>
+
+                <input type="hidden" name="sort" value="<?= htmlspecialchars($sortBy) ?>">
+                <input type="hidden" name="dir" value="<?= htmlspecialchars($sortDir) ?>">
+                <input type="hidden" name="view" value="<?= htmlspecialchars($viewMode) ?>">
+
+                <button type="submit" class="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">
+                    <i class="fas fa-search"></i>
+                </button>
+                <?php if ($searchFilter !== '' || $categoryFilter !== '' || $statusFilter !== 'all'): ?>
+                    <a href="?tab=products" class="px-3 py-2 text-gray-500 hover:text-gray-700"><i class="fas fa-times"></i></a>
+                <?php endif; ?>
+            </form>
+
+            <div class="mt-3 text-sm text-gray-600">
+                แสดง <?= number_format($totalProducts > 0 ? ($offset + 1) : 0) ?>-<?= number_format(min($offset + $perPage, $totalProducts)) ?> จาก <?= number_format($totalProducts) ?> รายการ
+            </div>
+
+            <div class="mt-3 flex items-center gap-2">
+                <a href="?<?= buildOdooCacheQuery(['view' => 'grid']) ?>" class="px-3 py-1.5 rounded-lg text-sm border <?= $viewMode === 'grid' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50' ?>">
+                    <i class="fas fa-th mr-1"></i> Grid
+                </a>
+                <a href="?<?= buildOdooCacheQuery(['view' => 'table']) ?>" class="px-3 py-1.5 rounded-lg text-sm border <?= $viewMode === 'table' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50' ?>">
+                    <i class="fas fa-table mr-1"></i> Table
+                </a>
+                <a href="?<?= buildOdooCacheQuery(['view' => 'json']) ?>" class="px-3 py-1.5 rounded-lg text-sm border <?= $viewMode === 'json' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50' ?>">
+                    <i class="fas fa-code mr-1"></i> JSON
+                </a>
+            </div>
+        </div>
+
+        <?php if ($viewMode === 'json'): ?>
+            <div class="bg-white rounded-xl shadow p-4">
+                <pre class="text-xs overflow-auto" style="max-height: 540px;"><?= htmlspecialchars(json_encode($odooProducts, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre>
+            </div>
+        <?php elseif ($viewMode === 'grid'): ?>
+            <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <?php if (empty($odooProducts)): ?>
+                    <div class="col-span-full bg-white rounded-xl shadow p-8 text-center text-gray-400">ยังไม่มีข้อมูลใน cache กรุณากด Sync รายการ</div>
+                <?php else: ?>
+                    <?php foreach ($odooProducts as $product): ?>
+                        <div class="bg-white rounded-xl shadow border border-gray-100 p-4">
+                            <div class="font-semibold text-gray-800 text-base leading-6 mb-1"><?= htmlspecialchars((string) ($product['name'] ?? '-')) ?></div>
+                            <div class="text-xs text-gray-500 mb-3"><?= htmlspecialchars((string) ($product['generic_name'] ?? '-')) ?></div>
+
+                            <div class="flex flex-wrap gap-2 mb-3 text-xs">
+                                <span class="px-2 py-1 bg-gray-100 rounded">SKU: <?= htmlspecialchars((string) ($product['sku'] ?? '-')) ?></span>
+                                <span class="px-2 py-1 bg-gray-100 rounded">รหัส: <?= htmlspecialchars((string) ($product['product_code'] ?? '-')) ?></span>
+                            </div>
+
+                            <div class="rounded-lg border border-gray-100 p-3 text-sm space-y-1 mb-3">
+                                <div class="flex justify-between"><span class="text-gray-500">Product ID</span><span class="font-semibold text-gray-700"><?= htmlspecialchars((string) ($product['product_id'] ?? '-')) ?></span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">หมวดหมู่</span><span class="font-semibold text-gray-700"><?= htmlspecialchars((string) ($product['category'] ?? '-')) ?></span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">ราคาปกติ</span><span class="font-semibold text-green-600">฿<?= number_format((float) ($product['list_price'] ?? 0), 2) ?></span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">ออนไลน์</span><span class="font-semibold text-blue-600">฿<?= number_format((float) ($product['online_price'] ?? 0), 2) ?></span></div>
+                                <div class="flex justify-between"><span class="text-gray-500">สต็อก</span><span class="font-semibold text-gray-700"><?= number_format((float) ($product['saleable_qty'] ?? 0)) ?></span></div>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <?php if (!empty($product['is_active'])): ?>
+                                    <span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">active</span>
+                                <?php else: ?>
+                                    <span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">inactive</span>
+                                <?php endif; ?>
+                                <span class="text-xs text-gray-400">Sync: <?= !empty($product['last_synced_at']) ? htmlspecialchars(date('d/m H:i', strtotime($product['last_synced_at']))) : '-' ?></span>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+        <?php else: ?>
+            <div class="bg-white rounded-xl shadow overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-gray-600">
+                    <tr>
+                        <th class="px-3 py-3 text-left"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'sku', 'dir' => ($sortBy === 'sku' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">SKU</a></th>
+                        <th class="px-3 py-3 text-left"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'product_code', 'dir' => ($sortBy === 'product_code' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">รหัสสินค้า</a></th>
+                        <th class="px-3 py-3 text-left"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'name', 'dir' => ($sortBy === 'name' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">ชื่อสินค้า</a></th>
+                        <th class="px-3 py-3 text-left">หมวดหมู่</th>
+                        <th class="px-3 py-3 text-right"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'list_price', 'dir' => ($sortBy === 'list_price' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">List Price</a></th>
+                        <th class="px-3 py-3 text-right"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'online_price', 'dir' => ($sortBy === 'online_price' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">Online Price</a></th>
+                        <th class="px-3 py-3 text-center"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'saleable_qty', 'dir' => ($sortBy === 'saleable_qty' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">คงเหลือ</a></th>
+                        <th class="px-3 py-3 text-center">สถานะ</th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                    <?php if (empty($odooProducts)): ?>
+                        <tr>
+                            <td colspan="8" class="px-4 py-8 text-center text-gray-400">ยังไม่มีข้อมูลใน cache กรุณากด Sync รายการ</td>
+                        </tr>
+                    <?php else: ?>
+                        <?php foreach ($odooProducts as $product): ?>
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-3 py-2 font-mono text-xs"><?= htmlspecialchars((string) ($product['sku'] ?? '-')) ?></td>
+                                <td class="px-3 py-2"><?= htmlspecialchars((string) ($product['product_code'] ?? '-')) ?></td>
+                                <td class="px-3 py-2"><?= htmlspecialchars((string) ($product['name'] ?? '-')) ?></td>
+                                <td class="px-3 py-2"><?= htmlspecialchars((string) ($product['category'] ?? '-')) ?></td>
+                                <td class="px-3 py-2 text-right">฿<?= number_format((float) ($product['list_price'] ?? 0), 2) ?></td>
+                                <td class="px-3 py-2 text-right">฿<?= number_format((float) ($product['online_price'] ?? 0), 2) ?></td>
+                                <td class="px-3 py-2 text-center"><?= number_format((float) ($product['saleable_qty'] ?? 0)) ?></td>
+                                <td class="px-3 py-2 text-center">
+                                    <?php if (!empty($product['is_active'])): ?>
+                                        <span class="px-2 py-1 bg-green-100 text-green-700 text-xs rounded-full">active</span>
+                                    <?php else: ?>
+                                        <span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">inactive</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                    </tbody>
+                    </table>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($totalPages > 1): ?>
+            <div class="flex justify-between items-center text-sm text-gray-600">
+                <div>หน้า <?= number_format($page) ?> / <?= number_format($totalPages) ?></div>
+                <div class="flex items-center gap-2">
+                    <?php if ($page > 1): ?>
+                        <a href="?<?= buildOdooCacheQuery(['page' => $page - 1]) ?>" class="px-3 py-1 border rounded hover:bg-gray-100"><i class="fas fa-chevron-left"></i></a>
+                    <?php endif; ?>
+
+                    <?php for ($i = max(1, $page - 2); $i <= min($totalPages, $page + 2); $i++): ?>
+                        <a href="?<?= buildOdooCacheQuery(['page' => $i]) ?>" class="px-3 py-1 border rounded <?= $i == $page ? 'bg-blue-600 text-white' : 'hover:bg-gray-100' ?>"><?= $i ?></a>
+                    <?php endfor; ?>
+
+                    <?php if ($page < $totalPages): ?>
+                        <a href="?<?= buildOdooCacheQuery(['page' => $page + 1]) ?>" class="px-3 py-1 border rounded hover:bg-gray-100"><i class="fas fa-chevron-right"></i></a>
+                    <?php endif; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+    </div>
+    <?php
+    return;
+}
+
 $shop = new UnifiedShop($db, null, $currentBotId);
 $tablesExist = $shop->isReady();
 $useBusinessItems = $shop->isV25();

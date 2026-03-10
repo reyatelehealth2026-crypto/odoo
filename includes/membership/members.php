@@ -61,7 +61,7 @@ if ($hasIsRegistered) {
 $params = [];
 
 if ($search) {
-    $searchFields = ["first_name LIKE ?", "last_name LIKE ?", "phone LIKE ?", "display_name LIKE ?"];
+    $searchFields = ["first_name LIKE ?", "last_name LIKE ?", "phone LIKE ?", "display_name LIKE ?", "real_name LIKE ?", "email LIKE ?"];
     if ($hasMemberId) {
         $searchFields[] = "member_id LIKE ?";
     }

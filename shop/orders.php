@@ -8,10 +8,209 @@ require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../classes/LineAPI.php';
 require_once __DIR__ . '/../classes/LineAccountManager.php';
 require_once __DIR__ . '/../classes/ActivityLogger.php';
+require_once __DIR__ . '/../includes/shop-data-source.php';
 
 $db = Database::getInstance()->getConnection();
 $activityLogger = ActivityLogger::getInstance($db);
 $pageTitle = 'รายการ/คำสั่งซื้อ';
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
+$currentBotId = $_SESSION['current_bot_id'] ?? 1;
+$orderDataSource = getShopOrderDataSource($db, $currentBotId);
+$isOdooMode = $orderDataSource === 'odoo';
+
+if ($isOdooMode) {
+    $statusFilter = strtolower(trim($_GET['status'] ?? ''));
+    $searchFilter = trim($_GET['q'] ?? '');
+
+    $odooOrders = [];
+    $statusCounts = [];
+    $odooError = null;
+
+    try {
+        $db->query("SELECT 1 FROM odoo_webhooks_log LIMIT 1");
+
+        $orderKeyExpr = "COALESCE(CAST(order_id AS CHAR), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_name')), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_ref')))";
+        $stateExpr = "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.new_state')), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.state')), ''))";
+        $amountExpr = "CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.amount_total')), '0') AS DECIMAL(12,2))";
+        $customerExpr = "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.name')), '-')";
+
+        $where = "status = 'success' AND {$orderKeyExpr} IS NOT NULL AND {$orderKeyExpr} != ''";
+        $params = [];
+
+        try {
+            $stmtCol = $db->query("SHOW COLUMNS FROM odoo_webhooks_log LIKE 'line_account_id'");
+            if ($stmtCol && $stmtCol->rowCount() > 0) {
+                $where .= " AND (line_account_id = ? OR line_account_id IS NULL)";
+                $params[] = $currentBotId;
+            }
+        } catch (Exception $e) {
+        }
+
+        if ($searchFilter !== '') {
+            $where .= " AND ({$orderKeyExpr} LIKE ? OR {$customerExpr} LIKE ?)";
+            $like = '%' . $searchFilter . '%';
+            $params[] = $like;
+            $params[] = $like;
+        }
+
+        $baseSubquery = "
+            SELECT
+                {$orderKeyExpr} AS order_key,
+                processed_at,
+                {$amountExpr} AS amount_total,
+                {$stateExpr} AS order_state,
+                {$customerExpr} AS customer_name
+            FROM odoo_webhooks_log
+            WHERE {$where}
+        ";
+
+        $orderSnapshotSql = "
+            SELECT
+                order_key,
+                MIN(processed_at) AS created_at,
+                MAX(processed_at) AS updated_at,
+                MAX(amount_total) AS total_amount,
+                SUBSTRING_INDEX(GROUP_CONCAT(order_state ORDER BY processed_at DESC), ',', 1) AS status,
+                SUBSTRING_INDEX(GROUP_CONCAT(customer_name ORDER BY processed_at DESC), ',', 1) AS customer_name
+            FROM ({$baseSubquery}) s
+            GROUP BY order_key
+        ";
+
+        $listSql = "SELECT * FROM ({$orderSnapshotSql}) o WHERE 1=1";
+        $listParams = $params;
+        if ($statusFilter !== '') {
+            $listSql .= " AND o.status = ?";
+            $listParams[] = $statusFilter;
+        }
+        $listSql .= " ORDER BY o.updated_at DESC LIMIT 200";
+
+        $stmt = $db->prepare($listSql);
+        $stmt->execute($listParams);
+        $odooOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $countSql = "SELECT o.status, COUNT(*) AS c FROM ({$orderSnapshotSql}) o GROUP BY o.status";
+        $stmt = $db->prepare($countSql);
+        $stmt->execute($params);
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $statusCounts[$row['status']] = (int) $row['c'];
+        }
+    } catch (Exception $e) {
+        $odooError = 'ไม่สามารถโหลดข้อมูล Odoo ได้: ' . $e->getMessage();
+    }
+
+    $statusLabels = [
+        'draft' => 'รอดำเนินการ',
+        'sent' => 'ส่งใบเสนอราคา',
+        'pending' => 'รอการยืนยัน',
+        'confirmed' => 'ยืนยันแล้ว',
+        'sale' => 'ยืนยันการขาย',
+        'done' => 'เสร็จสิ้น',
+        'paid' => 'ชำระแล้ว',
+        'cancel' => 'ยกเลิก',
+        'cancelled' => 'ยกเลิก',
+    ];
+
+    $statusColors = [
+        'draft' => 'bg-gray-100 text-gray-700',
+        'sent' => 'bg-blue-100 text-blue-700',
+        'pending' => 'bg-yellow-100 text-yellow-700',
+        'confirmed' => 'bg-indigo-100 text-indigo-700',
+        'sale' => 'bg-green-100 text-green-700',
+        'done' => 'bg-green-100 text-green-700',
+        'paid' => 'bg-emerald-100 text-emerald-700',
+        'cancel' => 'bg-red-100 text-red-700',
+        'cancelled' => 'bg-red-100 text-red-700',
+    ];
+
+    require_once __DIR__ . '/../includes/header.php';
+    ?>
+
+    <div class="mb-4 p-4 bg-indigo-50 border border-indigo-200 text-indigo-800 rounded-lg">
+        <div class="flex items-start gap-3">
+            <i class="fas fa-database text-indigo-600 mt-0.5"></i>
+            <div>
+                <p class="font-semibold">โหมด Odoo (Read-only)</p>
+                <p class="text-sm">หน้านี้แสดงคำสั่งซื้อจากข้อมูลที่รับเข้าจาก Odoo และปิดการแก้ไขสถานะในหลังบ้านชั่วคราว</p>
+            </div>
+        </div>
+    </div>
+
+    <?php if ($odooError): ?>
+    <div class="mb-4 p-4 bg-red-100 text-red-700 rounded-lg">
+        <i class="fas fa-exclamation-circle mr-2"></i><?= htmlspecialchars($odooError) ?>
+    </div>
+    <?php endif; ?>
+
+    <form method="GET" class="mb-4 bg-white rounded-xl shadow p-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <input
+            type="text"
+            name="q"
+            value="<?= htmlspecialchars($searchFilter) ?>"
+            placeholder="ค้นหาเลขออเดอร์/ชื่อลูกค้า"
+            class="w-full px-4 py-2 border rounded-lg"
+        >
+        <select name="status" class="w-full px-4 py-2 border rounded-lg">
+            <option value="">ทุกสถานะ</option>
+            <?php foreach ($statusLabels as $key => $label): ?>
+            <option value="<?= $key ?>" <?= $statusFilter === $key ? 'selected' : '' ?>><?= $label ?> (<?= $statusCounts[$key] ?? 0 ?>)</option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+            <i class="fas fa-search mr-1"></i>ค้นหา
+        </button>
+    </form>
+
+    <div class="bg-white rounded-xl shadow overflow-hidden">
+        <div class="p-4 border-b font-semibold">รายการคำสั่งซื้อจาก Odoo (<?= count($odooOrders) ?> รายการ)</div>
+
+        <?php if (empty($odooOrders)): ?>
+        <div class="p-10 text-center text-gray-500">
+            <i class="fas fa-inbox text-5xl mb-3"></i>
+            <p>ไม่พบข้อมูลคำสั่งซื้อ</p>
+        </div>
+        <?php else: ?>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left">เลขออเดอร์</th>
+                        <th class="px-4 py-3 text-left">ลูกค้า</th>
+                        <th class="px-4 py-3 text-left">วันที่</th>
+                        <th class="px-4 py-3 text-right">ยอดรวม</th>
+                        <th class="px-4 py-3 text-center">สถานะ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($odooOrders as $order): ?>
+                    <?php
+                        $status = strtolower($order['status'] ?? '');
+                        $statusLabel = $statusLabels[$status] ?? ($order['status'] ?? '-');
+                        $statusClass = $statusColors[$status] ?? 'bg-gray-100 text-gray-700';
+                    ?>
+                    <tr class="border-t hover:bg-gray-50">
+                        <td class="px-4 py-3 font-medium">#<?= htmlspecialchars($order['order_key']) ?></td>
+                        <td class="px-4 py-3"><?= htmlspecialchars($order['customer_name'] ?? '-') ?></td>
+                        <td class="px-4 py-3"><?= !empty($order['created_at']) ? date('d/m/Y H:i', strtotime($order['created_at'])) : '-' ?></td>
+                        <td class="px-4 py-3 text-right text-green-600 font-semibold">฿<?= number_format((float) ($order['total_amount'] ?? 0), 2) ?></td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="px-2 py-1 rounded-full text-xs <?= $statusClass ?>"><?= htmlspecialchars($statusLabel) ?></span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <?php
+    require_once __DIR__ . '/../includes/footer.php';
+    exit;
+}
 
 // Use transactions table (unified with LIFF checkout)
 $_useTransactions = true;

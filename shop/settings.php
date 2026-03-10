@@ -11,6 +11,7 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../includes/components/tabs.php';
+require_once __DIR__ . '/../includes/shop-data-source.php';
 
 $db = Database::getInstance()->getConnection();
 $pageTitle = 'ตั้งค่าร้านค้า';
@@ -133,6 +134,7 @@ if ($tableExists) {
         'cod_enabled' => "TINYINT(1) DEFAULT 0",
         'cod_fee' => "DECIMAL(10,2) DEFAULT 0",
         'auto_confirm_payment' => "TINYINT(1) DEFAULT 0",
+        'order_data_source' => "VARCHAR(20) DEFAULT 'shop'",
         'shop_address' => "TEXT DEFAULT NULL",
         'shop_email' => "VARCHAR(255) DEFAULT NULL",
         'line_id' => "VARCHAR(100) DEFAULT NULL",
@@ -200,6 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'cod_enabled' => isset($_POST['cod_enabled']) ? 1 : 0,
                 'cod_fee' => (float) ($_POST['cod_fee'] ?? 0),
                 'auto_confirm_payment' => isset($_POST['auto_confirm_payment']) ? 1 : 0,
+                'order_data_source' => normalizeShopOrderDataSource($_POST['order_data_source'] ?? 'shop'),
                 'line_id' => $_POST['line_id'] ?? '',
                 'facebook_url' => $_POST['facebook_url'] ?? '',
                 'instagram_url' => $_POST['instagram_url'] ?? ''

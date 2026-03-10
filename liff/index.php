@@ -16,6 +16,7 @@ error_reporting(E_ALL);
 require_once '../config/config.php';
 require_once '../config/database.php';
 require_once '../classes/LandingSEOService.php';
+require_once '../includes/shop-data-source.php';
 
 $db = Database::getInstance()->getConnection();
 
@@ -29,7 +30,8 @@ $liffId = '';
 $shopName = 'ร้านค้า';
 $shopLogo = '';
 $companyName = 'MedCare';
-$v = '202601231215'; // Global Cache Buster defined at top
+$orderDataSource = 'shop';
+$v = '202602142228'; // Global Cache Buster defined at top
 
 // Build LIFF ID to Account mapping for JavaScript
 $liffToAccountMap = [];
@@ -72,7 +74,7 @@ try {
         $companyName = $shopName;
 
         try {
-            $stmt2 = $db->prepare("SELECT shop_name, shop_logo FROM shop_settings WHERE line_account_id = ? LIMIT 1");
+            $stmt2 = $db->prepare("SELECT shop_name, shop_logo, order_data_source FROM shop_settings WHERE line_account_id = ? LIMIT 1");
             $stmt2->execute([$lineAccountId]);
             $shop = $stmt2->fetch(PDO::FETCH_ASSOC);
             if ($shop) {
@@ -86,6 +88,8 @@ try {
             }
         } catch (Exception $e2) {
         }
+
+        $orderDataSource = getShopOrderDataSource($db, $lineAccountId);
     } else {
         $lineAccountId = 1;
     }
@@ -245,6 +249,7 @@ $currentPage = $pages[$page] ?? $pages['home'];
             LIFF_ID: '<?= $liffId ?>',
             ACCOUNT_ID: <?= (int) $lineAccountId ?>,
             INITIAL_PAGE: '<?= $page ?>',
+            ORDER_DATA_SOURCE: '<?= $orderDataSource ?>',
             SHOP_NAME: '<?= addslashes($shopName) ?>',
             SHOP_LOGO: '<?= addslashes($shopLogo) ?>',
             COMPANY_NAME: '<?= addslashes($companyName) ?>',

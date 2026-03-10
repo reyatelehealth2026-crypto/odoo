@@ -82,10 +82,13 @@ class LineAPI
         if (!is_array($messages)) {
             $messages = [['type' => 'text', 'text' => $messages]];
         }
-        return $this->sendRequest('/message/reply', [
+        $result = $this->sendRequest('/message/reply', [
             'replyToken' => $replyToken,
             'messages' => $messages
         ]);
+        
+        // V2.5: Return body directly to access sentMessages/quoteToken
+        return $result;
     }
 
     /**
@@ -96,10 +99,12 @@ class LineAPI
         if (!is_array($messages)) {
             $messages = [['type' => 'text', 'text' => $messages]];
         }
-        return $this->sendRequest('/message/push', [
+        $result = $this->sendRequest('/message/push', [
             'to' => $userId,
             'messages' => $messages
         ]);
+        
+        return $result;
     }
 
     /**
@@ -982,6 +987,40 @@ class LineAPI
         curl_close($ch);
 
         return json_decode($response, true) ?: [];
+    }
+
+    /**
+     * Get group member IDs (paginated)
+     * Returns array of member user IDs with pagination support
+     * 
+     * @param string $groupId LINE group ID
+     * @param string|null $start Continuation token for pagination
+     * @return array ['memberIds' => [...], 'next' => '...']
+     */
+    public function getGroupMemberIds($groupId, $start = null)
+    {
+        $url = $this->apiEndpoint . '/group/' . $groupId . '/members/ids';
+        if ($start) {
+            $url .= '?start=' . urlencode($start);
+        }
+        
+        $headers = ['Authorization: Bearer ' . $this->channelAccessToken];
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200) {
+            error_log("getGroupMemberIds failed: HTTP {$httpCode}, response: {$response}");
+            return ['memberIds' => [], 'next' => null];
+        }
+
+        return json_decode($response, true) ?: ['memberIds' => [], 'next' => null];
     }
 
     /**

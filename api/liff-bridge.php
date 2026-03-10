@@ -127,6 +127,15 @@ function processAction($db, $line, $action, $data, $message, $lineUserId, $lineA
     $flexMessage = null;
     
     switch ($action) {
+        case 'send_flex_message':
+            // Generic Flex Message sender (for admin actions like adding points)
+            $flexMessage = $data['flexMessage'] ?? null;
+            if ($flexMessage) {
+                $result = $line->pushMessage($lineUserId, [$flexMessage]);
+                return ['success' => true, 'message' => 'Flex message sent'];
+            }
+            return ['success' => false, 'message' => 'No flex message provided'];
+            
         case 'order_placed':
             // Requirements: 20.4, 20.12
             $flexMessage = createOrderConfirmationFlex($db, $data, $lineAccountId);

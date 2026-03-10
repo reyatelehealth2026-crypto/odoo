@@ -21,6 +21,7 @@ register_shutdown_function(function () {
                 json_encode(['file' => $error['file'], 'line' => $error['line'], 'type' => $error['type']])
             ]);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             error_log("Webhook fatal error: " . $error['message']);
         }
     }
@@ -91,6 +92,7 @@ if (!$lineAccount) {
             $line = new LineAPI($lineAccount['channel_access_token'], $lineAccount['channel_secret']);
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Table doesn't exist, use default
     }
 }
@@ -101,6 +103,44 @@ if (!$line) {
     if (!$line->validateSignature($body, $signature)) {
         http_response_code(400);
         exit('Invalid signature');
+    }
+}
+
+/**
+ * Log exceptions that occur during webhook processing.
+ */
+function logWebhookException($db, $context, Throwable $exception, $data = null)
+{
+    $payload = [
+        'type' => get_class($exception),
+        'message' => $exception->getMessage(),
+        'file' => $exception->getFile(),
+        'line' => $exception->getLine(),
+    ];
+
+    $logMessage = sprintf(
+        "[%s] %s: %s in %s:%d",
+        $context,
+        $payload['type'],
+        $payload['message'],
+        $payload['file'],
+        $payload['line']
+    );
+
+    error_log($logMessage);
+
+    $payload['trace'] = $exception->getTraceAsString();
+
+    if (!$db) {
+        return;
+    }
+
+    try {
+        $logData = is_array($data) ? $data : [];
+        $logData['exception'] = $payload;
+        devLog($db, 'error', 'webhook', $logMessage, $logData);
+    } catch (Exception $inner) {
+        error_log("[logWebhookException] devLog failed: " . $inner->getMessage());
     }
 }
 
@@ -139,6 +179,7 @@ function showLoadingAnimation($line, $chatId, $seconds = 10)
 
         return $httpCode === 200;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("showLoadingAnimation error: " . $e->getMessage());
         return false;
     }
@@ -180,6 +221,7 @@ function sendMessageWithFallback($line, $replyToken, $userId, $messages, $db = n
                 'reason' => $replyCode === 400 ? 'Token expired or already used' : 'Unknown error'
             ], $userId);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
     }
 
@@ -200,7 +242,27 @@ if (!empty($events)) {
             'events' => array_map(fn($e) => $e['type'] ?? 'unknown', $events)
         ]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
     }
+}
+
+// Trigger scheduled broadcasts in background for every incoming webhook
+try {
+    $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+    $baseUrl = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
+    $triggerUrl = rtrim($baseUrl, '/') . '/api/process_scheduled_broadcasts.php';
+    $ch = curl_init($triggerUrl);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+    curl_setopt($ch, CURLOPT_NOBODY, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
+    @curl_exec($ch);
+    @curl_close($ch);
+} catch (Exception $e) {
+    // Non-critical background trigger — ignore failures silently
 }
 
 foreach ($events as $event) {
@@ -280,6 +342,7 @@ foreach ($events as $event) {
                 $stmt = $db->prepare("INSERT INTO webhook_events (event_id) VALUES (?)");
                 $stmt->execute([$webhookEventId]);
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 // Table doesn't exist or duplicate key - ignore and continue
             }
         }
@@ -294,6 +357,22 @@ foreach ($events as $event) {
                 break;
             case 'message':
                 handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId);
+                break;
+            case 'read':
+                // Handle read receipt
+                if ($sourceType === 'user' && $userId) {
+                    try {
+                        $user = getOrCreateUser($db, $line, $userId, $lineAccountId, null);
+                        if ($user) {
+                            $timestamp = $event['timestamp'];
+                            // Mark all outgoing messages sent before this timestamp as read
+                            $stmt = $db->prepare("UPDATE messages SET is_read = 1 WHERE user_id = ? AND direction = 'outgoing' AND is_read = 0 AND created_at <= FROM_UNIXTIME(?/1000)");
+                            $stmt->execute([$user['id'], $timestamp]);
+                        }
+                    } catch (Exception $e) {
+                        logWebhookException($db, 'webhook.php', $e);
+                    }
+                }
                 break;
             case 'postback':
                 // บันทึก postback event
@@ -351,6 +430,7 @@ foreach ($events as $event) {
             saveGroupMessage($db, $lineAccountId, $groupId, $userId, $event);
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Log error to dev_logs
         devLog($db, 'error', 'webhook_event', $e->getMessage(), [
             'event_type' => $event['type'] ?? 'unknown',
@@ -382,6 +462,7 @@ function handleFollow($userId, $replyToken, $db, $line, $lineAccountId = null, $
         $stmt = $db->query("SHOW COLUMNS FROM users LIKE 'line_account_id'");
         $hasAccountCol = $stmt->rowCount() > 0;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
     }
 
     $dbUserId = null;
@@ -434,6 +515,7 @@ function handleFollow($userId, $replyToken, $db, $line, $lineAccountId = null, $
             $crm = new CRMManager($db, $lineAccountId);
             $crm->onUserFollow($dbUserId);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             error_log("CRM onUserFollow error: " . $e->getMessage());
         }
     }
@@ -444,6 +526,7 @@ function handleFollow($userId, $replyToken, $db, $line, $lineAccountId = null, $
             $autoTag = new AutoTagManager($db, $lineAccountId);
             $autoTag->onFollow($dbUserId);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             error_log("AutoTag onFollow error: " . $e->getMessage());
         }
     }
@@ -457,6 +540,7 @@ function handleFollow($userId, $replyToken, $db, $line, $lineAccountId = null, $
                 $dynamicMenu->assignRichMenuByRules($dbUserId, $userId);
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             error_log("DynamicRichMenu onFollow error: " . $e->getMessage());
         }
     }
@@ -499,6 +583,7 @@ function sendWelcomeMessage($db, $line, $userId, $replyToken = null, $lineAccoun
             if ($shopSettings && $shopSettings['shop_name'])
                 $shopName = $shopSettings['shop_name'];
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // Helper function to send message (reply if possible, otherwise push)
@@ -519,6 +604,7 @@ function sendWelcomeMessage($db, $line, $userId, $replyToken = null, $lineAccoun
             $stmt->execute([$lineAccountId]);
             $welcomeSettings = $stmt->fetch();
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // ถ้ามี welcome_settings ที่เปิดใช้งาน - ใช้ค่าจากนั้น
@@ -553,6 +639,7 @@ function sendWelcomeMessage($db, $line, $userId, $replyToken = null, $lineAccoun
         ], $userId);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Table doesn't exist or error - ignore
         error_log("Welcome message error: " . $e->getMessage());
     }
@@ -612,6 +699,7 @@ function handleBroadcastClick($db, $line, $dbUserId, $lineUserId, $postbackData,
             $stmt = $db->prepare("UPDATE broadcast_campaigns SET click_count = click_count + 1 WHERE id = ?");
             $stmt->execute([$campaignId]);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // ติด Tag ถ้าเปิด auto tag
@@ -630,6 +718,7 @@ function handleBroadcastClick($db, $line, $dbUserId, $lineUserId, $postbackData,
                     'product_id' => $productId
                 ], $lineUserId);
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 error_log("Auto tag error: " . $e->getMessage());
             }
         }
@@ -642,6 +731,7 @@ function handleBroadcastClick($db, $line, $dbUserId, $lineUserId, $postbackData,
         sendTelegramNotification($db, 'broadcast_click', $item['item_name'], "ลูกค้าสนใจสินค้า: {$item['item_name']}", $lineUserId, $dbUserId);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("handleBroadcastClick error: " . $e->getMessage());
     }
 }
@@ -690,6 +780,11 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
 
         // Get markAsReadToken from message event (for LINE Mark as Read feature)
         $markAsReadToken = $event['message']['markAsReadToken'] ?? null;
+        $quoteToken = $event['message']['quoteToken'] ?? null;
+        // LINE message ID of the message being quoted by the customer
+        $quotedMessageId = $event['message']['quotedMessageId'] ?? null;
+        // LINE message ID of this incoming message (used for future quote-reply mapping)
+        $lineEventMessageId = $event['message']['id'] ?? '';
 
         // Debug: Log markAsReadToken
         if ($markAsReadToken) {
@@ -710,6 +805,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
             $messageCount = (int) $stmt->fetchColumn();
             $isFirstMessage = ($messageCount == 0); // == 0 เพราะนับก่อนบันทึก
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // Check user state first (for waiting slip mode)
@@ -750,6 +846,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                         }
                     }
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     error_log("Failed to save LINE image: " . $e->getMessage());
                 }
             } elseif ($messageType === 'video') {
@@ -780,6 +877,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                         }
                     }
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     error_log("Failed to save LINE video: " . $e->getMessage());
                 }
             }
@@ -820,33 +918,78 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
             $messageContent = "[location] {$address} ({$lat}, {$lng})";
         }
 
-        // Save incoming message พร้อม line_account_id, is_read = 0, และ mark_as_read_token
-        try {
-            $stmt = $db->query("SHOW COLUMNS FROM messages LIKE 'line_account_id'");
-            if ($stmt->rowCount() > 0) {
-                // Check if mark_as_read_token column exists
-                $stmt3 = $db->query("SHOW COLUMNS FROM messages LIKE 'mark_as_read_token'");
-                $hasMarkAsReadToken = $stmt3->rowCount() > 0;
+        // Prepare metadata for Next.js (lineMessageId for mapping, quotedMessageId for quote reply)
+        $metadataArr = [];
+        if ($lineEventMessageId) {
+            $metadataArr['lineMessageId'] = $lineEventMessageId;
+        }
+        if ($quoteToken) {
+            $metadataArr['quoteToken'] = $quoteToken;
+        }
+        if ($quotedMessageId) {
+            $metadataArr['quotedMessageId'] = $quotedMessageId;
+        }
+        $metadata = !empty($metadataArr) ? json_encode($metadataArr) : null;
 
-                // Check if is_read column exists
-                $stmt2 = $db->query("SHOW COLUMNS FROM messages LIKE 'is_read'");
-                if ($stmt2->rowCount() > 0) {
-                    if ($hasMarkAsReadToken) {
-                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, reply_token, is_read, mark_as_read_token) VALUES (?, ?, 'incoming', ?, ?, ?, 0, ?)");
-                        $stmt->execute([$lineAccountId, $user['id'], $messageType, $messageContent, $replyToken, $markAsReadToken]);
-                    } else {
-                        $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, reply_token, is_read) VALUES (?, ?, 'incoming', ?, ?, ?, 0)");
-                        $stmt->execute([$lineAccountId, $user['id'], $messageType, $messageContent, $replyToken]);
-                    }
-                } else {
-                    $stmt = $db->prepare("INSERT INTO messages (line_account_id, user_id, direction, message_type, content, reply_token) VALUES (?, ?, 'incoming', ?, ?, ?)");
-                    $stmt->execute([$lineAccountId, $user['id'], $messageType, $messageContent, $replyToken]);
+        // Save incoming message with optional columns support
+        try {
+            // Dynamic Insert with support for optional columns
+            $cols = ['user_id', 'direction', 'message_type', 'content', 'reply_token'];
+            $vals = [$user['id'], 'incoming', $messageType, $messageContent, $replyToken];
+            $placeholders = ['?', '?', '?', '?', '?'];
+
+            if ($lineAccountId) {
+                $check = $db->query("SHOW COLUMNS FROM messages LIKE 'line_account_id'");
+                if ($check->rowCount() > 0) {
+                    array_unshift($cols, 'line_account_id');
+                    array_unshift($vals, $lineAccountId);
+                    array_unshift($placeholders, '?');
                 }
-            } else {
-                $stmt = $db->prepare("INSERT INTO messages (user_id, direction, message_type, content, reply_token) VALUES (?, 'incoming', ?, ?, ?)");
-                $stmt->execute([$user['id'], $messageType, $messageContent, $replyToken]);
             }
+
+            // Check is_read
+            $check = $db->query("SHOW COLUMNS FROM messages LIKE 'is_read'");
+            if ($check->rowCount() > 0) {
+                $cols[] = 'is_read';
+                $vals[] = 0;
+                $placeholders[] = '?';
+            }
+
+            // Check mark_as_read_token
+            if ($markAsReadToken) {
+                $check = $db->query("SHOW COLUMNS FROM messages LIKE 'mark_as_read_token'");
+                if ($check->rowCount() > 0) {
+                    $cols[] = 'mark_as_read_token';
+                    $vals[] = $markAsReadToken;
+                    $placeholders[] = '?';
+                }
+            }
+
+            // Check quote_token
+            if ($quoteToken) {
+                $check = $db->query("SHOW COLUMNS FROM messages LIKE 'quote_token'");
+                if ($check->rowCount() > 0) {
+                    $cols[] = 'quote_token';
+                    $vals[] = $quoteToken;
+                    $placeholders[] = '?';
+                }
+            }
+
+            // Check metadata (store quoteToken JSON if column exists)
+            if ($metadata) {
+                $check = $db->query("SHOW COLUMNS FROM messages LIKE 'metadata'");
+                if ($check->rowCount() > 0) {
+                    $cols[] = 'metadata';
+                    $vals[] = $metadata;
+                    $placeholders[] = '?';
+                }
+            }
+
+            $sql = "INSERT INTO messages (" . implode(', ', $cols) . ") VALUES (" . implode(', ', $placeholders) . ")";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($vals);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             $stmt = $db->prepare("INSERT INTO messages (user_id, direction, message_type, content, reply_token) VALUES (?, 'incoming', ?, ?, ?)");
             $stmt->execute([$user['id'], $messageType, $messageContent, $replyToken]);
         }
@@ -878,6 +1021,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 }
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             // Log error but don't fail the webhook
             error_log('WebSocket notification failed: ' . $e->getMessage());
         }
@@ -903,6 +1047,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
 
                 error_log("Reply token saved for user {$user['id']}, expires: {$expires}");
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 error_log('Reply token save failed: ' . $e->getMessage());
                 error_log('User ID: ' . ($user['id'] ?? 'unknown') . ', Token: ' . substr($replyToken, 0, 20));
             }
@@ -999,6 +1144,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 $checkCol = $db->query("SHOW COLUMNS FROM line_accounts LIKE 'liff_consent_id'");
                 $hasConsentCol = $checkCol->rowCount() > 0;
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
             }
 
             if ($hasConsentCol) {
@@ -1099,6 +1245,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 return; // ส่ง Consent request แล้ว ไม่ต้อง process ต่อ
 
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 devLog($db, 'error', 'webhook', 'Consent request error: ' . $e->getMessage(), null, $userId);
             }
         }
@@ -1133,6 +1280,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                     return; // ส่ง LIFF Menu แล้ว ไม่ต้อง process ต่อ
                 }
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 devLog($db, 'error', 'webhook', 'LIFF Menu error: ' . $e->getMessage(), null, $userId);
             }
         }
@@ -1153,6 +1301,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 }
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // ตรวจสอบคำสั่งและการเรียก AI
@@ -1404,6 +1553,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                     }
                 }
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 devLog($db, 'error', 'webhook', 'AI error: ' . $e->getMessage(), [], $userId);
             }
         }
@@ -1684,6 +1834,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 if ($shopSettings && $shopSettings['shop_name'])
                     $shopName = $shopSettings['shop_name'];
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
             }
 
             $menuBubble = FlexTemplates::mainMenu($shopName);
@@ -1709,6 +1860,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 if ($shopSettings && $shopSettings['shop_name'])
                     $shopName = $shopSettings['shop_name'];
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
             }
 
             $menuCarousel = FlexTemplates::quickMenu($shopName);
@@ -1763,6 +1915,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
                 }
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             devLog($db, 'error', 'BusinessBot', $e->getMessage(), [
                 'user_id' => $userId,
                 'message' => mb_substr($messageText, 0, 100),
@@ -1788,6 +1941,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
         ], $userId);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Log error
         devLog($db, 'error', 'handleMessage', $e->getMessage(), [
             'user_id' => $userId,
@@ -1802,6 +1956,7 @@ function handleMessage($event, $userId, $replyToken, $db, $line, $lineAccountId 
         try {
             $line->replyMessage($replyToken, ['type' => 'text', 'text' => '❌ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง']);
         } catch (Exception $e2) {
+            logWebhookException($db, 'webhook.php', $e2);
         }
     }
 }
@@ -1849,6 +2004,7 @@ function checkAutoReply($db, $text, $lineAccountId = null)
                 $stmt2 = $db->prepare("UPDATE auto_replies SET use_count = use_count + 1, last_used_at = NOW() WHERE id = ?");
                 $stmt2->execute([$rule['id']]);
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
             }
 
             // Build message
@@ -2099,6 +2255,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                     $stmt->execute([$userId]);
                     $isFirstTime = ($stmt->fetchColumn() == 0);
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                 }
             }
 
@@ -2112,6 +2269,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                     $configuredMode = $result['ai_mode'];
                 }
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
             }
 
             // บันทึกโหมด AI ตามที่ตั้งค่าไว้
@@ -2194,6 +2352,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                         $result = $stmt->fetch(PDO::FETCH_ASSOC);
                         $commandMode = ($result && $result['ai_mode']) ? $result['ai_mode'] : 'sales';
                     } catch (Exception $e) {
+                        logWebhookException($db, 'webhook.php', $e);
                         $commandMode = 'sales';
                     }
                 }
@@ -2214,6 +2373,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                     $result = $stmt->fetch(PDO::FETCH_ASSOC);
                     $commandMode = ($result && $result['ai_mode']) ? $result['ai_mode'] : 'sales';
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     $commandMode = 'sales';
                 }
                 $commandMessage = $command . ($commandMessage ? ' ' . $commandMessage : '');
@@ -2240,6 +2400,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                 'line' => __LINE__
             ], null);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             error_log("AI_trace_1 error: " . $e->getMessage());
         }
 
@@ -2469,6 +2630,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                         ];
                     }
                 } catch (\Throwable $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     devLog($db, 'error', 'AI_mims', 'MIMS AI error: ' . $e->getMessage(), ['user_id' => $userId, 'trace' => $e->getTraceAsString()], null);
                     return [
                         [
@@ -2522,6 +2684,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
 
                     return [$lineMessage];
                 } catch (\Throwable $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     devLog($db, 'error', 'AI_triage', 'Triage error: ' . $e->getMessage(), ['user_id' => $userId, 'trace' => $e->getTraceAsString()], null);
                     return [
                         [
@@ -2559,6 +2722,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                 $currentAIMode = $result['ai_mode'];
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // ถ้า commandMode เป็น sales/support/pharmacist โดยตรง → override
@@ -2612,10 +2776,12 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                         'response_null' => $response === null ? 'yes' : 'no'
                     ], null);
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     devLog($db, 'error', 'AI_sales', 'generateResponse exception: ' . $e->getMessage(), [
                         'trace' => mb_substr($e->getTraceAsString(), 0, 500)
                     ], null);
                 } catch (Throwable $t) {
+                    logWebhookException($db, 'webhook.php', $t);
                     devLog($db, 'error', 'AI_sales', 'generateResponse throwable: ' . $t->getMessage(), [
                         'trace' => mb_substr($t->getTraceAsString(), 0, 500)
                     ], null);
@@ -2728,6 +2894,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                     return null;
                 }
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 devLog($db, 'warning', 'AI_pharmacy', 'PharmacyAI error, fallback: ' . $e->getMessage(), [
                     'user_id' => $userId
                 ], null);
@@ -2770,6 +2937,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                 return null;
 
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
                 // ถ้า Module ใหม่ error ให้ fallback ไปใช้ระบบเก่า
                 devLog($db, 'warning', 'AI_chatbot_v2', 'Module v2 error, fallback to v1: ' . $e->getMessage(), [
                     'user_id' => $userId
@@ -2842,6 +3010,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
                         }
                     }
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                     // Ignore errors, just send without sender/quick reply
                 }
 
@@ -2873,6 +3042,7 @@ function checkAIChatbot($db, $text, $lineAccountId = null, $userId = null)
         return null;
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("checkAIChatbot error: " . $e->getMessage());
         devLog($db, 'error', 'AI_chatbot', $e->getMessage(), [
             'user_id' => $userId,
@@ -2899,6 +3069,7 @@ function saveOutgoingMessage($db, $userId, $content, $sentBy = 'system', $messag
             $checkCol = $db->query("SHOW COLUMNS FROM messages LIKE 'sent_by'");
             $hasSentBy = $checkCol->rowCount() > 0;
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         $contentStr = is_array($content) ? json_encode($content, JSON_UNESCAPED_UNICODE) : $content;
@@ -2945,11 +3116,13 @@ function saveOutgoingMessage($db, $userId, $content, $sentBy = 'system', $messag
                 }
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             // Log error but don't fail
             error_log('WebSocket notification failed for outgoing message: ' . $e->getMessage());
         }
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("saveOutgoingMessage error: " . $e->getMessage());
     }
 }
@@ -2970,6 +3143,7 @@ function logAnalytics($db, $eventType, $data, $lineAccountId = null)
             $stmt->execute([$eventType, json_encode($data)]);
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Fallback
         $stmt = $db->prepare("INSERT INTO analytics (event_type, event_data) VALUES (?, ?)");
         $stmt->execute([$eventType, json_encode($data)]);
@@ -2997,6 +3171,7 @@ function devLog($db, $type, $source, $message, $data = null, $userId = null)
             $userId
         ]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Table might not exist - log to error_log instead
         error_log("[{$type}] [{$source}] {$message} " . ($data ? json_encode($data) : ''));
     }
@@ -3056,6 +3231,7 @@ function getAISenderSettings($db, $lineAccountId = null, $overrideMode = null)
             }
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Use default
     }
 
@@ -3074,6 +3250,7 @@ function getAccountName($db, $lineAccountId)
         $stmt->execute([$lineAccountId]);
         return $stmt->fetchColumn() ?: null;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         return null;
     }
 }
@@ -3092,6 +3269,7 @@ function checkUserConsent($db, $userId, $lineUserId = null)
             $checkCol = $db->query("SHOW COLUMNS FROM users LIKE 'consent_privacy'");
             $hasConsentCols = $checkCol->rowCount() > 0;
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // ถ้ายังไม่มี columns ให้ผ่านไปก่อน (ยังไม่ได้ run migration)
@@ -3105,6 +3283,7 @@ function checkUserConsent($db, $userId, $lineUserId = null)
             $checkCol = $db->query("SHOW COLUMNS FROM users LIKE 'consent_at'");
             $hasConsentAt = $checkCol->rowCount() > 0;
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
 
         // ถ้ามี lineUserId ให้เช็คจาก line_user_id (ข้ามบอทได้)
@@ -3125,6 +3304,7 @@ function checkUserConsent($db, $userId, $lineUserId = null)
                         }
                         $stmt->execute([$userId]);
                     } catch (Exception $e) {
+                        logWebhookException($db, 'webhook.php', $e);
                         // Ignore error, consent check still passes
                     }
                 }
@@ -3175,17 +3355,20 @@ function checkUserConsent($db, $userId, $lineUserId = null)
                     }
                     $stmt->execute([$userId]);
                 } catch (Exception $e) {
+                    logWebhookException($db, 'webhook.php', $e);
                 }
                 return true;
             }
 
             return false;
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             // ถ้า user_consents table ไม่มี ให้ดูจาก users table อย่างเดียว
             return false;
         }
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // ถ้า error ให้ผ่านไปก่อน (ไม่ block user)
         return true;
     }
@@ -3196,43 +3379,43 @@ function checkUserConsent($db, $userId, $lineUserId = null)
  */
 function getOrCreateUser($db, $line, $userId, $lineAccountId = null, $groupId = null)
 {
+    $hasCustomDisplayName = false;
+    try {
+        $columnStmt = $db->query("SHOW COLUMNS FROM users LIKE 'custom_display_name'");
+        $hasCustomDisplayName = $columnStmt && $columnStmt->rowCount() > 0;
+    } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
+    }
+
     // ตรวจสอบว่ามีผู้ใช้อยู่แล้วหรือไม่
-    $stmt = $db->prepare("SELECT id, display_name, picture_url, line_account_id FROM users WHERE line_user_id = ?");
+    $userSelectFields = $hasCustomDisplayName
+        ? "id, display_name, custom_display_name, picture_url, line_account_id"
+        : "id, display_name, '' AS custom_display_name, picture_url, line_account_id";
+    $stmt = $db->prepare("SELECT {$userSelectFields} FROM users WHERE line_user_id = ?");
     $stmt->execute([$userId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
+    // ดึงข้อมูลโปรไฟล์จาก LINE (ทุกครั้งเพื่ออัพเดทข้อมูลให้ล่าสุด)
+    $profile = null;
+    try {
+        if ($groupId) {
+            // ถ้ามาจากกลุ่ม ใช้ getGroupMemberProfile
+            $profile = $line->getGroupMemberProfile($groupId, $userId);
+        } else {
+            // ถ้ามาจากแชทส่วนตัว ใช้ getProfile
+            $profile = $line->getProfile($userId);
+        }
+    } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
+        error_log("getOrCreateUser profile error: " . $e->getMessage());
+    }
+
+    $displayName = $profile['displayName'] ?? 'Unknown';
+    $pictureUrl = $profile['pictureUrl'] ?? '';
+    $statusMessage = $profile['statusMessage'] ?? '';
+
     // ถ้ายังไม่มี ให้สร้างใหม่
     if (!$user) {
-        // ดึงข้อมูลโปรไฟล์จาก LINE - ใช้ getProfile() เสมอเพื่อให้ได้รูปโปรไฟล์ที่ถูกต้อง
-        $profile = null;
-        try {
-            // ใช้ getProfile() โดยตรง ไม่ว่าจะมาจากกลุ่มหรือแชทส่วนตัว
-            $profile = $line->getProfile($userId);
-            
-            if ($profile && !empty($profile['pictureUrl'])) {
-                error_log("getOrCreateUser: Successfully got profile with picture for user: {$userId}");
-            } else {
-                error_log("getOrCreateUser: WARNING - Profile has no picture URL for user: {$userId}");
-            }
-        } catch (Exception $e) {
-            error_log("getOrCreateUser profile error: " . $e->getMessage() . " for user: {$userId}");
-        }
-
-        // ตรวจสอบว่าได้ profile มาหรือไม่
-        if (!$profile || !is_array($profile)) {
-            error_log("getOrCreateUser: WARNING - No profile data available for user: {$userId}");
-            $profile = [];
-        }
-
-        $displayName = $profile['displayName'] ?? 'Unknown';
-        $pictureUrl = $profile['pictureUrl'] ?? '';
-        $statusMessage = $profile['statusMessage'] ?? '';
-        
-        // Log เมื่อไม่มีรูปโปรไฟล์
-        if (empty($pictureUrl)) {
-            error_log("getOrCreateUser: WARNING - No picture URL for user: {$userId}, displayName: {$displayName}");
-        }
-
         // บันทึกผู้ใช้ใหม่
         try {
             $stmt = $db->query("SHOW COLUMNS FROM users LIKE 'line_account_id'");
@@ -3247,6 +3430,7 @@ function getOrCreateUser($db, $line, $userId, $lineAccountId = null, $groupId = 
             $user = [
                 'id' => $db->lastInsertId(),
                 'display_name' => $displayName,
+                'custom_display_name' => '',
                 'picture_url' => $pictureUrl,
                 'line_account_id' => $lineAccountId
             ];
@@ -3257,20 +3441,92 @@ function getOrCreateUser($db, $line, $userId, $lineAccountId = null, $groupId = 
             }
 
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             error_log("getOrCreateUser insert error: " . $e->getMessage());
             // ลองดึงอีกครั้ง (อาจมี race condition)
-            $stmt = $db->prepare("SELECT id, display_name, picture_url, line_account_id FROM users WHERE line_user_id = ?");
+            $stmt = $db->prepare("SELECT {$userSelectFields} FROM users WHERE line_user_id = ?");
             $stmt->execute([$userId]);
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
         }
     } else {
-        // ถ้ามีอยู่แล้ว แต่ยังไม่มี line_account_id ให้อัพเดท
+        // ถ้ามีอยู่แล้ว ให้อัพเดทข้อมูล profile (ถ้ามีการเปลี่ยนแปลง)
+        $needsUpdate = false;
+        $updateFields = [];
+        $updateValues = [];
+
+        // ตรวจสอบว่ามีข้อมูลใหม่จาก profile หรือไม่
+        if ($profile) {
+            // อัปเดต display_name จาก LINE API เฉพาะเมื่อไม่มี custom_display_name
+            // ถ้าแอดมินตั้งชื่อเองแล้ว (custom_display_name) จะไม่ถูก overwrite
+            if (empty($user['custom_display_name']) && !empty($displayName) && $displayName !== 'Unknown' && $displayName !== $user['display_name']) {
+                $updateFields[] = "display_name = ?";
+                $updateValues[] = $displayName;
+                $needsUpdate = true;
+            }
+            if (!empty($pictureUrl) && $pictureUrl !== $user['picture_url']) {
+                $updateFields[] = "picture_url = ?";
+                $updateValues[] = $pictureUrl;
+                $needsUpdate = true;
+            }
+            if (!empty($statusMessage)) {
+                $updateFields[] = "status_message = ?";
+                $updateValues[] = $statusMessage;
+                $needsUpdate = true;
+            }
+        }
+
+        // อัพเดท line_account_id ถ้ายังไม่มี
         if ($lineAccountId && empty($user['line_account_id'])) {
+            $updateFields[] = "line_account_id = ?";
+            $updateValues[] = $lineAccountId;
+            $needsUpdate = true;
+        }
+
+        // ทำการอัพเดทถ้ามีการเปลี่ยนแปลง
+        if ($needsUpdate && !empty($updateFields)) {
             try {
-                $stmt = $db->prepare("UPDATE users SET line_account_id = ? WHERE id = ? AND (line_account_id IS NULL OR line_account_id = 0)");
-                $stmt->execute([$lineAccountId, $user['id']]);
-                $user['line_account_id'] = $lineAccountId;
+                $updateValues[] = $user['id'];
+                $sql = "UPDATE users SET " . implode(", ", $updateFields) . " WHERE id = ?";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($updateValues);
+
+                // อัพเดทข้อมูลใน array
+                if (!empty($displayName) && $displayName !== 'Unknown') {
+                    $user['display_name'] = $displayName;
+                }
+                if (!empty($pictureUrl)) {
+                    $user['picture_url'] = $pictureUrl;
+                }
+                if ($lineAccountId) {
+                    $user['line_account_id'] = $lineAccountId;
+                }
             } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
+                error_log("getOrCreateUser update error: " . $e->getMessage());
+            }
+        }
+
+        // อัพเดทข้อมูล follower ด้วย (ถ้ามี lineAccountId และมี profile ใหม่)
+        if ($lineAccountId && $profile) {
+            try {
+                $stmt = $db->prepare("
+                    UPDATE account_followers 
+                    SET display_name = ?, 
+                        picture_url = ?, 
+                        status_message = ?,
+                        last_interaction_at = NOW()
+                    WHERE line_account_id = ? AND line_user_id = ?
+                ");
+                $stmt->execute([
+                    $displayName,
+                    $pictureUrl,
+                    $statusMessage,
+                    $lineAccountId,
+                    $userId
+                ]);
+            } catch (Exception $e) {
+                logWebhookException($db, 'webhook.php', $e);
+                error_log("getOrCreateUser update follower error: " . $e->getMessage());
             }
         }
     }
@@ -3318,6 +3574,7 @@ function saveAccountFollower($db, $lineAccountId, $lineUserId, $dbUserId, $profi
             $stmt->execute([$lineAccountId, $lineUserId]);
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("saveAccountFollower error: " . $e->getMessage());
     }
 }
@@ -3357,6 +3614,7 @@ function saveAccountEvent($db, $lineAccountId, $eventType, $lineUserId, $dbUserI
             $timestamp
         ]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("saveAccountEvent error: " . $e->getMessage());
     }
 }
@@ -3379,6 +3637,7 @@ function updateAccountDailyStats($db, $lineAccountId, $field)
                 ");
         $stmt->execute([$lineAccountId, $today]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("updateAccountDailyStats error: " . $e->getMessage());
     }
 }
@@ -3396,6 +3655,7 @@ function updateFollowerInteraction($db, $lineAccountId, $lineUserId)
                 ");
         $stmt->execute([$lineAccountId, $lineUserId]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Ignore
     }
 }
@@ -3459,6 +3719,7 @@ function getUserState($db, $userId)
         }
         return null;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         return null; // Table doesn't exist or error
     }
 }
@@ -3491,6 +3752,7 @@ function setUserState($db, $userId, $state, $data = null, $expiresMinutes = 10)
 
         devLog($db, 'debug', 'setUserState', 'State saved', ['user_id' => $userId, 'state' => $state, 'data' => $data]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         devLog($db, 'error', 'setUserState', 'Error: ' . $e->getMessage(), ['user_id' => $userId]);
     }
 }
@@ -3504,6 +3766,7 @@ function clearUserState($db, $userId)
         $stmt = $db->prepare("DELETE FROM user_states WHERE user_id = ?");
         $stmt->execute([$userId]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Table doesn't exist, ignore
     }
 }
@@ -3533,6 +3796,7 @@ function createOrderFromPendingState($db, $line, $dbUserId, $lineUserId, $userSt
                 return false;
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             devLog($db, 'error', 'createOrderFromPendingState', 'Error checking tables: ' . $e->getMessage(), ['user_id' => $dbUserId]);
             return false;
         }
@@ -3561,6 +3825,7 @@ function createOrderFromPendingState($db, $line, $dbUserId, $lineUserId, $userSt
                 'สร้างจากแชท - ลูกค้ายืนยัน'
             ]);
         } catch (PDOException $e) {
+            logWebhookException($db, 'webhook.php', $e);
             devLog($db, 'error', 'createOrderFromPendingState', 'Failed to insert transaction: ' . $e->getMessage(), [
                 'user_id' => $dbUserId,
                 'sql_error' => $e->getCode()
@@ -3598,6 +3863,7 @@ function createOrderFromPendingState($db, $line, $dbUserId, $lineUserId, $userSt
                 ]);
             }
         } catch (PDOException $e) {
+            logWebhookException($db, 'webhook.php', $e);
             devLog($db, 'error', 'createOrderFromPendingState', 'Failed to insert transaction items: ' . $e->getMessage(), [
                 'transaction_id' => $transactionId,
                 'sql_error' => $e->getCode()
@@ -3669,6 +3935,7 @@ function createOrderFromPendingState($db, $line, $dbUserId, $lineUserId, $userSt
         return true;
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         devLog($db, 'error', 'createOrderFromPendingState', 'Error: ' . $e->getMessage(), [
             'user_id' => $dbUserId,
             'trace' => $e->getTraceAsString()
@@ -3710,6 +3977,7 @@ function handleSlipCommand($db, $line, $dbUserId, $replyToken)
             $itemsFk = 'transaction_id';
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         devLog($db, 'error', 'handleSlipCommand', 'Transactions error: ' . $e->getMessage(), ['user_id' => $dbUserId]);
     }
 
@@ -3720,6 +3988,7 @@ function handleSlipCommand($db, $line, $dbUserId, $replyToken)
             $stmt->execute([$dbUserId]);
             $order = $stmt->fetch();
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
     }
 
@@ -3862,6 +4131,7 @@ function handlePaymentSlipForOrder($db, $line, $dbUserId, $messageId, $replyToke
         $stmt->execute([$dbUserId]);
         $userId = $stmt->fetchColumn();
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
     }
 
     // Get order - ลองหาจากทั้ง orders และ transactions
@@ -3874,6 +4144,7 @@ function handlePaymentSlipForOrder($db, $line, $dbUserId, $messageId, $replyToke
         $stmt->execute([$orderId, $dbUserId]);
         $order = $stmt->fetch(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
     }
 
     // ถ้าไม่เจอ ลองหาจาก transactions
@@ -3886,6 +4157,7 @@ function handlePaymentSlipForOrder($db, $line, $dbUserId, $messageId, $replyToke
                 $orderTable = 'transactions';
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
         }
     }
 
@@ -3934,6 +4206,7 @@ function handlePaymentSlipForOrder($db, $line, $dbUserId, $messageId, $replyToke
         $stmt = $db->prepare("INSERT INTO payment_slips (transaction_id, user_id, image_url, status) VALUES (?, ?, ?, 'pending')");
         $stmt->execute([$order['id'], $dbUserId, $imageUrl]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         devLog($db, 'error', 'handlePaymentSlip', 'Cannot save slip: ' . $e->getMessage());
     }
 
@@ -3943,6 +4216,7 @@ function handlePaymentSlipForOrder($db, $line, $dbUserId, $messageId, $replyToke
         $stmt->execute([$order['id']]);
         devLog($db, 'info', 'handlePaymentSlip', 'Order status updated to paid', ['order_id' => $order['id'], 'table' => $orderTable]);
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         devLog($db, 'error', 'handlePaymentSlip', 'Cannot update order status: ' . $e->getMessage());
     }
 
@@ -4137,6 +4411,7 @@ function ensureGroupExists($db, $line, $lineAccountId, $groupId, $sourceType = '
                 $groupInfo = $line->getGroupSummary($groupId);
             }
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             // API อาจ fail ถ้าบอทไม่มีสิทธิ์
         }
 
@@ -4162,6 +4437,7 @@ function ensureGroupExists($db, $line, $lineAccountId, $groupId, $sourceType = '
         ]);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Ignore errors - ไม่ให้กระทบ flow หลัก
     }
 }
@@ -4219,6 +4495,7 @@ function handleJoinGroup($event, $db, $line, $lineAccountId)
         notifyGroupEvent($db, 'join', $groupName, $lineAccountId);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("handleJoinGroup error: " . $e->getMessage());
     }
 }
@@ -4256,6 +4533,7 @@ function handleLeaveGroup($event, $db, $lineAccountId)
         notifyGroupEvent($db, 'leave', $groupName, $lineAccountId);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("handleLeaveGroup error: " . $e->getMessage());
     }
 }
@@ -4325,6 +4603,7 @@ function handleMemberJoined($event, $groupId, $db, $line, $lineAccountId)
         */
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("handleMemberJoined error: " . $e->getMessage());
     }
 }
@@ -4363,6 +4642,7 @@ function handleMemberLeft($event, $groupId, $db, $lineAccountId)
         $stmt->execute([count($members), $dbGroupId]);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("handleMemberLeft error: " . $e->getMessage());
     }
 }
@@ -4405,6 +4685,7 @@ function saveGroupMessage($db, $lineAccountId, $groupId, $userId, $event)
         $stmt->execute([$dbGroupId, $userId]);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("saveGroupMessage error: " . $e->getMessage());
     }
 }
@@ -4433,6 +4714,7 @@ function updateGroupStats($db, $lineAccountId, $groupId, $eventType)
             $stmt->execute([$dbGroupId]);
         }
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("updateGroupStats error: " . $e->getMessage());
     }
 }
@@ -4469,6 +4751,7 @@ function notifyGroupEvent($db, $type, $groupName, $lineAccountId)
         $telegram->sendMessage($message);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("notifyGroupEvent error: " . $e->getMessage());
     }
 }
@@ -4485,6 +4768,7 @@ function isAIPaused($db, $userId)
         $stmt->execute([$userId]);
         return $stmt->fetch() !== false;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Table might not exist - create it
         try {
             $db->exec("
@@ -4499,6 +4783,7 @@ function isAIPaused($db, $userId)
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     ");
         } catch (Exception $e2) {
+            logWebhookException($db, 'webhook.php', $e2);
         }
         return false;
     }
@@ -4533,6 +4818,7 @@ function pauseAI($db, $userId, $minutes = 20)
 
         return true;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("pauseAI error: " . $e->getMessage());
         return false;
     }
@@ -4548,6 +4834,7 @@ function resumeAI($db, $userId)
         $stmt->execute([$userId]);
         return true;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         return false;
     }
 }
@@ -4565,6 +4852,7 @@ function getUserAIMode($db, $userId)
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         return $row ? $row['ai_mode'] : null;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         // Table might not exist - create it
         try {
             $db->exec("
@@ -4579,6 +4867,7 @@ function getUserAIMode($db, $userId)
                         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     ");
         } catch (Exception $e2) {
+            logWebhookException($db, 'webhook.php', $e2);
         }
         return null;
     }
@@ -4613,6 +4902,7 @@ function setUserAIMode($db, $userId, $mode, $minutes = 10)
 
         return true;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("setUserAIMode error: " . $e->getMessage());
         return false;
     }
@@ -4628,6 +4918,7 @@ function clearUserAIMode($db, $userId)
         $stmt->execute([$userId]);
         return true;
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         return false;
     }
 }
@@ -4654,6 +4945,7 @@ function notifyPharmacistForHumanRequest($db, $userId, $lineAccountId, $message)
                     ");
             $stmt->execute([$userId, $lineAccountId, $message]);
         } catch (Exception $e) {
+            logWebhookException($db, 'webhook.php', $e);
             // Table might not exist
         }
 
@@ -4687,6 +4979,8 @@ function notifyPharmacistForHumanRequest($db, $userId, $lineAccountId, $message)
         ], $lineUserId);
 
     } catch (Exception $e) {
+        logWebhookException($db, 'webhook.php', $e);
         error_log("notifyPharmacistForHumanRequest error: " . $e->getMessage());
     }
 }
+

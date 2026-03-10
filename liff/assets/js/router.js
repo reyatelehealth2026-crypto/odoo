@@ -38,7 +38,14 @@ class Router {
             '/ai-assistant': { page: 'ai-assistant', title: 'ผู้ช่วย AI' },
             '/symptom': { page: 'symptom', title: 'ประเมินอาการ' },
             '/register': { page: 'register', title: 'สมัครสมาชิก' },
-            '/settings': { page: 'settings', title: 'ตั้งค่าบัญชี' }
+            '/settings': { page: 'settings', title: 'ตั้งค่าบัญชี' },
+            // Odoo Integration Routes
+            '/odoo-link': { page: 'odoo-link', title: 'เชื่อมต่อบัญชี Odoo' },
+            '/odoo-orders': { page: 'odoo-orders', title: 'ออเดอร์ Odoo' },
+            '/odoo-order/:id': { page: 'odoo-order-detail', title: 'รายละเอียดออเดอร์ Odoo' },
+            '/odoo-order-tracking/:id': { page: 'odoo-order-tracking', title: 'ติดตามออเดอร์ Odoo' },
+            '/odoo-invoices': { page: 'odoo-invoices', title: 'ใบแจ้งหนี้ Odoo' },
+            '/odoo-credit-status': { page: 'odoo-credit-status', title: 'สถานะวงเงินเครดิต' }
         };
     }
 

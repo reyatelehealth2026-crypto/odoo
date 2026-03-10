@@ -1,23 +1,22 @@
 <?php
 /**
- * Flex Message Builder V2 - Drag & Drop with Live Preview
- * สร้าง Flex Message สำหรับ Broadcast แบบลากวาง
+ * Flex Message Builder V3 - Advanced Drag & Drop with JSON Editor
+ * สร้าง Flex Message สำหรับ LINE แบบลากวาง + แก้ไข JSON ตรง
  */
 require_once 'config/config.php';
 require_once 'config/database.php';
 
 $db = Database::getInstance()->getConnection();
-$pageTitle = 'Flex Builder';
+$pageTitle = 'Flex Message Builder';
 
-// Handle save template
+// Handle AJAX actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
-    
+
     if ($_POST['action'] === 'save_template') {
-        $name = $_POST['name'] ?? 'Untitled';
+        $name = trim($_POST['name'] ?? 'Untitled');
         $flexJson = $_POST['flex_json'] ?? '{}';
         $category = $_POST['category'] ?? 'custom';
-        
         try {
             $stmt = $db->prepare("INSERT INTO flex_templates (name, category, flex_json, line_account_id, created_at) VALUES (?, ?, ?, ?, NOW())");
             $stmt->execute([$name, $category, $flexJson, $currentBotId ?? null]);
@@ -27,14 +26,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
         exit;
     }
-    
+
     if ($_POST['action'] === 'get_templates') {
         try {
-            $stmt = $db->prepare("SELECT * FROM flex_templates WHERE line_account_id = ? OR line_account_id IS NULL ORDER BY created_at DESC");
+            $stmt = $db->prepare("SELECT id, name, category, flex_json, created_at FROM flex_templates WHERE line_account_id = ? OR line_account_id IS NULL ORDER BY created_at DESC LIMIT 50");
             $stmt->execute([$currentBotId ?? null]);
             echo json_encode(['success' => true, 'templates' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
         } catch (Exception $e) {
             echo json_encode(['success' => false, 'templates' => []]);
+        }
+        exit;
+    }
+
+    if ($_POST['action'] === 'delete_template') {
+        $id = (int)($_POST['id'] ?? 0);
+        try {
+            $stmt = $db->prepare("DELETE FROM flex_templates WHERE id = ?");
+            $stmt->execute([$id]);
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) {
+            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
         }
         exit;
     }
@@ -43,1053 +54,1551 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 require_once 'includes/header.php';
 ?>
 
-<div class="flex h-[calc(100vh-120px)] gap-4">
-    <!-- Left Panel: Components -->
-    <div class="w-64 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col">
-        <div class="p-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white">
-            <h2 class="font-bold text-lg">🧩 Components</h2>
-            <p class="text-xs opacity-80">ลากไปวางในพื้นที่ออกแบบ</p>
-        </div>
+<script src="assets/js/flex-preview.js"></script>
 
-        <div class="flex-1 overflow-y-auto p-3 space-y-2">
-            <!-- Layout Components -->
-            <div class="text-xs font-semibold text-gray-500 uppercase mb-2">Layout</div>
-            <div class="component-item" draggable="true" data-type="bubble">
-                <div class="flex items-center gap-2 p-3 bg-blue-50 rounded-lg border-2 border-dashed border-blue-200 cursor-move hover:border-blue-400 transition">
-                    <span class="text-xl">📦</span>
-                    <div>
-                        <div class="font-medium text-sm">Bubble</div>
-                        <div class="text-xs text-gray-500">กล่องข้อความ</div>
-                    </div>
-                </div>
+<!-- Toast Container -->
+<div id="toast-container" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
+<!-- Main Layout -->
+<div class="flex h-[calc(100vh-130px)] gap-0">
+
+    <!-- ==================== Left Panel: Components ==================== -->
+    <div class="w-56 bg-white border-r flex flex-col shrink-0">
+        <div class="p-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+            <h2 class="font-bold text-sm">Components</h2>
+            <p class="text-[10px] opacity-75">ลากไปวางในพื้นที่ออกแบบ</p>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-1" id="component-list">
+            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 pt-1">Layout</div>
+            <div class="comp-item" draggable="true" data-type="bubble">
+                <div class="ci ci-blue"><span>📦</span><div><b>Bubble</b><small>กล่องข้อความ</small></div></div>
             </div>
-            <div class="component-item" draggable="true" data-type="carousel">
-                <div class="flex items-center gap-2 p-3 bg-purple-50 rounded-lg border-2 border-dashed border-purple-200 cursor-move hover:border-purple-400 transition">
-                    <span class="text-xl">🎠</span>
-                    <div>
-                        <div class="font-medium text-sm">Carousel</div>
-                        <div class="text-xs text-gray-500">หลาย Bubble</div>
-                    </div>
-                </div>
+            <div class="comp-item" draggable="true" data-type="carousel">
+                <div class="ci ci-purple"><span>🎠</span><div><b>Carousel</b><small>หลาย Bubble</small></div></div>
             </div>
-            
-            <!-- Content Components -->
-            <div class="text-xs font-semibold text-gray-500 uppercase mt-4 mb-2">Content</div>
-            <div class="component-item" draggable="true" data-type="hero">
-                <div class="flex items-center gap-2 p-3 bg-orange-50 rounded-lg border-2 border-dashed border-orange-200 cursor-move hover:border-orange-400 transition">
-                    <span class="text-xl">🖼️</span>
-                    <div>
-                        <div class="font-medium text-sm">Hero Image</div>
-                        <div class="text-xs text-gray-500">รูปภาพหลัก</div>
-                    </div>
-                </div>
+
+            <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-1 pt-3">Content</div>
+            <div class="comp-item" draggable="true" data-type="hero">
+                <div class="ci ci-amber"><span>🖼️</span><div><b>Hero Image</b><small>รูปภาพหลัก</small></div></div>
             </div>
-            <div class="component-item" draggable="true" data-type="text">
-                <div class="flex items-center gap-2 p-3 bg-green-50 rounded-lg border-2 border-dashed border-green-200 cursor-move hover:border-green-400 transition">
-                    <span class="text-xl">📝</span>
-                    <div>
-                        <div class="font-medium text-sm">Text</div>
-                        <div class="text-xs text-gray-500">ข้อความ</div>
-                    </div>
-                </div>
+            <div class="comp-item" draggable="true" data-type="text">
+                <div class="ci ci-green"><span>Aa</span><div><b>Text</b><small>ข้อความ</small></div></div>
             </div>
-            <div class="component-item" draggable="true" data-type="button">
-                <div class="flex items-center gap-2 p-3 bg-red-50 rounded-lg border-2 border-dashed border-red-200 cursor-move hover:border-red-400 transition">
-                    <span class="text-xl">🔘</span>
-                    <div>
-                        <div class="font-medium text-sm">Button</div>
-                        <div class="text-xs text-gray-500">ปุ่มกด</div>
-                    </div>
-                </div>
+            <div class="comp-item" draggable="true" data-type="button">
+                <div class="ci ci-rose"><span>⬡</span><div><b>Button</b><small>ปุ่มกด</small></div></div>
             </div>
-            <div class="component-item" draggable="true" data-type="separator">
-                <div class="flex items-center gap-2 p-3 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 cursor-move hover:border-gray-400 transition">
-                    <span class="text-xl">➖</span>
-                    <div>
-                        <div class="font-medium text-sm">Separator</div>
-                        <div class="text-xs text-gray-500">เส้นแบ่ง</div>
-                    </div>
-                </div>
+            <div class="comp-item" draggable="true" data-type="separator">
+                <div class="ci ci-gray"><span>—</span><div><b>Separator</b><small>เส้นแบ่ง</small></div></div>
             </div>
-            <div class="component-item" draggable="true" data-type="box">
-                <div class="flex items-center gap-2 p-3 bg-indigo-50 rounded-lg border-2 border-dashed border-indigo-200 cursor-move hover:border-indigo-400 transition">
-                    <span class="text-xl">📐</span>
-                    <div>
-                        <div class="font-medium text-sm">Box</div>
-                        <div class="text-xs text-gray-500">กล่องจัดเรียง</div>
-                    </div>
-                </div>
+            <div class="comp-item" draggable="true" data-type="spacer">
+                <div class="ci ci-gray"><span>↕</span><div><b>Spacer</b><small>ช่องว่าง</small></div></div>
             </div>
-            <div class="component-item" draggable="true" data-type="icon">
-                <div class="flex items-center gap-2 p-3 bg-yellow-50 rounded-lg border-2 border-dashed border-yellow-200 cursor-move hover:border-yellow-400 transition">
-                    <span class="text-xl">⭐</span>
-                    <div>
-                        <div class="font-medium text-sm">Icon</div>
-                        <div class="text-xs text-gray-500">ไอคอน</div>
-                    </div>
-                </div>
+            <div class="comp-item" draggable="true" data-type="box">
+                <div class="ci ci-indigo"><span>▦</span><div><b>Box</b><small>กล่องจัดเรียง</small></div></div>
+            </div>
+            <div class="comp-item" draggable="true" data-type="filler">
+                <div class="ci ci-gray"><span>⇔</span><div><b>Filler</b><small>เติมช่องว่าง</small></div></div>
+            </div>
+            <div class="comp-item" draggable="true" data-type="icon">
+                <div class="ci ci-yellow"><span>★</span><div><b>Icon</b><small>ไอคอน</small></div></div>
             </div>
         </div>
-        
-        <!-- Templates -->
-        <div class="p-3 border-t">
-            <button onclick="showTemplates()" class="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg text-sm font-medium hover:opacity-90">
+        <div class="p-2 border-t space-y-1.5">
+            <button onclick="showTemplatesModal()" class="w-full py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-lg text-xs font-semibold hover:opacity-90 transition">
                 📚 เทมเพลตสำเร็จรูป
             </button>
         </div>
     </div>
 
-    <!-- Center Panel: Canvas -->
-    <div class="flex-1 flex flex-col bg-white rounded-xl shadow-lg overflow-hidden">
-        <div class="p-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white flex justify-between items-center">
-            <div>
-                <h2 class="font-bold text-lg">🎨 Design Canvas</h2>
-                <p class="text-xs opacity-80">ลาก Component มาวางที่นี่</p>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="clearCanvas()" class="px-3 py-1.5 bg-white/20 rounded-lg text-sm hover:bg-white/30">🗑️ ล้าง</button>
-                <button onclick="undoAction()" class="px-3 py-1.5 bg-white/20 rounded-lg text-sm hover:bg-white/30">↩️ Undo</button>
-            </div>
+    <!-- ==================== Center Panel: Canvas ==================== -->
+    <div class="flex-1 flex flex-col bg-gray-100 min-w-0">
+        <!-- Canvas Toolbar -->
+        <div class="flex items-center gap-1.5 px-3 py-2 bg-white border-b">
+            <span class="text-sm font-semibold text-gray-700 mr-2">🎨 Canvas</span>
+            <div class="flex-1"></div>
+            <button onclick="undoAction()" id="btn-undo" class="tb-btn" title="Undo (Ctrl+Z)" disabled>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4"/></svg>
+            </button>
+            <button onclick="redoAction()" id="btn-redo" class="tb-btn" title="Redo (Ctrl+Y)" disabled>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10H11a5 5 0 00-5 5v2m15-7l-4-4m4 4l-4 4"/></svg>
+            </button>
+            <div class="w-px h-5 bg-gray-200 mx-1"></div>
+            <button onclick="clearCanvas()" class="tb-btn text-red-500 hover:bg-red-50" title="Clear All">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            </button>
         </div>
-        
-        <div class="flex-1 overflow-auto p-6 bg-gray-100">
-            <div id="canvas" class="min-h-[400px] bg-white rounded-xl border-2 border-dashed border-gray-300 p-4 transition-all"
-                 ondragover="handleDragOver(event)" ondrop="handleDrop(event)">
-                <div id="canvas-placeholder" class="flex flex-col items-center justify-center h-full text-gray-400 py-20">
-                    <div class="text-6xl mb-4">📦</div>
-                    <p class="text-lg font-medium">ลาก Component มาวางที่นี่</p>
-                    <p class="text-sm">หรือเลือกจากเทมเพลตสำเร็จรูป</p>
+
+        <!-- Canvas Area -->
+        <div class="flex-1 overflow-auto p-4">
+            <div id="canvas" class="canvas-drop-zone min-h-full rounded-xl border-2 border-dashed border-gray-300 p-4 transition-all"
+                 ondragover="handleDragOver(event)" ondrop="handleDrop(event)" ondragleave="handleDragLeave(event)">
+                <div id="canvas-empty" class="flex flex-col items-center justify-center py-16 text-gray-400">
+                    <div class="w-16 h-16 rounded-2xl bg-gray-200 flex items-center justify-center text-2xl mb-3">📦</div>
+                    <p class="text-sm font-medium">ลาก Component มาวางที่นี่</p>
+                    <p class="text-xs mt-1">หรือ วาง JSON / เลือกจากเทมเพลต</p>
                 </div>
-                <div id="canvas-content" class="hidden space-y-2"></div>
+                <div id="canvas-content" class="hidden"></div>
             </div>
         </div>
     </div>
-    
-    <!-- Right Panel: Preview & Properties -->
-    <div class="w-80 flex flex-col gap-4">
-        <!-- Live Preview -->
-        <div class="bg-white rounded-xl shadow-lg overflow-hidden flex-1">
-            <div class="p-4 bg-gradient-to-r from-green-500 to-teal-600 text-white">
-                <h2 class="font-bold text-lg">📱 Live Preview</h2>
-                <p class="text-xs opacity-80">ตัวอย่างบน LINE</p>
+
+    <!-- ==================== Right Panel: Preview + Tabs ==================== -->
+    <div class="w-[380px] bg-white border-l flex flex-col shrink-0">
+        <!-- LINE Preview -->
+        <div class="flex flex-col" style="height:45%">
+            <div class="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-[#06C755] to-[#05a648] text-white shrink-0">
+                <span class="text-sm font-bold">📱 LINE Preview</span>
             </div>
-            <div class="p-4 bg-[#7494A5] min-h-[300px] flex justify-center">
-                <div id="preview-container" class="w-full max-w-[280px]">
-                    <div id="preview-placeholder" class="text-center text-white/60 py-10">
-                        <div class="text-4xl mb-2">💬</div>
-                        <p class="text-sm">Preview จะแสดงที่นี่</p>
+            <div class="flex-1 overflow-auto bg-[#7494A5] p-3 flex justify-center items-start">
+                <div id="flex-preview" class="w-full max-w-[300px]">
+                    <div class="text-center text-white/50 py-8">
+                        <div class="text-3xl mb-1">💬</div>
+                        <p class="text-xs">Preview จะแสดงที่นี่</p>
                     </div>
-                    <div id="preview-content" class="hidden"></div>
                 </div>
             </div>
         </div>
-        
-        <!-- Properties Panel -->
-        <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-            <div class="p-4 bg-gradient-to-r from-orange-500 to-red-500 text-white">
-                <h2 class="font-bold text-lg">⚙️ Properties</h2>
-                <p class="text-xs opacity-80">แก้ไขคุณสมบัติ</p>
+
+        <!-- Tabbed Panel: Properties + JSON Editor -->
+        <div class="flex-1 flex flex-col border-t min-h-0">
+            <div class="flex border-b shrink-0">
+                <button onclick="switchTab('properties')" class="tab-btn active" data-tab="properties">
+                    ⚙️ Properties
+                </button>
+                <button onclick="switchTab('json')" class="tab-btn" data-tab="json">
+                    { } JSON Editor
+                </button>
             </div>
-            <div id="properties-panel" class="p-4 max-h-[250px] overflow-y-auto">
-                <p class="text-gray-400 text-sm text-center py-4">เลือก Component เพื่อแก้ไข</p>
+
+            <!-- Properties Tab -->
+            <div id="tab-properties" class="tab-panel flex-1 overflow-y-auto p-3">
+                <p class="text-gray-400 text-xs text-center py-6">คลิกที่ Component บน Canvas เพื่อแก้ไข</p>
+            </div>
+
+            <!-- JSON Editor Tab -->
+            <div id="tab-json" class="tab-panel hidden flex-1 flex flex-col min-h-0">
+                <div class="flex items-center gap-1 px-2 py-1.5 bg-gray-50 border-b shrink-0">
+                    <button onclick="formatJson()" class="jt-btn" title="Format">Format</button>
+                    <button onclick="minifyJson()" class="jt-btn" title="Minify">Mini</button>
+                    <button onclick="copyJsonEditor()" class="jt-btn" title="Copy">Copy</button>
+                    <div class="flex-1"></div>
+                    <span id="json-status" class="text-[10px] font-medium text-green-600 hidden">✓ Valid</span>
+                    <button onclick="applyJson()" class="px-3 py-1 bg-blue-600 text-white rounded text-[11px] font-semibold hover:bg-blue-700 transition">
+                        Apply ▶
+                    </button>
+                </div>
+                <textarea id="json-editor"
+                    class="flex-1 font-mono text-[11px] leading-relaxed p-3 border-0 resize-none focus:outline-none bg-gray-50 text-gray-800 min-h-0"
+                    spellcheck="false"
+                    placeholder="วาง JSON ที่นี่ หรือสร้างจาก Canvas แล้วกด Apply เพื่อโหลด..."
+                    oninput="onJsonEditorInput()"></textarea>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Bottom Action Bar -->
-<div class="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 ml-64">
-    <div class="max-w-6xl mx-auto flex justify-between items-center">
+<!-- ==================== Bottom Action Bar ==================== -->
+<div class="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg py-2.5 px-4 ml-64 z-40">
+    <div class="flex justify-between items-center">
         <div class="flex gap-2">
-            <button onclick="showJsonModal()" class="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">
-                📄 ดู JSON
+            <button onclick="openImportModal()" class="act-btn">
+                📥 วาง/Import JSON
             </button>
-            <button onclick="importJson()" class="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">
-                📥 Import JSON
+            <button onclick="showFullJson()" class="act-btn">
+                📄 ดู JSON เต็ม
             </button>
+            <a href="https://developers.line.biz/flex-simulator/" target="_blank" rel="noopener" class="act-btn inline-flex items-center gap-1">
+                🔗 Flex Simulator
+            </a>
         </div>
-        <div class="flex gap-2">
-            <button onclick="saveTemplate()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm">
+        <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 mr-3">
+                <label class="text-[10px] text-gray-400 whitespace-nowrap">altText:</label>
+                <input type="text" id="alt-text-input" value="Flex Message" class="px-2 py-1 border rounded text-xs w-28 focus:ring-1 focus:ring-blue-400 focus:outline-none" placeholder="altText">
+            </div>
+            <span class="text-[10px] text-gray-400 hidden sm:inline" id="shortcut-hint">Ctrl+Z/Y Undo/Redo | Ctrl+S Save | Del ลบ</span>
+            <button onclick="saveTemplate()" class="act-btn-primary">
                 💾 บันทึกเทมเพลต
             </button>
-            <button onclick="useToBroadcast()" class="px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:opacity-90 font-medium">
+            <button onclick="useToBroadcast()" class="px-5 py-2 bg-gradient-to-r from-[#06C755] to-emerald-600 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition shadow-sm">
                 📤 ใช้ใน Broadcast
             </button>
         </div>
     </div>
 </div>
 
-<!-- Templates Modal -->
-<div id="templates-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-hidden">
-        <div class="p-4 border-b flex justify-between items-center">
-            <h3 class="text-lg font-bold">📚 เทมเพลตสำเร็จรูป</h3>
-            <button onclick="closeTemplates()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
-        </div>
-        <div class="p-6 overflow-y-auto max-h-[60vh]">
-            <div class="grid grid-cols-2 md:grid-cols-3 gap-4" id="templates-grid">
-                <!-- Product Card -->
-                <div onclick="useTemplate('product')" class="cursor-pointer group">
-                    <div class="bg-gradient-to-br from-orange-100 to-red-100 rounded-xl p-4 border-2 border-transparent group-hover:border-orange-400 transition">
-                        <div class="aspect-square bg-white rounded-lg mb-3 flex items-center justify-center text-4xl">🛍️</div>
-                        <h4 class="font-medium">Product Card</h4>
-                        <p class="text-xs text-gray-500">การ์ดสินค้า</p>
-                    </div>
-                </div>
-                <!-- Promotion -->
-                <div onclick="useTemplate('promotion')" class="cursor-pointer group">
-                    <div class="bg-gradient-to-br from-pink-100 to-purple-100 rounded-xl p-4 border-2 border-transparent group-hover:border-pink-400 transition">
-                        <div class="aspect-square bg-white rounded-lg mb-3 flex items-center justify-center text-4xl">🎁</div>
-                        <h4 class="font-medium">Promotion</h4>
-                        <p class="text-xs text-gray-500">โปรโมชั่น</p>
-                    </div>
-                </div>
-                <!-- News -->
-                <div onclick="useTemplate('news')" class="cursor-pointer group">
-                    <div class="bg-gradient-to-br from-blue-100 to-indigo-100 rounded-xl p-4 border-2 border-transparent group-hover:border-blue-400 transition">
-                        <div class="aspect-square bg-white rounded-lg mb-3 flex items-center justify-center text-4xl">📰</div>
-                        <h4 class="font-medium">News</h4>
-                        <p class="text-xs text-gray-500">ข่าวสาร</p>
-                    </div>
-                </div>
-                <!-- Receipt -->
-                <div onclick="useTemplate('receipt')" class="cursor-pointer group">
-                    <div class="bg-gradient-to-br from-green-100 to-teal-100 rounded-xl p-4 border-2 border-transparent group-hover:border-green-400 transition">
-                        <div class="aspect-square bg-white rounded-lg mb-3 flex items-center justify-center text-4xl">🧾</div>
-                        <h4 class="font-medium">Receipt</h4>
-                        <p class="text-xs text-gray-500">ใบเสร็จ</p>
-                    </div>
-                </div>
-                <!-- Menu -->
-                <div onclick="useTemplate('menu')" class="cursor-pointer group">
-                    <div class="bg-gradient-to-br from-yellow-100 to-orange-100 rounded-xl p-4 border-2 border-transparent group-hover:border-yellow-400 transition">
-                        <div class="aspect-square bg-white rounded-lg mb-3 flex items-center justify-center text-4xl">📋</div>
-                        <h4 class="font-medium">Menu</h4>
-                        <p class="text-xs text-gray-500">เมนูร้าน</p>
-                    </div>
-                </div>
-                <!-- Contact -->
-                <div onclick="useTemplate('contact')" class="cursor-pointer group">
-                    <div class="bg-gradient-to-br from-cyan-100 to-blue-100 rounded-xl p-4 border-2 border-transparent group-hover:border-cyan-400 transition">
-                        <div class="aspect-square bg-white rounded-lg mb-3 flex items-center justify-center text-4xl">📞</div>
-                        <h4 class="font-medium">Contact</h4>
-                        <p class="text-xs text-gray-500">ติดต่อเรา</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- JSON Modal -->
-<div id="json-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50">
-    <div class="bg-white rounded-xl w-full max-w-3xl mx-4 max-h-[80vh] overflow-hidden">
-        <div class="p-4 border-b flex justify-between items-center">
-            <h3 class="text-lg font-bold">📄 Flex Message JSON</h3>
-            <button onclick="closeJsonModal()" class="text-gray-500 hover:text-gray-700 text-2xl">&times;</button>
+<!-- ==================== Templates Modal ==================== -->
+<div id="modal-templates" class="modal-overlay hidden">
+    <div class="modal-box max-w-4xl">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">📚 เทมเพลตสำเร็จรูป</h3>
+            <button onclick="closeModal('modal-templates')" class="modal-close">&times;</button>
         </div>
         <div class="p-4">
-            <textarea id="json-output" class="w-full h-[400px] font-mono text-sm border rounded-lg p-4 bg-gray-50" readonly></textarea>
-            <div class="flex justify-end gap-2 mt-4">
-                <button onclick="copyJson()" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">📋 Copy</button>
-                <button onclick="closeJsonModal()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">ปิด</button>
+            <!-- Built-in tabs -->
+            <div class="flex gap-2 mb-4">
+                <button onclick="showTemplateTab('builtin')" class="tmpl-tab active" data-tmpl-tab="builtin">สำเร็จรูป</button>
+                <button onclick="showTemplateTab('saved')" class="tmpl-tab" data-tmpl-tab="saved">ที่บันทึกไว้</button>
+            </div>
+            <!-- Built-in Templates -->
+            <div id="tmpl-builtin" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div onclick="useBuiltinTemplate('product')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-orange-100 to-red-100">🛍️</div>
+                    <h4>Product Card</h4><p>การ์ดสินค้า</p>
+                </div>
+                <div onclick="useBuiltinTemplate('promotion')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-pink-100 to-purple-100">🎁</div>
+                    <h4>Promotion</h4><p>โปรโมชั่น</p>
+                </div>
+                <div onclick="useBuiltinTemplate('news')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-blue-100 to-indigo-100">📰</div>
+                    <h4>News</h4><p>ข่าวสาร</p>
+                </div>
+                <div onclick="useBuiltinTemplate('receipt')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-green-100 to-teal-100">🧾</div>
+                    <h4>Receipt</h4><p>ใบเสร็จ</p>
+                </div>
+                <div onclick="useBuiltinTemplate('menu')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-yellow-100 to-orange-100">📋</div>
+                    <h4>Menu</h4><p>เมนูร้าน</p>
+                </div>
+                <div onclick="useBuiltinTemplate('contact')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-cyan-100 to-blue-100">📞</div>
+                    <h4>Contact</h4><p>ติดต่อเรา</p>
+                </div>
+                <div onclick="useBuiltinTemplate('coupon')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-rose-100 to-pink-100">🎟️</div>
+                    <h4>Coupon</h4><p>คูปองส่วนลด</p>
+                </div>
+                <div onclick="useBuiltinTemplate('appointment')" class="tmpl-card">
+                    <div class="tmpl-icon bg-gradient-to-br from-emerald-100 to-green-100">📅</div>
+                    <h4>Appointment</h4><p>นัดหมาย</p>
+                </div>
+            </div>
+            <!-- Saved Templates -->
+            <div id="tmpl-saved" class="hidden">
+                <div id="saved-templates-list" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div class="text-center py-8 text-gray-400 col-span-full">
+                        <p class="text-sm">กำลังโหลด...</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-// State Management
-let flexData = null;
-let selectedElement = null;
-let history = [];
-let historyIndex = -1;
+<!-- ==================== Import JSON Modal ==================== -->
+<div id="modal-import" class="modal-overlay hidden">
+    <div class="modal-box max-w-2xl">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">📥 Import / วาง JSON</h3>
+            <button onclick="closeModal('modal-import')" class="modal-close">&times;</button>
+        </div>
+        <div class="p-4">
+            <p class="text-sm text-gray-500 mb-3">วาง LINE Flex Message JSON แล้วกด Import เพื่อโหลดเข้า Canvas</p>
+            <textarea id="import-json-input"
+                class="w-full h-64 font-mono text-xs border rounded-lg p-3 bg-gray-50 focus:ring-2 focus:ring-blue-300 focus:outline-none"
+                placeholder='{"type":"bubble","body":{"type":"box","layout":"vertical","contents":[...]}}'
+                spellcheck="false"></textarea>
+            <div id="import-error" class="text-red-500 text-xs mt-2 hidden"></div>
+            <div class="flex justify-end gap-2 mt-4">
+                <button onclick="closeModal('modal-import')" class="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">ยกเลิก</button>
+                <button onclick="doImportJson()" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold">Import & โหลดเข้า Canvas</button>
+            </div>
+        </div>
+    </div>
+</div>
 
-// Templates
-const templates = {
+<!-- ==================== Full JSON View Modal ==================== -->
+<div id="modal-json-view" class="modal-overlay hidden">
+    <div class="modal-box max-w-3xl">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">📄 Flex Message JSON (Full)</h3>
+            <button onclick="closeModal('modal-json-view')" class="modal-close">&times;</button>
+        </div>
+        <div class="p-4">
+            <textarea id="full-json-output" class="w-full h-[400px] font-mono text-xs border rounded-lg p-3 bg-gray-50" readonly></textarea>
+            <div class="flex justify-end gap-2 mt-3">
+                <button onclick="copyFullJson()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold">📋 Copy JSON</button>
+                <button onclick="closeModal('modal-json-view')" class="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">ปิด</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== Save Template Modal ==================== -->
+<div id="modal-save" class="modal-overlay hidden">
+    <div class="modal-box max-w-md">
+        <div class="flex items-center justify-between p-4 border-b">
+            <h3 class="font-bold text-lg">💾 บันทึกเทมเพลต</h3>
+            <button onclick="closeModal('modal-save')" class="modal-close">&times;</button>
+        </div>
+        <div class="p-4 space-y-3">
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">ชื่อเทมเพลต</label>
+                <input type="text" id="save-template-name" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none" placeholder="เช่น โปรโมชั่นเดือน ก.พ.">
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">หมวดหมู่</label>
+                <select id="save-template-category" class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-300 focus:outline-none">
+                    <option value="custom">ทั่วไป</option>
+                    <option value="product">สินค้า</option>
+                    <option value="promotion">โปรโมชั่น</option>
+                    <option value="news">ข่าวสาร</option>
+                    <option value="receipt">ใบเสร็จ</option>
+                    <option value="other">อื่นๆ</option>
+                </select>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button onclick="closeModal('modal-save')" class="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 text-sm">ยกเลิก</button>
+                <button onclick="doSaveTemplate()" class="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold">บันทึก</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+// ========================================================================
+// STATE MANAGEMENT
+// ========================================================================
+let flexData = null;
+let selectedPath = null;
+let historyStack = [null];
+let historyIndex = 0;
+let jsonEditorFocused = false;
+let activeTab = 'properties';
+
+// ========================================================================
+// BUILT-IN TEMPLATES
+// ========================================================================
+const builtinTemplates = {
     product: {
-        type: "bubble",
-        hero: {
-            type: "image",
-            url: "https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png",
-            size: "full",
-            aspectRatio: "20:13",
-            aspectMode: "cover",
-            action: { type: "uri", uri: "https://example.com" }
-        },
-        body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "ชื่อสินค้า", weight: "bold", size: "xl" },
-                { type: "text", text: "รายละเอียดสินค้า", size: "sm", color: "#666666", margin: "md", wrap: true },
-                {
-                    type: "box", layout: "baseline", margin: "md",
-                    contents: [
-                        { type: "text", text: "฿", size: "sm", color: "#FF5551", flex: 0 },
-                        { type: "text", text: "999", size: "xl", color: "#FF5551", weight: "bold", flex: 0 }
-                    ]
-                }
-            ]
-        },
-        footer: {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: [
-                { type: "button", style: "primary", color: "#06C755", action: { type: "uri", label: "🛒 สั่งซื้อ", uri: "https://example.com" } },
-                { type: "button", style: "secondary", action: { type: "uri", label: "ดูรายละเอียด", uri: "https://example.com" } }
-            ]
-        }
+        type:"bubble",
+        hero:{type:"image",url:"https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png",size:"full",aspectRatio:"20:13",aspectMode:"cover",action:{type:"uri",uri:"https://example.com"}},
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"ชื่อสินค้า",weight:"bold",size:"xl"},
+            {type:"text",text:"รายละเอียดสินค้า สั้นๆ กระชับ",size:"sm",color:"#888888",margin:"md",wrap:true},
+            {type:"box",layout:"baseline",margin:"md",contents:[
+                {type:"text",text:"฿",size:"sm",color:"#FF5551",flex:0},
+                {type:"text",text:"999",size:"xl",color:"#FF5551",weight:"bold",flex:0},
+                {type:"text",text:" ฿1,299",size:"xs",color:"#AAAAAA",decoration:"line-through",margin:"sm",flex:0}
+            ]}
+        ]},
+        footer:{type:"box",layout:"vertical",spacing:"sm",contents:[
+            {type:"button",style:"primary",color:"#06C755",action:{type:"uri",label:"🛒 สั่งซื้อเลย",uri:"https://example.com"}},
+            {type:"button",style:"secondary",action:{type:"uri",label:"ดูรายละเอียด",uri:"https://example.com"}}
+        ]}
     },
     promotion: {
-        type: "bubble",
-        styles: { hero: { backgroundColor: "#FF6B6B" } },
-        hero: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "🎉 SALE", size: "3xl", weight: "bold", color: "#FFFFFF", align: "center" },
-                { type: "text", text: "ลดสูงสุด 50%", size: "xl", color: "#FFFFFF", align: "center", margin: "md" }
-            ],
-            paddingAll: "30px"
-        },
-        body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "โปรโมชั่นพิเศษ!", weight: "bold", size: "lg" },
-                { type: "text", text: "สินค้าลดราคาพิเศษ เฉพาะวันนี้เท่านั้น!", size: "sm", color: "#666666", wrap: true, margin: "md" },
-                { type: "text", text: "📅 1-31 ธ.ค. 2567", size: "xs", color: "#999999", margin: "lg" }
-            ]
-        },
-        footer: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "button", style: "primary", color: "#FF6B6B", action: { type: "uri", label: "🛍️ ช้อปเลย!", uri: "https://example.com" } }
-            ]
-        }
+        type:"bubble",
+        styles:{hero:{backgroundColor:"#FF6B6B"}},
+        hero:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"🎉 SALE",size:"3xl",weight:"bold",color:"#FFFFFF",align:"center"},
+            {type:"text",text:"ลดสูงสุด 50%",size:"xl",color:"#FFFFFF",align:"center",margin:"md"}
+        ],paddingAll:"30px"},
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"โปรโมชั่นพิเศษ!",weight:"bold",size:"lg"},
+            {type:"text",text:"สินค้าลดราคาพิเศษ เฉพาะวันนี้เท่านั้น!",size:"sm",color:"#666666",wrap:true,margin:"md"},
+            {type:"text",text:"📅 วันนี้ - สิ้นเดือนนี้",size:"xs",color:"#999999",margin:"lg"}
+        ]},
+        footer:{type:"box",layout:"vertical",contents:[
+            {type:"button",style:"primary",color:"#FF6B6B",action:{type:"uri",label:"🛍️ ช้อปเลย!",uri:"https://example.com"}}
+        ]}
     },
     news: {
-        type: "bubble",
-        hero: {
-            type: "image",
-            url: "https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png",
-            size: "full",
-            aspectRatio: "20:13",
-            aspectMode: "cover"
-        },
-        body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "📰 ข่าวสาร", size: "xs", color: "#1DB446", weight: "bold" },
-                { type: "text", text: "หัวข้อข่าว", weight: "bold", size: "lg", margin: "md" },
-                { type: "text", text: "รายละเอียดข่าวสาร...", size: "sm", color: "#666666", wrap: true, margin: "md" },
-                { type: "text", text: "15 ธ.ค. 2567", size: "xs", color: "#999999", margin: "lg" }
-            ]
-        },
-        footer: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "button", style: "link", action: { type: "uri", label: "อ่านเพิ่มเติม →", uri: "https://example.com" } }
-            ]
-        }
+        type:"bubble",
+        hero:{type:"image",url:"https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png",size:"full",aspectRatio:"20:13",aspectMode:"cover"},
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"📰 ข่าวสาร",size:"xs",color:"#1DB446",weight:"bold"},
+            {type:"text",text:"หัวข้อข่าว",weight:"bold",size:"lg",margin:"md"},
+            {type:"text",text:"รายละเอียดข่าวสาร ข้อมูลสำคัญที่ต้องการสื่อสาร...",size:"sm",color:"#666666",wrap:true,margin:"md"},
+            {type:"text",text:"15 ก.พ. 2569",size:"xs",color:"#999999",margin:"lg"}
+        ]},
+        footer:{type:"box",layout:"vertical",contents:[
+            {type:"button",style:"link",action:{type:"uri",label:"อ่านเพิ่มเติม →",uri:"https://example.com"}}
+        ]}
     },
     receipt: {
-        type: "bubble",
-        body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "🧾 ใบเสร็จ", weight: "bold", color: "#1DB446", size: "sm" },
-                { type: "text", text: "ร้านค้าของคุณ", weight: "bold", size: "xxl", margin: "md" },
-                { type: "separator", margin: "lg" },
-                {
-                    type: "box", layout: "vertical", margin: "lg", spacing: "sm",
-                    contents: [
-                        { type: "box", layout: "horizontal", contents: [
-                            { type: "text", text: "สินค้า A", size: "sm", color: "#555555", flex: 0 },
-                            { type: "text", text: "฿100", size: "sm", color: "#111111", align: "end" }
-                        ]},
-                        { type: "box", layout: "horizontal", contents: [
-                            { type: "text", text: "สินค้า B", size: "sm", color: "#555555", flex: 0 },
-                            { type: "text", text: "฿200", size: "sm", color: "#111111", align: "end" }
-                        ]}
-                    ]
-                },
-                { type: "separator", margin: "lg" },
-                { type: "box", layout: "horizontal", margin: "lg", contents: [
-                    { type: "text", text: "รวม", size: "sm", color: "#555555", flex: 0, weight: "bold" },
-                    { type: "text", text: "฿300", size: "lg", color: "#1DB446", align: "end", weight: "bold" }
+        type:"bubble",
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"🧾 ใบเสร็จ",weight:"bold",color:"#1DB446",size:"sm"},
+            {type:"text",text:"ร้านค้าของคุณ",weight:"bold",size:"xxl",margin:"md"},
+            {type:"separator",margin:"lg"},
+            {type:"box",layout:"vertical",margin:"lg",spacing:"sm",contents:[
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"สินค้า A x1",size:"sm",color:"#555555",flex:0},
+                    {type:"text",text:"฿100",size:"sm",color:"#111111",align:"end"}
+                ]},
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"สินค้า B x2",size:"sm",color:"#555555",flex:0},
+                    {type:"text",text:"฿400",size:"sm",color:"#111111",align:"end"}
                 ]}
-            ]
-        }
+            ]},
+            {type:"separator",margin:"lg"},
+            {type:"box",layout:"horizontal",margin:"lg",contents:[
+                {type:"text",text:"รวมทั้งสิ้น",size:"sm",color:"#555555",flex:0,weight:"bold"},
+                {type:"text",text:"฿500",size:"lg",color:"#1DB446",align:"end",weight:"bold"}
+            ]}
+        ]}
     },
     menu: {
-        type: "bubble",
-        body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "📋 เมนูหลัก", weight: "bold", size: "xl", align: "center" },
-                { type: "separator", margin: "lg" }
-            ]
-        },
-        footer: {
-            type: "box",
-            layout: "vertical",
-            spacing: "sm",
-            contents: [
-                { type: "button", style: "primary", color: "#06C755", action: { type: "message", label: "🛒 ดูสินค้า", text: "shop" } },
-                { type: "button", style: "secondary", action: { type: "message", label: "📦 เช็คออเดอร์", text: "orders" } },
-                { type: "button", style: "secondary", action: { type: "message", label: "💬 ติดต่อเรา", text: "contact" } }
-            ]
-        }
+        type:"bubble",
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"📋 เมนูหลัก",weight:"bold",size:"xl",align:"center"},
+            {type:"separator",margin:"lg"}
+        ]},
+        footer:{type:"box",layout:"vertical",spacing:"sm",contents:[
+            {type:"button",style:"primary",color:"#06C755",action:{type:"message",label:"🛒 ดูสินค้า",text:"shop"}},
+            {type:"button",style:"secondary",action:{type:"message",label:"📦 เช็คออเดอร์",text:"orders"}},
+            {type:"button",style:"secondary",action:{type:"message",label:"💬 ติดต่อเรา",text:"contact"}}
+        ]}
     },
     contact: {
-        type: "bubble",
-        body: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "text", text: "📞 ติดต่อเรา", weight: "bold", size: "xl" },
-                { type: "separator", margin: "lg" },
-                { type: "box", layout: "vertical", margin: "lg", spacing: "md", contents: [
-                    { type: "box", layout: "horizontal", contents: [
-                        { type: "text", text: "📍", flex: 0 },
-                        { type: "text", text: "123 ถนนสุขุมวิท กรุงเทพฯ", size: "sm", color: "#666666", flex: 5, wrap: true, margin: "md" }
-                    ]},
-                    { type: "box", layout: "horizontal", contents: [
-                        { type: "text", text: "📱", flex: 0 },
-                        { type: "text", text: "02-xxx-xxxx", size: "sm", color: "#666666", flex: 5, margin: "md" }
-                    ]},
-                    { type: "box", layout: "horizontal", contents: [
-                        { type: "text", text: "⏰", flex: 0 },
-                        { type: "text", text: "จ-ส 9:00-18:00", size: "sm", color: "#666666", flex: 5, margin: "md" }
-                    ]}
+        type:"bubble",
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"📞 ติดต่อเรา",weight:"bold",size:"xl"},
+            {type:"separator",margin:"lg"},
+            {type:"box",layout:"vertical",margin:"lg",spacing:"md",contents:[
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"📍",flex:0},
+                    {type:"text",text:"123 ถนนสุขุมวิท กรุงเทพฯ",size:"sm",color:"#666666",flex:5,wrap:true,margin:"md"}
+                ]},
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"📱",flex:0},
+                    {type:"text",text:"02-xxx-xxxx",size:"sm",color:"#666666",flex:5,margin:"md"}
+                ]},
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"⏰",flex:0},
+                    {type:"text",text:"จ-ส 9:00-18:00",size:"sm",color:"#666666",flex:5,margin:"md"}
                 ]}
-            ]
-        },
-        footer: {
-            type: "box",
-            layout: "vertical",
-            contents: [
-                { type: "button", style: "primary", color: "#06C755", action: { type: "uri", label: "📍 ดูแผนที่", uri: "https://maps.google.com" } }
-            ]
-        }
+            ]}
+        ]},
+        footer:{type:"box",layout:"vertical",contents:[
+            {type:"button",style:"primary",color:"#06C755",action:{type:"uri",label:"📍 ดูแผนที่",uri:"https://maps.google.com"}}
+        ]}
+    },
+    coupon: {
+        type:"bubble",
+        styles:{body:{backgroundColor:"#FFF4E6"}},
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"🎟️ คูปองส่วนลด",weight:"bold",size:"sm",color:"#E67E22"},
+            {type:"text",text:"ลด 20%",weight:"bold",size:"3xl",color:"#E67E22",align:"center",margin:"lg"},
+            {type:"text",text:"สำหรับการสั่งซื้อครั้งถัดไป",size:"sm",color:"#888888",align:"center",margin:"sm"},
+            {type:"separator",margin:"lg"},
+            {type:"box",layout:"horizontal",margin:"lg",contents:[
+                {type:"text",text:"Code:",size:"sm",color:"#888888",flex:0},
+                {type:"text",text:"SAVE20",size:"sm",weight:"bold",color:"#E67E22",align:"end"}
+            ]},
+            {type:"text",text:"หมดอายุ: 28 ก.พ. 2569",size:"xs",color:"#AAAAAA",margin:"md",align:"center"}
+        ]},
+        footer:{type:"box",layout:"vertical",contents:[
+            {type:"button",style:"primary",color:"#E67E22",action:{type:"uri",label:"ใช้คูปอง",uri:"https://example.com"}}
+        ]}
+    },
+    appointment: {
+        type:"bubble",
+        body:{type:"box",layout:"vertical",contents:[
+            {type:"text",text:"📅 ยืนยันนัดหมาย",weight:"bold",size:"lg",color:"#06C755"},
+            {type:"separator",margin:"md"},
+            {type:"box",layout:"vertical",margin:"lg",spacing:"md",contents:[
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"วันที่",size:"sm",color:"#888888",flex:2},
+                    {type:"text",text:"15 ก.พ. 2569",size:"sm",weight:"bold",flex:3}
+                ]},
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"เวลา",size:"sm",color:"#888888",flex:2},
+                    {type:"text",text:"14:00 น.",size:"sm",weight:"bold",flex:3}
+                ]},
+                {type:"box",layout:"horizontal",contents:[
+                    {type:"text",text:"เภสัชกร",size:"sm",color:"#888888",flex:2},
+                    {type:"text",text:"ภก. สมชาย ใจดี",size:"sm",weight:"bold",flex:3}
+                ]}
+            ]},
+            {type:"text",text:"กรุณามาก่อนเวลา 10 นาที",size:"xs",color:"#AAAAAA",margin:"lg"}
+        ]},
+        footer:{type:"box",layout:"vertical",spacing:"sm",contents:[
+            {type:"button",style:"primary",color:"#06C755",action:{type:"uri",label:"✅ ยืนยัน",uri:"https://example.com"}},
+            {type:"button",style:"secondary",action:{type:"uri",label:"เลื่อนนัด",uri:"https://example.com"}}
+        ]}
     }
 };
 
-// Drag & Drop Handlers
-function handleDragStart(e) {
-    e.dataTransfer.setData('type', e.target.closest('.component-item').dataset.type);
-    e.dataTransfer.effectAllowed = 'copy';
+// ========================================================================
+// UTILITY FUNCTIONS
+// ========================================================================
+function esc(str) {
+    return (str||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+function toast(msg, type='success') {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `pointer-events-auto px-4 py-2.5 rounded-lg text-sm font-medium shadow-lg transform translate-x-full transition-transform duration-300 ${
+        type==='success'?'bg-green-600 text-white':type==='error'?'bg-red-600 text-white':'bg-gray-800 text-white'
+    }`;
+    t.textContent = msg;
+    c.appendChild(t);
+    requestAnimationFrame(()=> t.classList.remove('translate-x-full'));
+    setTimeout(()=>{t.classList.add('translate-x-full');setTimeout(()=>t.remove(),300);},2500);
+}
+
+function deepClone(obj) { return JSON.parse(JSON.stringify(obj)); }
+
+function openModal(id) {
+    const m=document.getElementById(id);
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+}
+function closeModal(id) {
+    const m=document.getElementById(id);
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+}
+
+// ========================================================================
+// TAB MANAGEMENT
+// ========================================================================
+function switchTab(tab) {
+    activeTab = tab;
+    document.querySelectorAll('.tab-btn').forEach(b=>{
+        b.classList.toggle('active', b.dataset.tab===tab);
+    });
+    document.getElementById('tab-properties').classList.toggle('hidden', tab!=='properties');
+    document.getElementById('tab-json').classList.toggle('hidden', tab!=='json');
+    if(tab==='json') syncJsonEditor();
+}
+
+function showTemplateTab(tab) {
+    document.querySelectorAll('.tmpl-tab').forEach(b=>{
+        b.classList.toggle('active', b.dataset.tmplTab===tab);
+    });
+    document.getElementById('tmpl-builtin').classList.toggle('hidden', tab!=='builtin');
+    document.getElementById('tmpl-saved').classList.toggle('hidden', tab!=='saved');
+    if(tab==='saved') loadSavedTemplates();
+}
+
+// ========================================================================
+// HISTORY (UNDO / REDO)
+// ========================================================================
+function pushHistory() {
+    historyStack = historyStack.slice(0, historyIndex+1);
+    historyStack.push(flexData ? deepClone(flexData) : null);
+    historyIndex = historyStack.length - 1;
+    if(historyStack.length > 60){ historyStack.shift(); historyIndex--; }
+    updateHistoryButtons();
+}
+function undoAction() {
+    if(historyIndex > 0){ historyIndex--; flexData = historyStack[historyIndex] ? deepClone(historyStack[historyIndex]) : null; updateAll(); }
+}
+function redoAction() {
+    if(historyIndex < historyStack.length-1){ historyIndex++; flexData = historyStack[historyIndex] ? deepClone(historyStack[historyIndex]) : null; updateAll(); }
+}
+function updateHistoryButtons() {
+    document.getElementById('btn-undo').disabled = historyIndex <= 0;
+    document.getElementById('btn-redo').disabled = historyIndex >= historyStack.length-1;
+}
+
+// ========================================================================
+// DRAG & DROP
+// ========================================================================
+function handleDragStart(e) {
+    const type = e.target.closest('.comp-item')?.dataset.type;
+    if(type) { e.dataTransfer.setData('componentType', type); e.dataTransfer.effectAllowed='copy'; }
+}
 function handleDragOver(e) {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    document.getElementById('canvas').classList.add('border-green-400', 'bg-green-50');
+    e.dataTransfer.dropEffect='copy';
+    e.currentTarget.classList.add('drop-active');
 }
-
 function handleDragLeave(e) {
-    document.getElementById('canvas').classList.remove('border-green-400', 'bg-green-50');
+    e.currentTarget.classList.remove('drop-active');
 }
-
 function handleDrop(e) {
     e.preventDefault();
-    document.getElementById('canvas').classList.remove('border-green-400', 'bg-green-50');
-    
-    const type = e.dataTransfer.getData('type');
-    if (type) {
-        addComponent(type);
-    }
+    e.currentTarget.classList.remove('drop-active');
+    const type = e.dataTransfer.getData('componentType');
+    if(type) addComponent(type);
+}
+function handleSectionDrop(e, bubblePath, section) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove('drop-active');
+    const type = e.dataTransfer.getData('componentType');
+    if(type) addComponentToSection(type, bubblePath, section);
 }
 
-// Add Component
-function addComponent(type) {
-    saveHistory();
-    
-    if (type === 'bubble' || type === 'carousel') {
-        if (!flexData) {
-            flexData = type === 'bubble' ? { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } } 
-                                         : { type: 'carousel', contents: [{ type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } }] };
-        }
-    } else if (flexData) {
-        const component = createComponent(type);
-        if (flexData.type === 'bubble') {
-            if (!flexData.body) flexData.body = { type: 'box', layout: 'vertical', contents: [] };
-            flexData.body.contents.push(component);
-        } else if (flexData.type === 'carousel' && flexData.contents.length > 0) {
-            const lastBubble = flexData.contents[flexData.contents.length - 1];
-            if (!lastBubble.body) lastBubble.body = { type: 'box', layout: 'vertical', contents: [] };
-            lastBubble.body.contents.push(component);
-        }
-    } else {
-        // Auto create bubble if no container
-        flexData = { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [createComponent(type)] } };
-    }
-    
-    updateCanvas();
-    updatePreview();
-}
-
+// ========================================================================
+// COMPONENT FACTORY
+// ========================================================================
 function createComponent(type) {
-    switch (type) {
-        case 'hero':
-            return { type: 'image', url: 'https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png', size: 'full', aspectRatio: '20:13', aspectMode: 'cover' };
-        case 'text':
-            return { type: 'text', text: 'ข้อความ', size: 'md', color: '#333333' };
-        case 'button':
-            return { type: 'button', style: 'primary', color: '#06C755', action: { type: 'uri', label: 'ปุ่ม', uri: 'https://example.com' } };
-        case 'separator':
-            return { type: 'separator', margin: 'md' };
-        case 'box':
-            return { type: 'box', layout: 'horizontal', contents: [] };
-        case 'icon':
-            return { type: 'icon', url: 'https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png', size: 'sm' };
-        default:
-            return { type: 'text', text: type };
+    switch(type) {
+        case 'hero': return {type:"image",url:"https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png",size:"full",aspectRatio:"20:13",aspectMode:"cover"};
+        case 'text': return {type:"text",text:"ข้อความ",size:"md",color:"#333333"};
+        case 'button': return {type:"button",style:"primary",color:"#06C755",action:{type:"uri",label:"ปุ่มกด",uri:"https://example.com"}};
+        case 'separator': return {type:"separator",margin:"md"};
+        case 'spacer': return {type:"spacer",size:"md"};
+        case 'box': return {type:"box",layout:"horizontal",contents:[]};
+        case 'icon': return {type:"icon",url:"https://developers-resource.landpress.line.me/fx/img/review_gold_star_28.png",size:"sm"};
+        case 'filler': return {type:"filler"};
+        default: return {type:"text",text:type};
     }
 }
 
-// Update Canvas
-function updateCanvas() {
-    const placeholder = document.getElementById('canvas-placeholder');
-    const content = document.getElementById('canvas-content');
-    
-    if (!flexData) {
-        placeholder.classList.remove('hidden');
-        content.classList.add('hidden');
+// ========================================================================
+// ADD COMPONENT LOGIC
+// ========================================================================
+function addComponent(type) {
+    pushHistory();
+    if(type==='bubble'||type==='carousel') {
+        if(!flexData) {
+            flexData = type==='bubble'
+                ? {type:'bubble',body:{type:'box',layout:'vertical',contents:[]}}
+                : {type:'carousel',contents:[{type:'bubble',body:{type:'box',layout:'vertical',contents:[]}}]};
+        }
+    } else if(type==='hero') {
+        // Hero goes to bubble.hero
+        const bubble = getTargetBubble();
+        if(bubble) bubble.hero = createComponent('hero');
+        else { flexData={type:'bubble',hero:createComponent('hero'),body:{type:'box',layout:'vertical',contents:[]}}; }
+    } else if(flexData) {
+        const comp = createComponent(type);
+        const bubble = getTargetBubble();
+        if(bubble) {
+            if(!bubble.body) bubble.body={type:'box',layout:'vertical',contents:[]};
+            bubble.body.contents.push(comp);
+        }
+    } else {
+        flexData = {type:'bubble',body:{type:'box',layout:'vertical',contents:[createComponent(type)]}};
+    }
+    updateAll();
+}
+
+function addComponentToSection(type, bubblePath, section) {
+    pushHistory();
+    if(section==='_box') {
+        // Dropping into a box element
+        const box = getElementByPath(bubblePath);
+        if(box && box.type==='box') {
+            if(!box.contents) box.contents=[];
+            box.contents.push(createComponent(type));
+        }
+        updateAll();
         return;
     }
-    
-    placeholder.classList.add('hidden');
-    content.classList.remove('hidden');
-    content.innerHTML = renderCanvasElement(flexData, 'root');
-}
-
-function renderCanvasElement(element, path) {
-    if (!element) return '';
-    
-    let html = '';
-    const type = element.type;
-    
-    if (type === 'bubble') {
-        html = `<div class="canvas-element bubble bg-white border-2 border-blue-300 rounded-lg p-3 cursor-pointer hover:border-blue-500" data-path="${path}" onclick="selectElement('${path}')">
-            <div class="text-xs text-blue-500 font-medium mb-2">📦 Bubble</div>
-            ${element.hero ? renderCanvasElement(element.hero, path + '.hero') : ''}
-            ${element.body ? renderCanvasElement(element.body, path + '.body') : ''}
-            ${element.footer ? renderCanvasElement(element.footer, path + '.footer') : ''}
-        </div>`;
-    } else if (type === 'carousel') {
-        html = `<div class="canvas-element carousel" data-path="${path}">
-            <div class="text-xs text-purple-500 font-medium mb-2">🎠 Carousel</div>
-            <div class="flex gap-2 overflow-x-auto pb-2">
-                ${element.contents.map((b, i) => renderCanvasElement(b, path + '.contents[' + i + ']')).join('')}
-                <button onclick="addBubbleToCarousel()" class="min-w-[100px] h-[150px] border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 hover:border-gray-400">+ Bubble</button>
-            </div>
-        </div>`;
-    } else if (type === 'box') {
-        const layoutClass = element.layout === 'horizontal' ? 'flex-row' : 'flex-col';
-        html = `<div class="canvas-element box bg-gray-50 border border-gray-200 rounded p-2 cursor-pointer hover:border-gray-400" data-path="${path}" onclick="selectElement('${path}'); event.stopPropagation();">
-            <div class="text-xs text-gray-500 mb-1">📐 Box (${element.layout})</div>
-            <div class="flex ${layoutClass} gap-1">
-                ${element.contents ? element.contents.map((c, i) => renderCanvasElement(c, path + '.contents[' + i + ']')).join('') : ''}
-            </div>
-        </div>`;
-    } else if (type === 'image') {
-        html = `<div class="canvas-element image bg-orange-50 border border-orange-200 rounded p-2 cursor-pointer hover:border-orange-400" data-path="${path}" onclick="selectElement('${path}'); event.stopPropagation();">
-            <img src="${element.url}" class="w-full h-20 object-cover rounded" onerror="this.src='https://via.placeholder.com/300x100?text=Image'">
-        </div>`;
-    } else if (type === 'text') {
-        html = `<div class="canvas-element text bg-green-50 border border-green-200 rounded px-2 py-1 cursor-pointer hover:border-green-400" data-path="${path}" onclick="selectElement('${path}'); event.stopPropagation();">
-            <span class="text-sm">${element.text || 'Text'}</span>
-        </div>`;
-    } else if (type === 'button') {
-        html = `<div class="canvas-element button bg-red-50 border border-red-200 rounded p-2 cursor-pointer hover:border-red-400" data-path="${path}" onclick="selectElement('${path}'); event.stopPropagation();">
-            <div class="text-center text-sm font-medium" style="color: ${element.color || '#06C755'}">${element.action?.label || 'Button'}</div>
-        </div>`;
-    } else if (type === 'separator') {
-        html = `<div class="canvas-element separator my-2 cursor-pointer" data-path="${path}" onclick="selectElement('${path}'); event.stopPropagation();">
-            <hr class="border-gray-300">
-        </div>`;
-    } else if (type === 'icon') {
-        html = `<div class="canvas-element icon inline-block cursor-pointer" data-path="${path}" onclick="selectElement('${path}'); event.stopPropagation();">
-            <img src="${element.url}" class="w-4 h-4">
-        </div>`;
-    }
-    
-    return html;
-}
-
-// Update Preview (LINE-like)
-function updatePreview() {
-    const placeholder = document.getElementById('preview-placeholder');
-    const content = document.getElementById('preview-content');
-    
-    if (!flexData) {
-        placeholder.classList.remove('hidden');
-        content.classList.add('hidden');
-        return;
-    }
-    
-    placeholder.classList.add('hidden');
-    content.classList.remove('hidden');
-    content.innerHTML = renderPreviewElement(flexData);
-}
-
-function renderPreviewElement(element) {
-    if (!element) return '';
-    const type = element.type;
-    
-    if (type === 'bubble') {
-        return `<div class="bg-white rounded-2xl overflow-hidden shadow-lg">
-            ${element.hero ? renderPreviewElement(element.hero) : ''}
-            ${element.body ? `<div class="p-4">${renderPreviewElement(element.body)}</div>` : ''}
-            ${element.footer ? `<div class="px-4 pb-4">${renderPreviewElement(element.footer)}</div>` : ''}
-        </div>`;
-    } else if (type === 'carousel') {
-        return `<div class="flex gap-2 overflow-x-auto snap-x">
-            ${element.contents.map(b => `<div class="min-w-[260px] snap-center">${renderPreviewElement(b)}</div>`).join('')}
-        </div>`;
-    } else if (type === 'box') {
-        const layoutClass = element.layout === 'horizontal' ? 'flex-row items-center' : 'flex-col';
-        const spacing = element.spacing === 'sm' ? 'gap-1' : element.spacing === 'lg' ? 'gap-3' : 'gap-2';
-        const margin = element.margin === 'lg' ? 'mt-3' : element.margin === 'md' ? 'mt-2' : '';
-        return `<div class="flex ${layoutClass} ${spacing} ${margin}">
-            ${element.contents ? element.contents.map(c => renderPreviewElement(c)).join('') : ''}
-        </div>`;
-    } else if (type === 'image') {
-        return `<img src="${element.url}" class="w-full object-cover" style="aspect-ratio: ${element.aspectRatio?.replace(':', '/') || '16/9'}" onerror="this.src='https://via.placeholder.com/300x150?text=Image'">`;
-    } else if (type === 'text') {
-        const sizeClass = { xxs: 'text-[10px]', xs: 'text-xs', sm: 'text-sm', md: 'text-base', lg: 'text-lg', xl: 'text-xl', xxl: 'text-2xl', '3xl': 'text-3xl' }[element.size] || 'text-base';
-        const weightClass = element.weight === 'bold' ? 'font-bold' : '';
-        const alignClass = { center: 'text-center', end: 'text-right' }[element.align] || '';
-        const margin = element.margin === 'lg' ? 'mt-3' : element.margin === 'md' ? 'mt-2' : '';
-        return `<div class="${sizeClass} ${weightClass} ${alignClass} ${margin} ${element.wrap ? '' : 'truncate'}" style="color: ${element.color || '#333'}">${element.text || ''}</div>`;
-    } else if (type === 'button') {
-        const bgColor = element.style === 'primary' ? (element.color || '#06C755') : 'transparent';
-        const textColor = element.style === 'primary' ? '#fff' : (element.color || '#06C755');
-        const border = element.style === 'secondary' ? `border: 1px solid ${element.color || '#06C755'}` : '';
-        return `<button class="w-full py-2 px-4 rounded-lg text-sm font-medium" style="background: ${bgColor}; color: ${textColor}; ${border}">${element.action?.label || 'Button'}</button>`;
-    } else if (type === 'separator') {
-        const margin = element.margin === 'lg' ? 'my-3' : element.margin === 'md' ? 'my-2' : 'my-1';
-        return `<hr class="border-gray-200 ${margin}">`;
-    } else if (type === 'icon') {
-        const sizeClass = { xxs: 'w-3 h-3', xs: 'w-3 h-3', sm: 'w-4 h-4', md: 'w-5 h-5', lg: 'w-6 h-6' }[element.size] || 'w-4 h-4';
-        return `<img src="${element.url}" class="${sizeClass}">`;
-    }
-    return '';
-}
-
-// Select Element & Show Properties
-function selectElement(path) {
-    selectedElement = path;
-    document.querySelectorAll('.canvas-element').forEach(el => el.classList.remove('ring-2', 'ring-blue-500'));
-    const el = document.querySelector(`[data-path="${path}"]`);
-    if (el) el.classList.add('ring-2', 'ring-blue-500');
-    
-    showProperties(path);
-}
-
-function getElementByPath(path) {
-    if (path === 'root') return flexData;
-    const parts = path.replace('root.', '').split('.');
-    let current = flexData;
-    for (const part of parts) {
-        const match = part.match(/(\w+)\[(\d+)\]/);
-        if (match) {
-            current = current[match[1]][parseInt(match[2])];
-        } else {
-            current = current[part];
-        }
-    }
-    return current;
-}
-
-function setElementByPath(path, value) {
-    if (path === 'root') { flexData = value; return; }
-    const parts = path.replace('root.', '').split('.');
-    let current = flexData;
-    for (let i = 0; i < parts.length - 1; i++) {
-        const match = parts[i].match(/(\w+)\[(\d+)\]/);
-        if (match) {
-            current = current[match[1]][parseInt(match[2])];
-        } else {
-            current = current[parts[i]];
-        }
-    }
-    const lastPart = parts[parts.length - 1];
-    const lastMatch = lastPart.match(/(\w+)\[(\d+)\]/);
-    if (lastMatch) {
-        current[lastMatch[1]][parseInt(lastMatch[2])] = value;
+    const bubble = getElementByPath(bubblePath);
+    if(!bubble) return;
+    if(section==='hero') {
+        bubble.hero = createComponent('hero');
+    } else if(section==='header'||section==='footer') {
+        if(!bubble[section]) bubble[section]={type:'box',layout:'vertical',spacing:'sm',contents:[]};
+        bubble[section].contents.push(createComponent(type));
     } else {
-        current[lastPart] = value;
+        if(!bubble.body) bubble.body={type:'box',layout:'vertical',contents:[]};
+        bubble.body.contents.push(createComponent(type));
     }
+    updateAll();
 }
 
-// Properties Panel
-function showProperties(path) {
-    const element = getElementByPath(path);
-    if (!element) return;
-    
-    const panel = document.getElementById('properties-panel');
-    let html = `<div class="space-y-3">
-        <div class="flex justify-between items-center">
-            <span class="text-sm font-medium text-gray-700">Type: ${element.type}</span>
-            <button onclick="deleteElement('${path}')" class="text-red-500 hover:text-red-700 text-sm">🗑️ ลบ</button>
-        </div>`;
-    
-    if (element.type === 'text') {
-        html += `
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">ข้อความ</label>
-                <input type="text" value="${element.text || ''}" onchange="updateProperty('${path}', 'text', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">ขนาด</label>
-                    <select onchange="updateProperty('${path}', 'size', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                        ${['xxs','xs','sm','md','lg','xl','xxl','3xl'].map(s => `<option value="${s}" ${element.size === s ? 'selected' : ''}>${s}</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">สี</label>
-                    <input type="color" value="${element.color || '#333333'}" onchange="updateProperty('${path}', 'color', this.value)" class="w-full h-8 border rounded">
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">น้ำหนัก</label>
-                    <select onchange="updateProperty('${path}', 'weight', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                        <option value="">ปกติ</option>
-                        <option value="bold" ${element.weight === 'bold' ? 'selected' : ''}>Bold</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">จัดตำแหน่ง</label>
-                    <select onchange="updateProperty('${path}', 'align', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                        <option value="">ซ้าย</option>
-                        <option value="center" ${element.align === 'center' ? 'selected' : ''}>กลาง</option>
-                        <option value="end" ${element.align === 'end' ? 'selected' : ''}>ขวา</option>
-                    </select>
-                </div>
-            </div>
-            <label class="flex items-center gap-2 text-sm">
-                <input type="checkbox" ${element.wrap ? 'checked' : ''} onchange="updateProperty('${path}', 'wrap', this.checked)"> ตัดบรรทัดอัตโนมัติ
-            </label>`;
-    } else if (element.type === 'image') {
-        html += `
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">URL รูปภาพ</label>
-                <input type="url" value="${element.url || ''}" onchange="updateProperty('${path}', 'url', this.value)" class="w-full px-2 py-1 border rounded text-sm" placeholder="https://...">
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">อัตราส่วน</label>
-                <select onchange="updateProperty('${path}', 'aspectRatio', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                    ${['1:1','4:3','16:9','20:13','2:1','3:1'].map(r => `<option value="${r}" ${element.aspectRatio === r ? 'selected' : ''}>${r}</option>`).join('')}
-                </select>
-            </div>`;
-    } else if (element.type === 'button') {
-        html += `
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">ข้อความบนปุ่ม</label>
-                <input type="text" value="${element.action?.label || ''}" onchange="updateButtonLabel('${path}', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">สไตล์</label>
-                    <select onchange="updateProperty('${path}', 'style', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                        <option value="primary" ${element.style === 'primary' ? 'selected' : ''}>Primary</option>
-                        <option value="secondary" ${element.style === 'secondary' ? 'selected' : ''}>Secondary</option>
-                        <option value="link" ${element.style === 'link' ? 'selected' : ''}>Link</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-500 mb-1">สี</label>
-                    <input type="color" value="${element.color || '#06C755'}" onchange="updateProperty('${path}', 'color', this.value)" class="w-full h-8 border rounded">
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Action Type</label>
-                <select onchange="updateButtonActionType('${path}', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                    <option value="uri" ${element.action?.type === 'uri' ? 'selected' : ''}>เปิด URL</option>
-                    <option value="message" ${element.action?.type === 'message' ? 'selected' : ''}>ส่งข้อความ</option>
-                    <option value="postback" ${element.action?.type === 'postback' ? 'selected' : ''}>Postback</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">${element.action?.type === 'uri' ? 'URL' : 'ข้อความ/Data'}</label>
-                <input type="text" value="${element.action?.uri || element.action?.text || element.action?.data || ''}" onchange="updateButtonAction('${path}', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-            </div>`;
-    } else if (element.type === 'box') {
-        html += `
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Layout</label>
-                <select onchange="updateProperty('${path}', 'layout', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                    <option value="vertical" ${element.layout === 'vertical' ? 'selected' : ''}>Vertical</option>
-                    <option value="horizontal" ${element.layout === 'horizontal' ? 'selected' : ''}>Horizontal</option>
-                    <option value="baseline" ${element.layout === 'baseline' ? 'selected' : ''}>Baseline</option>
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs text-gray-500 mb-1">Spacing</label>
-                <select onchange="updateProperty('${path}', 'spacing', this.value)" class="w-full px-2 py-1 border rounded text-sm">
-                    <option value="">None</option>
-                    <option value="xs" ${element.spacing === 'xs' ? 'selected' : ''}>XS</option>
-                    <option value="sm" ${element.spacing === 'sm' ? 'selected' : ''}>SM</option>
-                    <option value="md" ${element.spacing === 'md' ? 'selected' : ''}>MD</option>
-                    <option value="lg" ${element.spacing === 'lg' ? 'selected' : ''}>LG</option>
-                </select>
-            </div>`;
+function getTargetBubble() {
+    if(!flexData) return null;
+    if(flexData.type==='bubble') return flexData;
+    if(flexData.type==='carousel'&&flexData.contents?.length) return flexData.contents[flexData.contents.length-1];
+    return null;
+}
+
+function addSection(bubblePath, section) {
+    pushHistory();
+    const bubble = getElementByPath(bubblePath);
+    if(!bubble) return;
+    if(section==='header') {
+        bubble.header={type:'box',layout:'vertical',contents:[{type:'text',text:'Header',weight:'bold',size:'lg'}]};
+    } else if(section==='hero') {
+        bubble.hero={type:'image',url:'https://developers-resource.landpress.line.me/fx/img/01_1_cafe.png',size:'full',aspectRatio:'20:13',aspectMode:'cover'};
+    } else if(section==='footer') {
+        bubble.footer={type:'box',layout:'vertical',spacing:'sm',contents:[{type:'button',style:'primary',color:'#06C755',action:{type:'uri',label:'Button',uri:'https://example.com'}}]};
     }
-    
-    html += '</div>';
-    panel.innerHTML = html;
+    updateAll();
 }
 
-function updateProperty(path, prop, value) {
-    saveHistory();
-    const element = getElementByPath(path);
-    if (element) {
-        if (value === '' || value === false) {
-            delete element[prop];
-        } else {
-            element[prop] = value;
-        }
-        updateCanvas();
-        updatePreview();
-    }
-}
-
-function updateButtonLabel(path, value) {
-    saveHistory();
-    const element = getElementByPath(path);
-    if (element && element.action) {
-        element.action.label = value;
-        updateCanvas();
-        updatePreview();
-    }
-}
-
-function updateButtonActionType(path, type) {
-    saveHistory();
-    const element = getElementByPath(path);
-    if (element) {
-        const label = element.action?.label || 'Button';
-        element.action = { type, label };
-        if (type === 'uri') element.action.uri = 'https://example.com';
-        else if (type === 'message') element.action.text = 'message';
-        else if (type === 'postback') element.action.data = 'action=click';
-        updateCanvas();
-        updatePreview();
-        showProperties(path);
-    }
-}
-
-function updateButtonAction(path, value) {
-    saveHistory();
-    const element = getElementByPath(path);
-    if (element && element.action) {
-        if (element.action.type === 'uri') element.action.uri = value;
-        else if (element.action.type === 'message') element.action.text = value;
-        else if (element.action.type === 'postback') element.action.data = value;
-        updateCanvas();
-        updatePreview();
-    }
-}
-
-function deleteElement(path) {
-    if (!confirm('ต้องการลบ element นี้?')) return;
-    saveHistory();
-    
-    const parts = path.replace('root.', '').split('.');
-    if (parts.length === 1 || path === 'root') {
-        flexData = null;
-    } else {
-        const parentPath = 'root.' + parts.slice(0, -1).join('.');
-        const parent = getElementByPath(parentPath);
-        const lastPart = parts[parts.length - 1];
-        const match = lastPart.match(/(\w+)\[(\d+)\]/);
-        if (match && parent[match[1]]) {
-            parent[match[1]].splice(parseInt(match[2]), 1);
-        } else {
-            delete parent[lastPart];
-        }
-    }
-    
-    selectedElement = null;
-    document.getElementById('properties-panel').innerHTML = '<p class="text-gray-400 text-sm text-center py-4">เลือก Component เพื่อแก้ไข</p>';
-    updateCanvas();
-    updatePreview();
-}
-
-// History (Undo)
-function saveHistory() {
-    history = history.slice(0, historyIndex + 1);
-    history.push(JSON.stringify(flexData));
-    historyIndex = history.length - 1;
-    if (history.length > 50) {
-        history.shift();
-        historyIndex--;
-    }
-}
-
-function undoAction() {
-    if (historyIndex > 0) {
-        historyIndex--;
-        flexData = JSON.parse(history[historyIndex]);
-        updateCanvas();
-        updatePreview();
-    }
-}
-
-// Templates
-function showTemplates() {
-    document.getElementById('templates-modal').classList.remove('hidden');
-    document.getElementById('templates-modal').classList.add('flex');
-}
-
-function closeTemplates() {
-    document.getElementById('templates-modal').classList.add('hidden');
-    document.getElementById('templates-modal').classList.remove('flex');
-}
-
-function useTemplate(name) {
-    if (templates[name]) {
-        saveHistory();
-        flexData = JSON.parse(JSON.stringify(templates[name]));
-        updateCanvas();
-        updatePreview();
-        closeTemplates();
-    }
+function removeSection(bubblePath, section) {
+    pushHistory();
+    const bubble = getElementByPath(bubblePath);
+    if(bubble) { delete bubble[section]; updateAll(); }
 }
 
 function addBubbleToCarousel() {
-    if (flexData && flexData.type === 'carousel') {
-        saveHistory();
-        flexData.contents.push({ type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } });
-        updateCanvas();
-        updatePreview();
+    if(flexData?.type==='carousel') {
+        pushHistory();
+        flexData.contents.push({type:'bubble',body:{type:'box',layout:'vertical',contents:[]}});
+        updateAll();
     }
 }
 
-// Clear Canvas
-function clearCanvas() {
-    if (!flexData) return;
-    if (!confirm('ต้องการล้างทั้งหมด?')) return;
-    saveHistory();
-    flexData = null;
-    selectedElement = null;
-    document.getElementById('properties-panel').innerHTML = '<p class="text-gray-400 text-sm text-center py-4">เลือก Component เพื่อแก้ไข</p>';
+// ========================================================================
+// PATH UTILITIES
+// ========================================================================
+function getElementByPath(path) {
+    if(path==='root') return flexData;
+    const parts = path.replace('root.','').split('.');
+    let cur = flexData;
+    for(const p of parts) {
+        if(!cur) return null;
+        const m = p.match(/^(\w+)\[(\d+)\]$/);
+        cur = m ? cur[m[1]]?.[parseInt(m[2])] : cur[p];
+    }
+    return cur;
+}
+
+function getParentInfo(path) {
+    if(path==='root') return null;
+    const parts = path.replace('root.','').split('.');
+    const last = parts[parts.length-1];
+    const m = last.match(/^(\w+)\[(\d+)\]$/);
+    if(!m) return null;
+    const parentPath = parts.length>1 ? 'root.'+parts.slice(0,-1).join('.') : 'root';
+    const parent = getElementByPath(parentPath);
+    return parent ? {parent, key:m[1], index:parseInt(m[2]), parentPath} : null;
+}
+
+// ========================================================================
+// COMPONENT OPERATIONS (move, duplicate, delete)
+// ========================================================================
+function moveComponent(path, dir) {
+    const info = getParentInfo(path);
+    if(!info) return;
+    const arr = info.parent[info.key];
+    if(!arr) return;
+    const ni = info.index + dir;
+    if(ni<0||ni>=arr.length) return;
+    pushHistory();
+    [arr[info.index], arr[ni]] = [arr[ni], arr[info.index]];
+    // Update selected path
+    const parts = path.replace('root.','').split('.');
+    parts[parts.length-1] = `${info.key}[${ni}]`;
+    selectedPath = 'root.'+parts.join('.');
+    updateAll();
+    selectElement(selectedPath);
+}
+
+function duplicateComponent(path) {
+    const info = getParentInfo(path);
+    if(!info) return;
+    const arr = info.parent[info.key];
+    if(!arr) return;
+    pushHistory();
+    arr.splice(info.index+1, 0, deepClone(arr[info.index]));
+    updateAll();
+    toast('Duplicated');
+}
+
+function deleteElement(path) {
+    pushHistory();
+    if(path==='root') {
+        flexData=null;
+    } else {
+        const parts = path.replace('root.','').split('.');
+        const last = parts[parts.length-1];
+        const parentPath = parts.length>1 ? 'root.'+parts.slice(0,-1).join('.') : 'root';
+        const parent = getElementByPath(parentPath);
+        if(!parent) return;
+        const m = last.match(/^(\w+)\[(\d+)\]$/);
+        if(m && parent[m[1]]) parent[m[1]].splice(parseInt(m[2]),1);
+        else delete parent[last];
+    }
+    selectedPath=null;
+    document.getElementById('tab-properties').innerHTML='<p class="text-gray-400 text-xs text-center py-6">คลิกที่ Component บน Canvas เพื่อแก้ไข</p>';
+    updateAll();
+}
+
+// ========================================================================
+// MASTER UPDATE
+// ========================================================================
+function updateAll() {
     updateCanvas();
     updatePreview();
+    if(activeTab==='json' && !jsonEditorFocused) syncJsonEditor();
+    updateHistoryButtons();
 }
 
-// JSON Modal
-function showJsonModal() {
-    if (!flexData) {
-        alert('ยังไม่มีข้อมูล Flex Message');
+// ========================================================================
+// CANVAS RENDERING
+// ========================================================================
+function updateCanvas() {
+    const empty = document.getElementById('canvas-empty');
+    const content = document.getElementById('canvas-content');
+    if(!flexData) {
+        empty.classList.remove('hidden'); content.classList.add('hidden');
         return;
     }
-    document.getElementById('json-output').value = JSON.stringify(flexData, null, 2);
-    document.getElementById('json-modal').classList.remove('hidden');
-    document.getElementById('json-modal').classList.add('flex');
+    empty.classList.add('hidden'); content.classList.remove('hidden');
+    content.innerHTML = renderCanvas(flexData,'root');
 }
 
-function closeJsonModal() {
-    document.getElementById('json-modal').classList.add('hidden');
-    document.getElementById('json-modal').classList.remove('flex');
+function renderCanvas(el, path) {
+    if(!el) return '';
+    const sel = selectedPath===path ? 'ring-2 ring-blue-500 ring-offset-1':'';
+    const t = el.type;
+
+    if(t==='carousel') {
+        return `<div class="ce ce-carousel ${sel}" data-path="${path}">
+            <div class="ce-label text-purple-600">🎠 Carousel</div>
+            <div class="flex gap-3 overflow-x-auto pb-2 pt-1">
+                ${(el.contents||[]).map((b,i)=>renderCanvas(b,path+'.contents['+i+']')).join('')}
+                <button onclick="addBubbleToCarousel()" class="shrink-0 w-24 min-h-[120px] border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-gray-400 hover:border-purple-400 hover:text-purple-500 transition text-xs gap-1">
+                    <span class="text-lg">+</span>Bubble
+                </button>
+            </div>
+        </div>`;
+    }
+
+    if(t==='bubble') {
+        let h = `<div class="ce ce-bubble ${sel}" data-path="${path}" onclick="selectElement('${path}')">
+            <div class="ce-label text-blue-600">📦 Bubble</div>`;
+
+        // Header
+        if(el.header) {
+            h+=`<div class="ce-section" data-path="${path}.header" ondragover="handleDragOver(event)" ondrop="handleSectionDrop(event,'${path}','header')" ondragleave="handleDragLeave(event)">
+                <div class="ce-section-label">Header <button onclick="removeSection('${path}','header');event.stopPropagation();" class="ce-section-rm">✕</button></div>
+                ${renderCanvasContents(el.header, path+'.header')}
+            </div>`;
+        } else {
+            h+=`<button onclick="addSection('${path}','header');event.stopPropagation();" class="ce-add-section">+ Header</button>`;
+        }
+        // Hero
+        if(el.hero) {
+            h+=`<div class="ce-section ce-section-hero" onclick="selectElement('${path}.hero');event.stopPropagation();" data-path="${path}.hero">
+                <div class="ce-section-label">Hero <button onclick="removeSection('${path}','hero');event.stopPropagation();" class="ce-section-rm">✕</button></div>
+                ${el.hero.type==='image'?`<img src="${esc(el.hero.url)}" class="w-full h-16 object-cover rounded" onerror="this.src='https://placehold.co/300x100/eee/999?text=Image'">`:renderCanvasContents(el.hero,path+'.hero')}
+            </div>`;
+        } else {
+            h+=`<button onclick="addSection('${path}','hero');event.stopPropagation();" class="ce-add-section">+ Hero Image</button>`;
+        }
+        // Body (main drop zone)
+        h+=`<div class="ce-section ce-section-body" data-path="${path}.body"
+                ondragover="handleDragOver(event)" ondrop="handleSectionDrop(event,'${path}','body')" ondragleave="handleDragLeave(event)">
+            <div class="ce-section-label">Body</div>
+            ${el.body ? renderCanvasContents(el.body, path+'.body') : '<div class="text-xs text-gray-400 text-center py-2">ลาก Component มาวางที่นี่</div>'}
+        </div>`;
+        // Footer
+        if(el.footer) {
+            h+=`<div class="ce-section" data-path="${path}.footer" ondragover="handleDragOver(event)" ondrop="handleSectionDrop(event,'${path}','footer')" ondragleave="handleDragLeave(event)">
+                <div class="ce-section-label">Footer <button onclick="removeSection('${path}','footer');event.stopPropagation();" class="ce-section-rm">✕</button></div>
+                ${renderCanvasContents(el.footer, path+'.footer')}
+            </div>`;
+        } else {
+            h+=`<button onclick="addSection('${path}','footer');event.stopPropagation();" class="ce-add-section">+ Footer</button>`;
+        }
+        h+='</div>';
+        return h;
+    }
+
+    // Inline elements (inside sections)
+    return renderCanvasItem(el, path);
 }
 
-function copyJson() {
-    const textarea = document.getElementById('json-output');
-    textarea.select();
-    document.execCommand('copy');
-    alert('คัดลอก JSON แล้ว!');
+function renderCanvasContents(box, path) {
+    if(!box || !box.contents) return '';
+    return box.contents.map((c,i)=>renderCanvasItem(c, path+'.contents['+i+']')).join('');
 }
 
-function importJson() {
-    const json = prompt('วาง Flex Message JSON:');
-    if (json) {
-        try {
-            saveHistory();
-            flexData = JSON.parse(json);
-            updateCanvas();
-            updatePreview();
-        } catch (e) {
-            alert('JSON ไม่ถูกต้อง: ' + e.message);
+function renderCanvasItem(el, path) {
+    if(!el) return '';
+    const sel = selectedPath===path ? 'ring-2 ring-blue-500':'';
+    const t = el.type;
+    const acts = `<div class="ce-actions">
+        <button onclick="moveComponent('${path}',-1);event.stopPropagation();" title="Move up">▲</button>
+        <button onclick="moveComponent('${path}',1);event.stopPropagation();" title="Move down">▼</button>
+        <button onclick="duplicateComponent('${path}');event.stopPropagation();" title="Duplicate">⧉</button>
+        <button onclick="deleteElement('${path}');event.stopPropagation();" title="Delete" class="text-red-500">✕</button>
+    </div>`;
+
+    if(t==='text') {
+        return `<div class="ce-item ce-text ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<span class="text-xs truncate">${esc(el.text||'Text')}</span>
+        </div>`;
+    }
+    if(t==='button') {
+        return `<div class="ce-item ce-btn ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<span class="text-xs font-medium truncate" style="color:${el.color||'#06C755'}">${esc(el.action?.label||'Button')}</span>
+        </div>`;
+    }
+    if(t==='image') {
+        return `<div class="ce-item ce-img ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<img src="${esc(el.url)}" class="w-full h-12 object-cover rounded" onerror="this.src='https://placehold.co/300x60/eee/999?text=Image'">
+        </div>`;
+    }
+    if(t==='separator') {
+        return `<div class="ce-item ce-sep ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<hr class="border-gray-300 w-full">
+        </div>`;
+    }
+    if(t==='spacer') {
+        return `<div class="ce-item ce-spacer ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<div class="text-[10px] text-gray-400 text-center w-full">↕ Spacer (${el.size||'md'})</div>
+        </div>`;
+    }
+    if(t==='box') {
+        const dir = el.layout==='horizontal'?'flex-row':'flex-col';
+        return `<div class="ce-item ce-box ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();"
+                    ondragover="handleDragOver(event)" ondrop="handleSectionDrop(event,'${path}','_box')" ondragleave="handleDragLeave(event)">
+            ${acts}<div class="text-[10px] text-indigo-500 mb-0.5">▦ Box (${el.layout||'vertical'})</div>
+            <div class="flex ${dir} gap-0.5 w-full">
+                ${(el.contents||[]).map((c,i)=>renderCanvasItem(c,path+'.contents['+i+']')).join('')}
+            </div>
+        </div>`;
+    }
+    if(t==='filler') {
+        return `<div class="ce-item ce-spacer ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<div class="text-[10px] text-gray-400 text-center w-full">⇔ Filler</div>
+        </div>`;
+    }
+    if(t==='icon') {
+        return `<div class="ce-item ce-icon ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">
+            ${acts}<img src="${esc(el.url)}" class="w-4 h-4"> <span class="text-[10px] text-gray-400">Icon</span>
+        </div>`;
+    }
+    return `<div class="ce-item ${sel}" data-path="${path}" onclick="selectElement('${path}');event.stopPropagation();">${acts}<span class="text-xs text-gray-400">${t}</span></div>`;
+}
+
+// ========================================================================
+// PREVIEW RENDERING (uses FlexPreview from flex-preview.js)
+// ========================================================================
+function updatePreview() {
+    const container = document.getElementById('flex-preview');
+    if(!flexData) {
+        container.innerHTML = '<div class="text-center text-white/50 py-8"><div class="text-3xl mb-1">💬</div><p class="text-xs">Preview จะแสดงที่นี่</p></div>';
+        return;
+    }
+    if(typeof FlexPreview !== 'undefined') {
+        FlexPreview.render('flex-preview', flexData);
+    } else {
+        // Fallback simple preview
+        container.innerHTML = renderSimplePreview(flexData);
+    }
+}
+
+function renderSimplePreview(el) {
+    if(!el) return '';
+    if(el.type==='bubble') {
+        return `<div class="bg-white rounded-2xl overflow-hidden shadow-lg">
+            ${el.hero ? (el.hero.type==='image' ? `<img src="${esc(el.hero.url)}" class="w-full" style="aspect-ratio:${(el.hero.aspectRatio||'20:13').replace(':','/')};object-fit:cover;">` : renderSimplePreview(el.hero)) : ''}
+            ${el.header ? `<div class="p-3 border-b">${renderSimplePreview(el.header)}</div>` : ''}
+            ${el.body ? `<div class="p-4">${renderSimplePreview(el.body)}</div>` : ''}
+            ${el.footer ? `<div class="px-4 pb-4">${renderSimplePreview(el.footer)}</div>` : ''}
+        </div>`;
+    }
+    if(el.type==='carousel') {
+        return `<div class="flex gap-2 overflow-x-auto snap-x">${(el.contents||[]).map(b=>`<div class="min-w-[260px] snap-center">${renderSimplePreview(b)}</div>`).join('')}</div>`;
+    }
+    if(el.type==='box') {
+        const dir=el.layout==='horizontal'?'flex-row items-center':'flex-col';
+        const sp=el.spacing==='sm'?'gap-1':el.spacing==='lg'?'gap-3':'gap-2';
+        return `<div class="flex ${dir} ${sp}">${(el.contents||[]).map(c=>renderSimplePreview(c)).join('')}</div>`;
+    }
+    if(el.type==='text') {
+        const sz={'xxs':'text-[10px]','xs':'text-xs','sm':'text-sm','md':'text-base','lg':'text-lg','xl':'text-xl','xxl':'text-2xl','3xl':'text-3xl'}[el.size]||'text-base';
+        const w=el.weight==='bold'?'font-bold':'';
+        const a={'center':'text-center','end':'text-right'}[el.align]||'';
+        return `<div class="${sz} ${w} ${a}" style="color:${el.color||'#333'}">${esc(el.text||'')}</div>`;
+    }
+    if(el.type==='button') {
+        const bg=el.style==='primary'?(el.color||'#06C755'):'transparent';
+        const tc=el.style==='primary'?'#fff':(el.color||'#06C755');
+        return `<button class="w-full py-2 px-4 rounded-lg text-sm font-medium" style="background:${bg};color:${tc}">${esc(el.action?.label||'Button')}</button>`;
+    }
+    if(el.type==='separator') return '<hr class="border-gray-200 my-2">';
+    if(el.type==='spacer') return `<div style="height:${{'xs':'4px','sm':'8px','md':'16px','lg':'24px','xl':'32px'}[el.size]||'16px'}"></div>`;
+    if(el.type==='filler') return '<div style="flex:1"></div>';
+    if(el.type==='icon') return `<img src="${esc(el.url)}" class="w-4 h-4 inline">`;
+    return '';
+}
+
+// ========================================================================
+// SELECTION & PROPERTIES PANEL
+// ========================================================================
+function selectElement(path) {
+    selectedPath = path;
+    // Highlight in canvas
+    document.querySelectorAll('.ce-item,.ce-bubble,.ce-carousel,.ce-section-hero').forEach(el=>{
+        el.classList.remove('ring-2','ring-blue-500','ring-offset-1');
+    });
+    const el = document.querySelector(`[data-path="${path}"]`);
+    if(el) el.classList.add('ring-2','ring-blue-500','ring-offset-1');
+    if(activeTab!=='properties') switchTab('properties');
+    showProperties(path);
+}
+
+function showProperties(path) {
+    const el = getElementByPath(path);
+    if(!el) return;
+    const panel = document.getElementById('tab-properties');
+    let h = '<div class="space-y-2.5">';
+
+    // Header
+    h+=`<div class="flex items-center justify-between">
+        <span class="text-xs font-bold text-gray-700 uppercase">${el.type}</span>
+        <div class="flex gap-1">`;
+    const info = getParentInfo(path);
+    if(info) {
+        h+=`<button onclick="moveComponent('${path}',-1)" class="p-btn" title="Move up">▲</button>
+            <button onclick="moveComponent('${path}',1)" class="p-btn" title="Move down">▼</button>
+            <button onclick="duplicateComponent('${path}')" class="p-btn" title="Duplicate">⧉</button>`;
+    }
+    h+=`<button onclick="deleteElement('${path}')" class="p-btn text-red-500" title="Delete">✕</button>
+        </div></div>`;
+
+    // Type-specific properties
+    if(el.type==='text') {
+        h+=propInput('ข้อความ', path, 'text', el.text||'');
+        h+=propRow(
+            propSelect('ขนาด', path, 'size', ['xxs','xs','sm','md','lg','xl','xxl','3xl'], el.size||'md'),
+            propColor('สี', path, 'color', el.color||'#333333')
+        );
+        h+=propRow(
+            propSelect('น้ำหนัก', path, 'weight', [['','ปกติ'],['bold','Bold']], el.weight||''),
+            propSelect('จัดตำแหน่ง', path, 'align', [['','ซ้าย'],['center','กลาง'],['end','ขวา']], el.align||'')
+        );
+        h+=propCheckbox('ตัดบรรทัดอัตโนมัติ', path, 'wrap', el.wrap||false);
+        h+=propSelect('Decoration', path, 'decoration', [['','None'],['line-through','Strikethrough'],['underline','Underline']], el.decoration||'');
+    }
+    else if(el.type==='image') {
+        h+=propInput('URL รูปภาพ', path, 'url', el.url||'', 'url');
+        h+=propRow(
+            propSelect('อัตราส่วน', path, 'aspectRatio', ['1:1','4:3','16:9','20:13','2:1','3:1'], el.aspectRatio||'20:13'),
+            propSelect('Fit Mode', path, 'aspectMode', ['cover','fit'], el.aspectMode||'cover')
+        );
+        h+=propSelect('Size', path, 'size', ['xxs','xs','sm','md','lg','xl','xxl','full'], el.size||'full');
+    }
+    else if(el.type==='button') {
+        h+=propInput('ข้อความบนปุ่ม', path, '_action.label', el.action?.label||'');
+        h+=propRow(
+            propSelect('สไตล์', path, 'style', [['primary','Primary'],['secondary','Secondary'],['link','Link']], el.style||'primary'),
+            propColor('สี', path, 'color', el.color||'#06C755')
+        );
+        h+=propRow(
+            propSelect('Action', path, '_action.type', [['uri','เปิด URL'],['message','ส่งข้อความ'],['postback','Postback']], el.action?.type||'uri'),
+            propSelect('ความสูง', path, 'height', [['','ปกติ'],['sm','เล็ก']], el.height||'')
+        );
+        const actionField = el.action?.type==='uri'?'uri':el.action?.type==='message'?'text':'data';
+        h+=propInput(el.action?.type==='uri'?'URL':'ข้อความ/Data', path, '_action.'+actionField, el.action?.[actionField]||'');
+    }
+    else if(el.type==='box') {
+        h+=propSelect('Layout', path, 'layout', [['vertical','Vertical'],['horizontal','Horizontal'],['baseline','Baseline']], el.layout||'vertical');
+        h+=propRow(
+            propSelect('Spacing', path, 'spacing', [['','None'],['xs','XS'],['sm','SM'],['md','MD'],['lg','LG'],['xl','XL']], el.spacing||''),
+            propSelect('Padding', path, 'paddingAll', [['','None'],['xs','XS'],['sm','SM'],['md','MD'],['lg','LG'],['xl','XL']], el.paddingAll||'')
+        );
+        h+=propColor('Background', path, 'backgroundColor', el.backgroundColor||'#ffffff');
+        h+=propRow(
+            propSelect('Corner', path, 'cornerRadius', [['','Default'],['none','None'],['xs','XS'],['sm','SM'],['md','MD'],['lg','LG'],['xl','XL'],['xxl','XXL']], el.cornerRadius||''),
+            propSelect('Border', path, 'borderWidth', [['','None'],['light','Light'],['normal','Normal'],['medium','Medium'],['semi-bold','Semi-bold'],['bold','Bold']], el.borderWidth||'')
+        );
+        if(el.borderWidth) h+=propColor('Border Color', path, 'borderColor', el.borderColor||'#000000');
+    }
+    else if(el.type==='separator') {
+        h+=propColor('สี', path, 'color', el.color||'#E0E0E0');
+    }
+    else if(el.type==='spacer') {
+        h+=propSelect('Size', path, 'size', ['xs','sm','md','lg','xl','xxl'], el.size||'md');
+    }
+    else if(el.type==='icon') {
+        h+=propInput('URL ไอคอน', path, 'url', el.url||'', 'url');
+        h+=propSelect('Size', path, 'size', ['xxs','xs','sm','md','lg','xl'], el.size||'md');
+    }
+    else if(el.type==='bubble') {
+        h+=propSelect('Size', path, 'size', [['','mega'],['nano','Nano'],['micro','Micro'],['kilo','Kilo'],['mega','Mega'],['giga','Giga']], el.size||'');
+    }
+
+    // Common: margin, flex
+    if(el.type!=='bubble'&&el.type!=='carousel') {
+        h+=`<div class="border-t pt-2 mt-2"><div class="text-[10px] font-bold text-gray-400 uppercase mb-1.5">Layout</div>`;
+        h+=propRow(
+            propSelect('Margin', path, 'margin', [['','None'],['xs','XS'],['sm','SM'],['md','MD'],['lg','LG'],['xl','XL']], el.margin||''),
+            propInput('Flex', path, 'flex', el.flex!==undefined?el.flex:'', 'number')
+        );
+        h+=`</div>`;
+    }
+
+    h+='</div>';
+    panel.innerHTML = h;
+}
+
+// Property helpers
+function propInput(label, path, prop, val, type='text') {
+    return `<div><label class="prop-label">${label}</label>
+        <input type="${type}" value="${esc(''+val)}" onchange="updateProp('${path}','${prop}',this.value)" class="prop-input" ${type==='number'?'min="-1" max="10" step="1"':''}></div>`;
+}
+function propSelect(label, path, prop, options, val) {
+    const opts = options.map(o=>{
+        const [v,l] = Array.isArray(o)?o:[o,o];
+        return `<option value="${v}" ${val===v?'selected':''}>${l}</option>`;
+    }).join('');
+    return `<div><label class="prop-label">${label}</label><select onchange="updateProp('${path}','${prop}',this.value)" class="prop-input">${opts}</select></div>`;
+}
+function propColor(label, path, prop, val) {
+    return `<div><label class="prop-label">${label}</label><div class="flex gap-1">
+        <input type="color" value="${val}" onchange="updateProp('${path}','${prop}',this.value)" class="w-8 h-8 border rounded cursor-pointer">
+        <input type="text" value="${esc(val)}" onchange="updateProp('${path}','${prop}',this.value)" class="prop-input flex-1" maxlength="7">
+    </div></div>`;
+}
+function propCheckbox(label, path, prop, val) {
+    return `<label class="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" ${val?'checked':''} onchange="updateProp('${path}','${prop}',this.checked)" class="rounded"> ${label}</label>`;
+}
+function propRow(a, b) { return `<div class="grid grid-cols-2 gap-2">${a}${b}</div>`; }
+
+function updateProp(path, prop, value) {
+    pushHistory();
+    const el = getElementByPath(path);
+    if(!el) return;
+
+    // Handle nested action properties
+    if(prop.startsWith('_action.')) {
+        const actionProp = prop.replace('_action.','');
+        if(!el.action) el.action = {type:'uri',label:'Button',uri:'https://example.com'};
+        if(actionProp==='type') {
+            const label = el.action.label||'Button';
+            el.action = {type:value, label};
+            if(value==='uri') el.action.uri='https://example.com';
+            else if(value==='message') el.action.text='message';
+            else if(value==='postback') el.action.data='action=click';
+            updateAll();
+            showProperties(path);
+            return;
+        }
+        el.action[actionProp] = value;
+    } else {
+        // Clean empty/false values
+        if(value===''||value===false||value==='false') {
+            delete el[prop];
+        } else if(prop==='flex') {
+            el[prop] = value===''?undefined:parseInt(value);
+            if(isNaN(el[prop])) delete el[prop];
+        } else {
+            el[prop] = value===true||value==='true'?true:value;
         }
     }
+    updateAll();
 }
 
-// Save Template
+// ========================================================================
+// JSON EDITOR
+// ========================================================================
+function syncJsonEditor() {
+    const ta = document.getElementById('json-editor');
+    if(!ta) return;
+    ta.value = flexData ? JSON.stringify(flexData, null, 2) : '';
+    validateJsonInput(ta.value);
+}
+
+let jsonAutoSyncTimer = null;
+function onJsonEditorInput() {
+    const ta = document.getElementById('json-editor');
+    validateJsonInput(ta.value);
+    // Auto-sync: parse and apply valid JSON after debounce
+    clearTimeout(jsonAutoSyncTimer);
+    jsonAutoSyncTimer = setTimeout(()=>{
+        const text = ta.value.trim();
+        if(!text) return;
+        try {
+            const parsed = JSON.parse(text);
+            let newData = null;
+            if(parsed.type==='bubble'||parsed.type==='carousel') newData=parsed;
+            else if(parsed.type==='flex'&&parsed.contents) newData=parsed.contents;
+            else if(parsed.type==='box') newData={type:'bubble',body:parsed};
+            if(newData) {
+                pushHistory();
+                flexData = newData;
+                updateCanvas();
+                updatePreview();
+                updateHistoryButtons();
+            }
+        } catch(e) { /* invalid JSON, wait for user to fix */ }
+    }, 800);
+}
+
+function validateJsonInput(text) {
+    const status = document.getElementById('json-status');
+    if(!text.trim()) { status.classList.add('hidden'); return; }
+    try {
+        JSON.parse(text);
+        status.textContent = '✓ Valid JSON';
+        status.className = 'text-[10px] font-medium text-green-600';
+        status.classList.remove('hidden');
+    } catch(e) {
+        status.textContent = '✗ ' + e.message.substring(0,40);
+        status.className = 'text-[10px] font-medium text-red-500';
+        status.classList.remove('hidden');
+    }
+}
+
+function applyJson() {
+    const ta = document.getElementById('json-editor');
+    const text = ta.value.trim();
+    if(!text) { toast('JSON ว่างเปล่า','error'); return; }
+    try {
+        const parsed = JSON.parse(text);
+        if(!parsed.type || !['bubble','carousel'].includes(parsed.type)) {
+            // Try wrapping in bubble if it looks like body content
+            if(parsed.type==='box') {
+                pushHistory();
+                flexData = {type:'bubble',body:parsed};
+            } else {
+                toast('JSON ต้องเป็น bubble หรือ carousel','error');
+                return;
+            }
+        } else {
+            pushHistory();
+            flexData = parsed;
+        }
+        updateCanvas();
+        updatePreview();
+        updateHistoryButtons();
+        toast('โหลด JSON สำเร็จ');
+    } catch(e) {
+        toast('JSON ไม่ถูกต้อง: '+e.message, 'error');
+    }
+}
+
+function formatJson() {
+    const ta = document.getElementById('json-editor');
+    try {
+        const obj = JSON.parse(ta.value);
+        ta.value = JSON.stringify(obj, null, 2);
+        toast('Formatted');
+    } catch(e) { toast('JSON ไม่ถูกต้อง','error'); }
+}
+
+function minifyJson() {
+    const ta = document.getElementById('json-editor');
+    try {
+        const obj = JSON.parse(ta.value);
+        ta.value = JSON.stringify(obj);
+        toast('Minified');
+    } catch(e) { toast('JSON ไม่ถูกต้อง','error'); }
+}
+
+function copyJsonEditor() {
+    const ta = document.getElementById('json-editor');
+    navigator.clipboard.writeText(ta.value).then(()=>toast('Copied!')).catch(()=>{ta.select();document.execCommand('copy');toast('Copied!');});
+}
+
+// ========================================================================
+// IMPORT JSON MODAL
+// ========================================================================
+function openImportModal() {
+    document.getElementById('import-json-input').value = '';
+    document.getElementById('import-error').classList.add('hidden');
+    openModal('modal-import');
+    setTimeout(()=>document.getElementById('import-json-input').focus(),100);
+}
+
+function doImportJson() {
+    const text = document.getElementById('import-json-input').value.trim();
+    const errEl = document.getElementById('import-error');
+    if(!text) { errEl.textContent='กรุณาวาง JSON'; errEl.classList.remove('hidden'); return; }
+    try {
+        const parsed = JSON.parse(text);
+        pushHistory();
+        if(parsed.type==='flex') {
+            // Handle full LINE message format
+            flexData = parsed.contents;
+        } else {
+            flexData = parsed;
+        }
+        updateAll();
+        closeModal('modal-import');
+        toast('Import สำเร็จ!');
+    } catch(e) {
+        errEl.textContent = 'JSON ไม่ถูกต้อง: ' + e.message;
+        errEl.classList.remove('hidden');
+    }
+}
+
+// ========================================================================
+// FULL JSON VIEW
+// ========================================================================
+function getAltText() {
+    return document.getElementById('alt-text-input')?.value?.trim() || 'Flex Message';
+}
+function getFullFlexJson() {
+    // Returns the full LINE Flex Message format with altText
+    return { type:'flex', altText:getAltText(), contents:flexData };
+}
+function showFullJson() {
+    if(!flexData) { toast('ยังไม่มีข้อมูล','error'); return; }
+    // Show two formats: raw contents and full LINE format
+    const full = getFullFlexJson();
+    document.getElementById('full-json-output').value = JSON.stringify(full, null, 2);
+    openModal('modal-json-view');
+}
+function copyFullJson() {
+    const ta = document.getElementById('full-json-output');
+    navigator.clipboard.writeText(ta.value).then(()=>toast('Copied!')).catch(()=>{ta.select();document.execCommand('copy');toast('Copied!');});
+}
+
+// ========================================================================
+// TEMPLATES
+// ========================================================================
+function showTemplatesModal() {
+    showTemplateTab('builtin');
+    openModal('modal-templates');
+}
+
+function useBuiltinTemplate(name) {
+    if(builtinTemplates[name]) {
+        pushHistory();
+        flexData = deepClone(builtinTemplates[name]);
+        updateAll();
+        closeModal('modal-templates');
+        toast('โหลดเทมเพลตแล้ว');
+    }
+}
+
+function loadSavedTemplates() {
+    const list = document.getElementById('saved-templates-list');
+    list.innerHTML = '<div class="text-center py-6 text-gray-400 col-span-full text-sm">กำลังโหลด...</div>';
+    fetch('flex-builder.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'action=get_templates'
+    }).then(r=>r.json()).then(data=>{
+        if(!data.success||!data.templates.length) {
+            list.innerHTML='<div class="text-center py-8 text-gray-400 col-span-full"><p class="text-sm">ยังไม่มีเทมเพลตที่บันทึก</p><p class="text-xs mt-1">สร้าง Flex แล้วกด "บันทึกเทมเพลต"</p></div>';
+            return;
+        }
+        list.innerHTML = data.templates.map(t=>`
+            <div class="tmpl-card group relative">
+                <div onclick="useSavedTemplate(${t.id}, '${esc(t.flex_json)}')" class="cursor-pointer">
+                    <div class="tmpl-icon bg-gradient-to-br from-gray-100 to-gray-200">📄</div>
+                    <h4 class="truncate">${esc(t.name)}</h4>
+                    <p>${esc(t.category)} · ${new Date(t.created_at).toLocaleDateString('th-TH')}</p>
+                </div>
+                <button onclick="deleteSavedTemplate(${t.id}, this)" class="absolute top-1 right-1 w-6 h-6 bg-red-100 text-red-500 rounded-full text-xs hidden group-hover:flex items-center justify-center hover:bg-red-200" title="ลบ">✕</button>
+            </div>
+        `).join('');
+    }).catch(()=>{
+        list.innerHTML='<div class="text-center py-6 text-red-400 col-span-full text-sm">โหลดไม่สำเร็จ</div>';
+    });
+}
+
+function useSavedTemplate(id, jsonStr) {
+    try {
+        pushHistory();
+        flexData = JSON.parse(jsonStr);
+        updateAll();
+        closeModal('modal-templates');
+        toast('โหลดเทมเพลตแล้ว');
+    } catch(e) { toast('ข้อมูลเทมเพลตผิดพลาด','error'); }
+}
+
+function deleteSavedTemplate(id, btn) {
+    if(!confirm('ลบเทมเพลตนี้?')) return;
+    fetch('flex-builder.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'action=delete_template&id='+id
+    }).then(r=>r.json()).then(data=>{
+        if(data.success) { toast('ลบแล้ว'); loadSavedTemplates(); }
+        else toast('ลบไม่สำเร็จ','error');
+    });
+}
+
+// ========================================================================
+// SAVE TEMPLATE
+// ========================================================================
 function saveTemplate() {
-    if (!flexData) {
-        alert('ยังไม่มีข้อมูล Flex Message');
-        return;
-    }
-    const name = prompt('ตั้งชื่อเทมเพลต:', 'My Template');
-    if (name) {
-        fetch('flex-builder.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `action=save_template&name=${encodeURIComponent(name)}&flex_json=${encodeURIComponent(JSON.stringify(flexData))}&category=custom`
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.success) alert('บันทึกเทมเพลตเรียบร้อย!');
-            else alert('เกิดข้อผิดพลาด: ' + data.error);
-        });
-    }
+    if(!flexData) { toast('ยังไม่มีข้อมูล','error'); return; }
+    document.getElementById('save-template-name').value = '';
+    openModal('modal-save');
+    setTimeout(()=>document.getElementById('save-template-name').focus(),100);
 }
 
-// Use in Broadcast
+function doSaveTemplate() {
+    const name = document.getElementById('save-template-name').value.trim();
+    const category = document.getElementById('save-template-category').value;
+    if(!name) { toast('กรุณาตั้งชื่อ','error'); return; }
+    fetch('flex-builder.php', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`action=save_template&name=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}&flex_json=${encodeURIComponent(JSON.stringify(flexData))}`
+    }).then(r=>r.json()).then(data=>{
+        if(data.success) { toast('บันทึกเรียบร้อย!'); closeModal('modal-save'); }
+        else toast('เกิดข้อผิดพลาด','error');
+    }).catch(()=>toast('เกิดข้อผิดพลาด','error'));
+}
+
+// ========================================================================
+// BROADCAST
+// ========================================================================
 function useToBroadcast() {
-    if (!flexData) {
-        alert('ยังไม่มีข้อมูล Flex Message');
-        return;
-    }
-    // Store in sessionStorage and redirect
+    if(!flexData) { toast('ยังไม่มีข้อมูล','error'); return; }
     sessionStorage.setItem('flex_broadcast', JSON.stringify(flexData));
+    sessionStorage.setItem('flex_broadcast_alttext', getAltText());
     window.location.href = 'broadcast.php?flex=1';
 }
 
-// Initialize
+// ========================================================================
+// CLEAR CANVAS
+// ========================================================================
+function clearCanvas() {
+    if(!flexData) return;
+    if(!confirm('ล้างทั้งหมด?')) return;
+    pushHistory();
+    flexData=null;
+    selectedPath=null;
+    document.getElementById('tab-properties').innerHTML='<p class="text-gray-400 text-xs text-center py-6">คลิกที่ Component บน Canvas เพื่อแก้ไข</p>';
+    updateAll();
+}
+
+// ========================================================================
+// KEYBOARD SHORTCUTS
+// ========================================================================
+document.addEventListener('keydown', function(e) {
+    // Don't intercept when typing in inputs
+    if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') {
+        // Only handle Escape in inputs
+        if(e.key==='Escape') e.target.blur();
+        return;
+    }
+    if(e.ctrlKey && e.key==='z' && !e.shiftKey) { e.preventDefault(); undoAction(); }
+    else if(e.ctrlKey && (e.key==='y'||(e.shiftKey && e.key==='Z'))) { e.preventDefault(); redoAction(); }
+    else if(e.ctrlKey && e.key==='s') { e.preventDefault(); saveTemplate(); }
+    else if(e.key==='Delete'||e.key==='Backspace') {
+        if(selectedPath) { e.preventDefault(); deleteElement(selectedPath); }
+    }
+    else if(e.ctrlKey && e.key==='d') {
+        if(selectedPath) { e.preventDefault(); duplicateComponent(selectedPath); }
+    }
+    else if(e.key==='Escape') {
+        selectedPath=null;
+        document.querySelectorAll('.ce-item,.ce-bubble').forEach(el=>el.classList.remove('ring-2','ring-blue-500','ring-offset-1'));
+        document.getElementById('tab-properties').innerHTML='<p class="text-gray-400 text-xs text-center py-6">คลิกที่ Component บน Canvas เพื่อแก้ไข</p>';
+    }
+});
+
+// ========================================================================
+// INITIALIZE
+// ========================================================================
 document.addEventListener('DOMContentLoaded', function() {
     // Setup drag events
-    document.querySelectorAll('.component-item').forEach(item => {
+    document.querySelectorAll('.comp-item').forEach(item=>{
         item.addEventListener('dragstart', handleDragStart);
     });
-    
-    document.getElementById('canvas').addEventListener('dragleave', handleDragLeave);
-    
-    // Check for imported flex from broadcast
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('edit')) {
-        const stored = sessionStorage.getItem('flex_edit');
-        if (stored) {
-            flexData = JSON.parse(stored);
-            updateCanvas();
-            updatePreview();
-        }
+
+    // JSON editor focus tracking
+    const jsonEd = document.getElementById('json-editor');
+    if(jsonEd) {
+        jsonEd.addEventListener('focus', ()=>jsonEditorFocused=true);
+        jsonEd.addEventListener('blur', ()=>jsonEditorFocused=false);
     }
-    
-    // Initialize history
-    history.push(null);
-    historyIndex = 0;
+
+    // Check for imported flex from other pages
+    const params = new URLSearchParams(window.location.search);
+    if(params.get('edit')) {
+        const stored = sessionStorage.getItem('flex_edit');
+        if(stored) { try { flexData=JSON.parse(stored); updateAll(); } catch(e){} }
+    }
+
+    // Handle drop on section for box type
+    // (box drops are handled via handleSectionDrop with '_box' section)
 });
 </script>
 
 <style>
-.component-item { user-select: none; }
-.canvas-element { transition: all 0.2s; }
-#canvas.border-green-400 { border-color: #4ade80 !important; }
-#canvas.bg-green-50 { background-color: #f0fdf4 !important; }
+/* Component Items */
+.comp-item { user-select:none; }
+.ci { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:8px; border:1.5px dashed transparent; cursor:grab; transition:all .15s; }
+.ci:hover { border-color:currentColor; }
+.ci span:first-child { font-size:16px; width:24px; text-align:center; flex-shrink:0; }
+.ci b { display:block; font-size:12px; font-weight:600; }
+.ci small { display:block; font-size:10px; color:#888; }
+.ci-blue { background:#eff6ff; color:#3b82f6; } .ci-blue:hover { border-color:#93c5fd; }
+.ci-purple { background:#f5f3ff; color:#8b5cf6; } .ci-purple:hover { border-color:#c4b5fd; }
+.ci-amber { background:#fffbeb; color:#d97706; } .ci-amber:hover { border-color:#fcd34d; }
+.ci-green { background:#f0fdf4; color:#16a34a; } .ci-green:hover { border-color:#86efac; }
+.ci-rose { background:#fff1f2; color:#e11d48; } .ci-rose:hover { border-color:#fda4af; }
+.ci-gray { background:#f9fafb; color:#6b7280; } .ci-gray:hover { border-color:#d1d5db; }
+.ci-indigo { background:#eef2ff; color:#6366f1; } .ci-indigo:hover { border-color:#a5b4fc; }
+.ci-yellow { background:#fefce8; color:#ca8a04; } .ci-yellow:hover { border-color:#fde047; }
+
+/* Toolbar buttons */
+.tb-btn { padding:4px 8px; border-radius:6px; color:#6b7280; transition:all .15s; }
+.tb-btn:hover:not(:disabled) { background:#f3f4f6; color:#374151; }
+.tb-btn:disabled { opacity:.35; cursor:not-allowed; }
+
+/* Canvas */
+.canvas-drop-zone.drop-active { border-color:#4ade80!important; background:#f0fdf4!important; }
+.ce-section.drop-active { background:#dbeafe!important; }
+
+/* Canvas elements */
+.ce { padding:8px; margin-bottom:4px; }
+.ce-carousel { background:#faf5ff; border:2px solid #e9d5ff; border-radius:10px; padding:8px; }
+.ce-bubble { background:#fff; border:2px solid #bfdbfe; border-radius:10px; padding:8px; }
+.ce-label { font-size:11px; font-weight:700; margin-bottom:6px; }
+.ce-section { background:#f9fafb; border:1px solid #e5e7eb; border-radius:6px; padding:6px; margin-bottom:4px; position:relative; }
+.ce-section-hero { background:#fff7ed; border-color:#fed7aa; }
+.ce-section-body { background:#f0f9ff; border-color:#bae6fd; min-height:40px; border-style:dashed; }
+.ce-section-label { font-size:10px; font-weight:600; color:#9ca3af; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; }
+.ce-section-rm { background:none; border:none; color:#d1d5db; cursor:pointer; font-size:12px; padding:0 2px; line-height:1; }
+.ce-section-rm:hover { color:#ef4444; }
+.ce-add-section { display:block; width:100%; padding:4px; margin-bottom:4px; border:1.5px dashed #d1d5db; border-radius:6px; text-align:center; font-size:11px; color:#9ca3af; cursor:pointer; background:transparent; transition:all .15s; }
+.ce-add-section:hover { border-color:#93c5fd; color:#3b82f6; background:#eff6ff; }
+
+/* Canvas items */
+.ce-item { position:relative; padding:4px 6px; border-radius:5px; cursor:pointer; transition:all .15s; border:1px solid transparent; margin-bottom:2px; display:flex; align-items:center; gap:4px; }
+.ce-item:hover { border-color:#93c5fd; }
+.ce-text { background:#f0fdf4; }
+.ce-btn { background:#fff1f2; }
+.ce-img { background:#fffbeb; padding:2px; }
+.ce-sep { background:#f9fafb; padding:6px 4px; }
+.ce-spacer { background:#f9fafb; justify-content:center; }
+.ce-box { background:#eef2ff; flex-direction:column; align-items:stretch; }
+.ce-icon { background:#fefce8; }
+
+/* Element actions (show on hover) */
+.ce-actions { display:none; position:absolute; top:1px; right:1px; z-index:10; background:white; border-radius:4px; box-shadow:0 1px 4px rgba(0,0,0,.15); padding:1px; gap:0; }
+.ce-item:hover > .ce-actions { display:flex; }
+.ce-actions button { width:18px; height:18px; display:flex; align-items:center; justify-content:center; border:none; background:none; cursor:pointer; font-size:10px; color:#6b7280; border-radius:3px; }
+.ce-actions button:hover { background:#f3f4f6; color:#111; }
+.ce-actions button.text-red-500:hover { background:#fef2f2; color:#ef4444; }
+
+/* Tabs */
+.tab-btn { flex:1; padding:8px 12px; font-size:12px; font-weight:600; color:#9ca3af; border-bottom:2px solid transparent; transition:all .15s; background:none; cursor:pointer; }
+.tab-btn.active { color:#3b82f6; border-bottom-color:#3b82f6; }
+.tab-btn:hover:not(.active) { color:#6b7280; }
+
+/* JSON toolbar */
+.jt-btn { padding:2px 8px; background:white; border:1px solid #e5e7eb; border-radius:4px; font-size:10px; color:#6b7280; cursor:pointer; transition:all .1s; }
+.jt-btn:hover { background:#f9fafb; color:#374151; }
+
+/* Properties */
+.prop-label { display:block; font-size:10px; color:#9ca3af; margin-bottom:2px; font-weight:500; }
+.prop-input { width:100%; padding:4px 8px; border:1px solid #e5e7eb; border-radius:5px; font-size:12px; outline:none; transition:border .15s; }
+.prop-input:focus { border-color:#93c5fd; box-shadow:0 0 0 2px rgba(59,130,246,.1); }
+.p-btn { width:22px; height:22px; display:inline-flex; align-items:center; justify-content:center; border:1px solid #e5e7eb; border-radius:4px; background:white; cursor:pointer; font-size:10px; color:#6b7280; }
+.p-btn:hover { background:#f3f4f6; color:#111; }
+
+/* Action bar buttons */
+.act-btn { padding:6px 14px; background:#f3f4f6; border-radius:8px; font-size:13px; color:#374151; cursor:pointer; transition:all .15s; border:none; }
+.act-btn:hover { background:#e5e7eb; }
+.act-btn-primary { padding:6px 14px; background:#3b82f6; color:white; border-radius:8px; font-size:13px; cursor:pointer; transition:all .15s; border:none; font-weight:600; }
+.act-btn-primary:hover { background:#2563eb; }
+
+/* Templates */
+.tmpl-tab { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:600; background:#f3f4f6; color:#6b7280; border:none; cursor:pointer; transition:all .15s; }
+.tmpl-tab.active { background:#3b82f6; color:white; }
+.tmpl-card { cursor:pointer; border-radius:12px; border:2px solid transparent; padding:12px; transition:all .15s; }
+.tmpl-card:hover { border-color:#93c5fd; background:#f0f9ff; }
+.tmpl-card h4 { font-size:13px; font-weight:600; margin-top:8px; }
+.tmpl-card p { font-size:11px; color:#9ca3af; }
+.tmpl-icon { width:100%; aspect-ratio:1; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:32px; }
+
+/* Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:50; align-items:center; justify-content:center; backdrop-filter:blur(2px); }
+.modal-box { background:white; border-radius:16px; width:100%; margin:16px; max-height:85vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+.modal-close { width:32px; height:32px; display:flex; align-items:center; justify-content:center; border-radius:8px; border:none; background:none; font-size:24px; color:#9ca3af; cursor:pointer; transition:all .15s; }
+.modal-close:hover { background:#f3f4f6; color:#374151; }
 </style>
 
 <?php require_once 'includes/footer.php'; ?>

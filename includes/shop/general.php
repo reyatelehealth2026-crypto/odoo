@@ -38,6 +38,7 @@ if (!$settings) {
         'cod_enabled' => 0,
         'cod_fee' => 0,
         'auto_confirm_payment' => 0,
+        'order_data_source' => 'shop',
         'shop_address' => '',
         'shop_email' => '',
         'line_id' => '',
@@ -113,6 +114,25 @@ $bankAccounts = json_decode($settings['bank_accounts'] ?? '{"banks":[]}', true)[
                         <input type="checkbox" name="is_open" class="sr-only peer" <?= ($settings['is_open'] ?? 1) ? 'checked' : '' ?>>
                         <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
                     </label>
+                </div>
+                <div class="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                    <label class="block text-sm font-medium mb-2 text-indigo-900">แหล่งข้อมูลคำสั่งซื้อ/ยอดขาย</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <label class="flex items-center gap-2 p-3 bg-white rounded-lg border cursor-pointer">
+                            <input type="radio" name="order_data_source" value="shop" class="text-green-500" <?= (($settings['order_data_source'] ?? 'shop') !== 'odoo') ? 'checked' : '' ?>>
+                            <span>
+                                <span class="font-medium text-sm text-gray-800">Shop (เดิม)</span>
+                                <span class="block text-xs text-gray-500">ใช้ข้อมูลจาก transactions/orders ในระบบนี้</span>
+                            </span>
+                        </label>
+                        <label class="flex items-center gap-2 p-3 bg-white rounded-lg border cursor-pointer">
+                            <input type="radio" name="order_data_source" value="odoo" class="text-indigo-600" <?= (($settings['order_data_source'] ?? 'shop') === 'odoo') ? 'checked' : '' ?>>
+                            <span>
+                                <span class="font-medium text-sm text-gray-800">Odoo</span>
+                                <span class="block text-xs text-gray-500">ใช้ข้อมูลที่รับจาก Odoo (read-only สำหรับหลังบ้านออเดอร์)</span>
+                            </span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>

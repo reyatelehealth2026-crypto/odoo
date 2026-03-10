@@ -32,10 +32,31 @@ class InboxService
         $offset = ($page - 1) * $limit;
 
         // Build base query with subquery for last message and assignees
+        // Platform filter: when set, scope to a specific platform; otherwise show all
+        $platformFilter = $filters['platform'] ?? null;
+
+        // For LINE conversations we scope by line_account_id; for other platforms we
+        // scope by the respective account id column so each tenant sees only their data.
+        $accountConditionUsers    = "u.line_account_id = ?";
+        $accountConditionMessages = "line_account_id = ?";
+        $accountParam             = $this->lineAccountId;
+
+        if ($platformFilter === 'facebook') {
+            $accountConditionUsers    = "u.platform = 'facebook'";
+            $accountConditionMessages = "platform = 'facebook'";
+            $accountParam             = null;
+        } elseif ($platformFilter === 'tiktok') {
+            $accountConditionUsers    = "u.platform = 'tiktok'";
+            $accountConditionMessages = "platform = 'tiktok'";
+            $accountParam             = null;
+        }
+
         $sql = "
             SELECT 
                 u.id,
                 u.line_user_id,
+                COALESCE(u.platform, 'line') AS platform,
+                u.platform_user_id,
                 u.display_name,
                 u.picture_url,
                 u.phone,
@@ -64,17 +85,29 @@ class InboxService
                     (SELECT direction FROM messages m3 WHERE m3.user_id = m1.user_id ORDER BY created_at DESC LIMIT 1) as last_message_direction,
                     SUM(CASE WHEN is_read = 0 AND direction = 'incoming' THEN 1 ELSE 0 END) as unread_count
                 FROM messages m1
-                WHERE line_account_id = ?
+        ";
+
+        // Build message subquery WHERE clause and params arrays
+        // LINE: two ? placeholders (one in subquery, one in outer WHERE)
+        // Other platforms: conditions are literals, no ? placeholders needed
+        $sql .= "            WHERE {$accountConditionMessages}\n";
+
+        if ($accountParam !== null) {
+            $params      = [$accountParam, $accountParam];
+            $countParams = [$accountParam, $accountParam];
+        } else {
+            $params      = [];
+            $countParams = [];
+        }
+
+        $sql .= "
                 GROUP BY user_id
             ) lm ON u.id = lm.user_id
             LEFT JOIN conversation_assignments ca ON u.id = ca.user_id
             LEFT JOIN admin_users au ON ca.assigned_to = au.id
-            WHERE u.line_account_id = ?
+            WHERE {$accountConditionUsers}
             AND lm.last_message_at IS NOT NULL
         ";
-
-        $params = [$this->lineAccountId, $this->lineAccountId];
-        $countParams = [$this->lineAccountId, $this->lineAccountId];
 
         // Apply filters
         $whereConditions = [];
@@ -165,11 +198,11 @@ class InboxService
                     (SELECT content FROM messages m2 WHERE m2.user_id = m1.user_id ORDER BY created_at DESC LIMIT 1) as last_message_content,
                     SUM(CASE WHEN is_read = 0 AND direction = 'incoming' THEN 1 ELSE 0 END) as unread_count
                 FROM messages m1
-                WHERE line_account_id = ?
+                WHERE {$accountConditionMessages}
                 GROUP BY user_id
             ) lm ON u.id = lm.user_id
             LEFT JOIN conversation_assignments ca ON u.id = ca.user_id
-            WHERE u.line_account_id = ?
+            WHERE {$accountConditionUsers}
             AND lm.last_message_at IS NOT NULL
         ";
 
@@ -247,12 +280,27 @@ class InboxService
         // Build query with cursor-based pagination
         // Select only necessary fields (no full message content)
         // Use subquery for last_message_at to match the initial page load query
+        // Platform filter support
+        $platformFilter = $filters['platform'] ?? null;
+        if ($platformFilter === 'facebook') {
+            $accountWhereClause = "u.platform = 'facebook'";
+            $params = [];
+        } elseif ($platformFilter === 'tiktok') {
+            $accountWhereClause = "u.platform = 'tiktok'";
+            $params = [];
+        } else {
+            $accountWhereClause = "u.line_account_id = ?";
+            $params = [$accountId];
+        }
+
         $sql = "
             SELECT
                 u.id,
-                u.display_name,
+                COALESCE(u.custom_display_name, u.display_name) as display_name,
                 u.picture_url,
                 u.chat_status,
+                COALESCE(u.platform, 'line') AS platform,
+                u.platform_user_id,
                 (SELECT created_at FROM messages m_last
                  WHERE m_last.user_id = u.id
                  ORDER BY m_last.created_at DESC LIMIT 1) as last_message_at,
@@ -270,17 +318,15 @@ class InboxService
                 ca.status as assignment_status
             FROM users u
             LEFT JOIN conversation_assignments ca ON ca.user_id = u.id
-            WHERE u.line_account_id = ?
+            WHERE {$accountWhereClause}
             AND EXISTS (SELECT 1 FROM messages WHERE user_id = u.id)
         ";
-
-        $params = [$accountId];
 
         // Search filter: search in display_name and last message
         if ($search !== null && trim($search) !== '') {
             $searchTerm = '%' . trim($search) . '%';
             $sql .= " AND (
-                u.display_name LIKE ?
+                COALESCE(u.custom_display_name, u.display_name) LIKE ?
                 OR EXISTS (
                     SELECT 1 FROM messages m_search
                     WHERE m_search.user_id = u.id
@@ -726,7 +772,7 @@ class InboxService
      * @param int|null $assignedBy Admin who assigned (null for self-assign)
      * @return bool Success
      */
-    public function assignConversation(int $userId, $adminIds, ?int $assignedBy = null): bool
+    public function assignConversation(int $userId, $adminIds, ?int $assignedBy = null): array
     {
         // Convert single ID to array
         if (!is_array($adminIds)) {
@@ -738,7 +784,7 @@ class InboxService
         $checkStmt = $this->db->prepare($checkSql);
         $checkStmt->execute([$userId, $this->lineAccountId]);
         if (!$checkStmt->fetch()) {
-            return false;
+            return ['success' => false, 'error' => 'User not found', 'code' => 'USER_NOT_FOUND'];
         }
 
         // Validate all admin IDs
@@ -747,7 +793,7 @@ class InboxService
             $checkAdminStmt = $this->db->prepare($checkAdminSql);
             $checkAdminStmt->execute([$adminId]);
             if (!$checkAdminStmt->fetch()) {
-                return false;
+                return ['success' => false, 'error' => "Admin ID $adminId not found", 'code' => 'ADMIN_NOT_FOUND'];
             }
         }
 
@@ -766,7 +812,7 @@ class InboxService
 
         foreach ($adminIds as $adminId) {
             if (!$stmt->execute([$userId, $adminId, $assignedBy ?? $adminId])) {
-                return false;
+                return ['success' => false, 'error' => 'Failed to assign conversation', 'code' => 'ASSIGN_FAILED'];
             }
         }
 
@@ -784,7 +830,7 @@ class InboxService
         $legacyStmt = $this->db->prepare($legacySql);
         $legacyStmt->execute([$userId, $adminIds[0], $assignedBy ?? $adminIds[0]]);
 
-        return true;
+        return ['success' => true];
     }
 
     /**

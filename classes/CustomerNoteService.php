@@ -38,16 +38,16 @@ class CustomerNoteService {
             throw new InvalidArgumentException('Valid admin ID is required');
         }
         
+        // Use user_notes table: id, user_id, note, created_by, created_at (no is_pinned)
         $stmt = $this->db->prepare("
-            INSERT INTO customer_notes 
-            (user_id, admin_id, note, is_pinned)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO user_notes 
+            (user_id, note, created_by, created_at)
+            VALUES (?, ?, ?, NOW())
         ");
         $stmt->execute([
             $userId,
-            $adminId,
             $note,
-            $isPinned ? 1 : 0
+            $adminId
         ]);
         
         return (int)$this->db->lastInsertId();
@@ -61,13 +61,13 @@ class CustomerNoteService {
      * @return array Notes with admin info, ordered by pinned first then by date
      */
     public function getNotes(int $userId): array {
-        $sql = "SELECT cn.id, cn.user_id, cn.admin_id, cn.note, cn.is_pinned,
-                       cn.created_at, cn.updated_at,
+        // Use user_notes table: SELECT * FROM user_notes ORDER BY user_id ASC (per user: ORDER BY created_at DESC)
+        $sql = "SELECT un.id, un.user_id, un.note, un.created_by, un.created_at,
                        au.name as admin_name
-                FROM customer_notes cn
-                LEFT JOIN admin_users au ON cn.admin_id = au.id
-                WHERE cn.user_id = ?
-                ORDER BY cn.is_pinned DESC, cn.created_at DESC";
+                FROM user_notes un
+                LEFT JOIN admin_users au ON un.created_by = au.id
+                WHERE un.user_id = ?
+                ORDER BY un.created_at DESC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$userId]);
@@ -82,12 +82,11 @@ class CustomerNoteService {
      * @return array|null
      */
     public function getById(int $id): ?array {
-        $sql = "SELECT cn.id, cn.user_id, cn.admin_id, cn.note, cn.is_pinned,
-                       cn.created_at, cn.updated_at,
+        $sql = "SELECT un.id, un.user_id, un.note, un.created_by, un.created_at,
                        au.name as admin_name
-                FROM customer_notes cn
-                LEFT JOIN admin_users au ON cn.admin_id = au.id
-                WHERE cn.id = ?";
+                FROM user_notes un
+                LEFT JOIN admin_users au ON un.created_by = au.id
+                WHERE un.id = ?";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$id]);
@@ -123,9 +122,9 @@ class CustomerNoteService {
             $params[] = $note;
         }
         
+        // user_notes has no is_pinned column - only note and created_by
         if (isset($data['is_pinned'])) {
-            $fields[] = 'is_pinned = ?';
-            $params[] = $data['is_pinned'] ? 1 : 0;
+            // Ignore is_pinned for user_notes
         }
         
         if (empty($fields)) {
@@ -134,7 +133,7 @@ class CustomerNoteService {
         
         $params[] = $id;
         
-        $sql = "UPDATE customer_notes SET " . implode(', ', $fields) . " WHERE id = ?";
+        $sql = "UPDATE user_notes SET " . implode(', ', $fields) . " WHERE id = ?";
         
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($params);
@@ -153,7 +152,7 @@ class CustomerNoteService {
             return false;
         }
         
-        $stmt = $this->db->prepare("DELETE FROM customer_notes WHERE id = ?");
+        $stmt = $this->db->prepare("DELETE FROM user_notes WHERE id = ?");
         return $stmt->execute([$id]);
     }
     
@@ -164,17 +163,8 @@ class CustomerNoteService {
      * @return array Pinned notes
      */
     public function getPinnedNotes(int $userId): array {
-        $sql = "SELECT cn.id, cn.user_id, cn.admin_id, cn.note, cn.is_pinned,
-                       cn.created_at, cn.updated_at,
-                       au.name as admin_name
-                FROM customer_notes cn
-                LEFT JOIN admin_users au ON cn.admin_id = au.id
-                WHERE cn.user_id = ? AND cn.is_pinned = 1
-                ORDER BY cn.created_at DESC";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([$userId]);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        // user_notes has no is_pinned - return all notes for user (same as getNotes)
+        return $this->getNotes($userId);
     }
     
     /**
@@ -184,13 +174,12 @@ class CustomerNoteService {
      * @return array Notes created by this admin
      */
     public function getNotesByAdmin(int $adminId): array {
-        $sql = "SELECT cn.id, cn.user_id, cn.admin_id, cn.note, cn.is_pinned,
-                       cn.created_at, cn.updated_at,
+        $sql = "SELECT un.id, un.user_id, un.note, un.created_by, un.created_at,
                        u.display_name as customer_name
-                FROM customer_notes cn
-                LEFT JOIN users u ON cn.user_id = u.id
-                WHERE cn.admin_id = ?
-                ORDER BY cn.created_at DESC";
+                FROM user_notes un
+                LEFT JOIN users u ON un.user_id = u.id
+                WHERE un.created_by = ?
+                ORDER BY un.created_at DESC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$adminId]);
@@ -204,15 +193,8 @@ class CustomerNoteService {
      * @return bool
      */
     public function togglePin(int $id): bool {
-        $existingNote = $this->getById($id);
-        if (!$existingNote) {
-            return false;
-        }
-        
-        $newPinStatus = $existingNote['is_pinned'] ? 0 : 1;
-        
-        $stmt = $this->db->prepare("UPDATE customer_notes SET is_pinned = ? WHERE id = ?");
-        return $stmt->execute([$newPinStatus, $id]);
+        // user_notes has no is_pinned column - no-op, return true if note exists
+        return $this->getById($id) !== null;
     }
     
     /**
@@ -222,7 +204,7 @@ class CustomerNoteService {
      * @return int
      */
     public function getCount(int $userId): int {
-        $sql = "SELECT COUNT(*) FROM customer_notes WHERE user_id = ?";
+        $sql = "SELECT COUNT(*) FROM user_notes WHERE user_id = ?";
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$userId]);
         return (int)$stmt->fetchColumn();
@@ -236,13 +218,12 @@ class CustomerNoteService {
      * @return array Matching notes
      */
     public function searchNotes(int $userId, string $search): array {
-        $sql = "SELECT cn.id, cn.user_id, cn.admin_id, cn.note, cn.is_pinned,
-                       cn.created_at, cn.updated_at,
+        $sql = "SELECT un.id, un.user_id, un.note, un.created_by, un.created_at,
                        au.name as admin_name
-                FROM customer_notes cn
-                LEFT JOIN admin_users au ON cn.admin_id = au.id
-                WHERE cn.user_id = ? AND cn.note LIKE ?
-                ORDER BY cn.is_pinned DESC, cn.created_at DESC";
+                FROM user_notes un
+                LEFT JOIN admin_users au ON un.created_by = au.id
+                WHERE un.user_id = ? AND un.note LIKE ?
+                ORDER BY un.created_at DESC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$userId, '%' . $search . '%']);
@@ -256,7 +237,7 @@ class CustomerNoteService {
      * @return int Number of deleted notes
      */
     public function deleteAllForUser(int $userId): int {
-        $stmt = $this->db->prepare("DELETE FROM customer_notes WHERE user_id = ?");
+        $stmt = $this->db->prepare("DELETE FROM user_notes WHERE user_id = ?");
         $stmt->execute([$userId]);
         return $stmt->rowCount();
     }

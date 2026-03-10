@@ -6,6 +6,7 @@
 
 $pageTitle = 'รายงานยอดขาย';
 require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/../includes/shop-data-source.php';
 
 // Get date range
 $startDate = $_GET['start'] ?? date('Y-m-01');
@@ -27,56 +28,170 @@ if ($period === 'today') {
     $endDate = date('Y-m-d');
 }
 
+$db = Database::getInstance()->getConnection();
+$lineAccountId = $_SESSION['current_bot_id'] ?? null;
+$orderDataSource = getShopOrderDataSource($db, $lineAccountId);
+$isOdooMode = $orderDataSource === 'odoo';
+
 try {
-    $db = Database::getInstance()->getConnection();
-    $lineAccountId = $_SESSION['current_bot_id'] ?? null;
-    
-    // === Sales Summary ===
-    $salesQuery = "SELECT 
-        COUNT(*) as total_orders,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_orders,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_orders,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_orders,
-        COALESCE(SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END), 0) as total_revenue,
-        COALESCE(AVG(CASE WHEN status = 'completed' THEN total_amount ELSE NULL END), 0) as avg_order_value
-        FROM transactions 
-        WHERE DATE(created_at) BETWEEN ? AND ?
-        AND (line_account_id = ? OR line_account_id IS NULL)";
-    $stmt = $db->prepare($salesQuery);
-    $stmt->execute([$startDate, $endDate, $lineAccountId]);
-    $salesSummary = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    // === Daily Sales Chart Data ===
-    $dailySalesQuery = "SELECT 
-        DATE(created_at) as date,
-        COUNT(*) as orders,
-        COALESCE(SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END), 0) as revenue
-        FROM transactions 
-        WHERE DATE(created_at) BETWEEN ? AND ?
-        AND (line_account_id = ? OR line_account_id IS NULL)
-        GROUP BY DATE(created_at)
-        ORDER BY date";
-    $stmt = $db->prepare($dailySalesQuery);
-    $stmt->execute([$startDate, $endDate, $lineAccountId]);
-    $dailySales = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-    // === Top Products ===
-    $topProductsQuery = "SELECT 
-        p.name as product_name,
-        SUM(ti.quantity) as total_qty,
-        SUM(ti.quantity * ti.price) as total_revenue
-        FROM transaction_items ti
-        JOIN products p ON ti.product_id = p.id
-        JOIN transactions t ON ti.transaction_id = t.id
-        WHERE DATE(t.created_at) BETWEEN ? AND ?
-        AND t.status = 'completed'
-        AND (t.line_account_id = ? OR t.line_account_id IS NULL)
-        GROUP BY ti.product_id
-        ORDER BY total_revenue DESC
-        LIMIT 10";
-    $stmt = $db->prepare($topProductsQuery);
-    $stmt->execute([$startDate, $endDate, $lineAccountId]);
-    $topProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$isOdooMode) {
+        // === Sales Summary (Shop Local DB) ===
+        $salesQuery = "SELECT 
+            COUNT(*) as total_orders,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_orders,
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_orders,
+            SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled_orders,
+            COALESCE(SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END), 0) as total_revenue,
+            COALESCE(AVG(CASE WHEN status = 'completed' THEN total_amount ELSE NULL END), 0) as avg_order_value
+            FROM transactions 
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            AND (line_account_id = ? OR line_account_id IS NULL)";
+        $stmt = $db->prepare($salesQuery);
+        $stmt->execute([$startDate, $endDate, $lineAccountId]);
+        $salesSummary = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        // === Daily Sales Chart Data (Shop Local DB) ===
+        $dailySalesQuery = "SELECT 
+            DATE(created_at) as date,
+            COUNT(*) as orders,
+            COALESCE(SUM(CASE WHEN status = 'completed' THEN total_amount ELSE 0 END), 0) as revenue
+            FROM transactions 
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            AND (line_account_id = ? OR line_account_id IS NULL)
+            GROUP BY DATE(created_at)
+            ORDER BY date";
+        $stmt = $db->prepare($dailySalesQuery);
+        $stmt->execute([$startDate, $endDate, $lineAccountId]);
+        $dailySales = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // === Top Products ===
+        $topProductsQuery = "SELECT 
+            p.name as product_name,
+            SUM(ti.quantity) as total_qty,
+            SUM(ti.quantity * ti.price) as total_revenue
+            FROM transaction_items ti
+            JOIN products p ON ti.product_id = p.id
+            JOIN transactions t ON ti.transaction_id = t.id
+            WHERE DATE(t.created_at) BETWEEN ? AND ?
+            AND t.status = 'completed'
+            AND (t.line_account_id = ? OR t.line_account_id IS NULL)
+            GROUP BY ti.product_id
+            ORDER BY total_revenue DESC
+            LIMIT 10";
+        $stmt = $db->prepare($topProductsQuery);
+        $stmt->execute([$startDate, $endDate, $lineAccountId]);
+        $topProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // === Recent Orders (Shop Local DB) ===
+        $recentOrdersQuery = "SELECT 
+            t.id, t.order_number, t.total_amount, t.status, t.created_at,
+            u.display_name as customer_name
+            FROM transactions t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE DATE(t.created_at) BETWEEN ? AND ?
+            AND (t.line_account_id = ? OR t.line_account_id IS NULL)
+            ORDER BY t.created_at DESC
+            LIMIT 10";
+        $stmt = $db->prepare($recentOrdersQuery);
+        $stmt->execute([$startDate, $endDate, $lineAccountId]);
+        $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } else {
+        // === Sales Summary (Odoo webhook data) ===
+        $db->query("SELECT 1 FROM odoo_webhooks_log LIMIT 1");
+
+        $orderKeyExpr = "COALESCE(CAST(order_id AS CHAR), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_name')), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_ref')))";
+        $stateExpr = "LOWER(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.new_state')), JSON_UNQUOTE(JSON_EXTRACT(payload, '$.state')), ''))";
+        $amountExpr = "CAST(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.amount_total')), '0') AS DECIMAL(12,2))";
+        $customerExpr = "COALESCE(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.name')), '-')";
+
+        $where = "status = 'success' AND {$orderKeyExpr} IS NOT NULL AND {$orderKeyExpr} != ''";
+        $params = [];
+        if (method_exists($db, 'query')) {
+            try {
+                $stmtCol = $db->query("SHOW COLUMNS FROM odoo_webhooks_log LIKE 'line_account_id'");
+                if ($stmtCol && $stmtCol->rowCount() > 0) {
+                    $where .= " AND (line_account_id = ? OR line_account_id IS NULL)";
+                    $params[] = $lineAccountId;
+                }
+            } catch (Exception $e) {
+            }
+        }
+
+        $baseSubquery = "
+            SELECT
+                {$orderKeyExpr} AS order_key,
+                processed_at,
+                {$amountExpr} AS amount_total,
+                {$stateExpr} AS order_state,
+                {$customerExpr} AS customer_name
+            FROM odoo_webhooks_log
+            WHERE {$where}
+        ";
+
+        $orderSnapshotSql = "
+            SELECT
+                order_key,
+                MIN(processed_at) AS created_at,
+                MAX(amount_total) AS amount_total,
+                SUBSTRING_INDEX(GROUP_CONCAT(order_state ORDER BY processed_at DESC), ',', 1) AS status,
+                SUBSTRING_INDEX(GROUP_CONCAT(customer_name ORDER BY processed_at DESC), ',', 1) AS customer_name
+            FROM ({$baseSubquery}) s
+            GROUP BY order_key
+        ";
+
+        $completedExpr = "status IN ('sale','done','paid','delivered','completed')";
+        $pendingExpr = "status IN ('draft','sent','pending','confirmed')";
+        $cancelledExpr = "status IN ('cancel','cancelled')";
+
+        $salesSql = "
+            SELECT
+                COUNT(*) AS total_orders,
+                SUM(CASE WHEN {$completedExpr} THEN 1 ELSE 0 END) AS completed_orders,
+                SUM(CASE WHEN {$pendingExpr} THEN 1 ELSE 0 END) AS pending_orders,
+                SUM(CASE WHEN {$cancelledExpr} THEN 1 ELSE 0 END) AS cancelled_orders,
+                COALESCE(SUM(CASE WHEN {$completedExpr} THEN amount_total ELSE 0 END), 0) AS total_revenue,
+                COALESCE(AVG(CASE WHEN {$completedExpr} THEN amount_total ELSE NULL END), 0) AS avg_order_value
+            FROM ({$orderSnapshotSql}) o
+            WHERE DATE(created_at) BETWEEN ? AND ?
+        ";
+        $stmt = $db->prepare($salesSql);
+        $stmt->execute(array_merge($params, [$startDate, $endDate]));
+        $salesSummary = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $dailySql = "
+            SELECT
+                DATE(created_at) AS date,
+                COUNT(*) AS orders,
+                COALESCE(SUM(CASE WHEN {$completedExpr} THEN amount_total ELSE 0 END), 0) AS revenue
+            FROM ({$orderSnapshotSql}) o
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            GROUP BY DATE(created_at)
+            ORDER BY date
+        ";
+        $stmt = $db->prepare($dailySql);
+        $stmt->execute(array_merge($params, [$startDate, $endDate]));
+        $dailySales = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $recentSql = "
+            SELECT
+                order_key AS id,
+                order_key AS order_number,
+                amount_total AS total_amount,
+                status,
+                created_at,
+                customer_name
+            FROM ({$orderSnapshotSql}) o
+            WHERE DATE(created_at) BETWEEN ? AND ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        ";
+        $stmt = $db->prepare($recentSql);
+        $stmt->execute(array_merge($params, [$startDate, $endDate]));
+        $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Not available from webhook payload in a reliable way yet
+        $topProducts = [];
+    }
     
     // === Customer Stats ===
     $customerQuery = "SELECT 
@@ -112,20 +227,6 @@ try {
     $stmt->execute([$lineAccountId]);
     $inventoryStats = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    // === Recent Orders ===
-    $recentOrdersQuery = "SELECT 
-        t.id, t.order_number, t.total_amount, t.status, t.created_at,
-        u.display_name as customer_name
-        FROM transactions t
-        LEFT JOIN users u ON t.user_id = u.id
-        WHERE DATE(t.created_at) BETWEEN ? AND ?
-        AND (t.line_account_id = ? OR t.line_account_id IS NULL)
-        ORDER BY t.created_at DESC
-        LIMIT 10";
-    $stmt = $db->prepare($recentOrdersQuery);
-    $stmt->execute([$startDate, $endDate, $lineAccountId]);
-    $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
 } catch (Exception $e) {
     $salesSummary = ['total_orders' => 0, 'completed_orders' => 0, 'pending_orders' => 0, 'cancelled_orders' => 0, 'total_revenue' => 0, 'avg_order_value' => 0];
     $dailySales = [];
@@ -148,6 +249,9 @@ $chartOrders = array_column($dailySales, 'orders');
         <div>
             <h2 class="text-xl font-bold text-gray-800">📊 รายงานยอดขาย</h2>
             <p class="text-sm text-gray-500">ภาพรวมยอดขาย ลูกค้า สินค้า และการตลาด</p>
+            <p class="text-xs mt-1 <?= $isOdooMode ? 'text-indigo-600' : 'text-gray-400' ?>">
+                แหล่งข้อมูล: <?= $isOdooMode ? 'Odoo' : 'Shop (Local DB)' ?>
+            </p>
         </div>
         
         <!-- Date Filter -->
@@ -336,7 +440,7 @@ $chartOrders = array_column($dailySales, 'orders');
                         <?php foreach ($recentOrders as $order): ?>
                         <tr class="border-t hover:bg-gray-50">
                             <td class="px-4 py-3">
-                                <a href="/shop/orders?id=<?= $order['id'] ?>" class="text-purple-600 hover:underline">
+                                <a href="<?= $isOdooMode ? '/shop/orders' : ('/shop/orders?id=' . urlencode($order['id'])) ?>" class="text-purple-600 hover:underline">
                                     #<?= $order['order_number'] ?? $order['id'] ?>
                                 </a>
                             </td>
@@ -345,12 +449,22 @@ $chartOrders = array_column($dailySales, 'orders');
                             <td class="px-4 py-3 text-center">
                                 <?php
                                 $statusColors = [
+                                    'draft' => 'bg-gray-100 text-gray-700',
+                                    'sent' => 'bg-blue-100 text-blue-700',
+                                    'sale' => 'bg-green-100 text-green-700',
+                                    'done' => 'bg-green-100 text-green-700',
+                                    'cancel' => 'bg-red-100 text-red-700',
                                     'pending' => 'bg-yellow-100 text-yellow-700',
                                     'confirmed' => 'bg-blue-100 text-blue-700',
                                     'completed' => 'bg-green-100 text-green-700',
                                     'cancelled' => 'bg-red-100 text-red-700',
                                 ];
                                 $statusLabels = [
+                                    'draft' => 'รอดำเนินการ',
+                                    'sent' => 'ส่งใบเสนอราคา',
+                                    'sale' => 'ยืนยันการขาย',
+                                    'done' => 'เสร็จสิ้น',
+                                    'cancel' => 'ยกเลิก',
                                     'pending' => 'รอดำเนินการ',
                                     'confirmed' => 'ยืนยันแล้ว',
                                     'completed' => 'สำเร็จ',

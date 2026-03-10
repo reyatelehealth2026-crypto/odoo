@@ -14,6 +14,9 @@ class LiffApp {
         this.isInClient = false;
         this.profile = null;
         this.config = window.APP_CONFIG || {};
+        this.config.ORDER_DATA_SOURCE = ((this.config.ORDER_DATA_SOURCE || 'shop') + '').toLowerCase() === 'odoo'
+            ? 'odoo'
+            : 'shop';
     }
 
     /**
@@ -59,6 +62,20 @@ class LiffApp {
             console.error('❌ LiffApp initialization failed:', error);
             this.showError(error);
         }
+    }
+
+    /**
+     * Get current order data source mode
+     */
+    getOrderDataSource() {
+        return this.config.ORDER_DATA_SOURCE === 'odoo' ? 'odoo' : 'shop';
+    }
+
+    /**
+     * Check whether orders should use Odoo flow
+     */
+    isOdooOrderSource() {
+        return this.getOrderDataSource() === 'odoo';
     }
 
     /**
@@ -291,8 +308,8 @@ class LiffApp {
         // Checkout page
         window.router.register('checkout', () => this.renderCheckoutPage());
 
-        // Orders page
-        window.router.register('orders', () => this.renderOrdersPage());
+        // Orders page (switch source by mode)
+        window.router.register('orders', () => this.isOdooOrderSource() ? this.renderOdooOrdersPage() : this.renderOrdersPage());
 
         // Profile page
         window.router.register('profile', () => this.renderProfilePage());
@@ -301,7 +318,8 @@ class LiffApp {
         window.router.register('member', () => this.renderMemberPage());
 
         // Order detail page - Requirements: 19.1, 19.2, 19.3, 19.4
-        window.router.register('order-detail', (params) => this.renderOrderDetailPage(params));
+        // In Odoo mode, force detail to use Odoo endpoint/page.
+        window.router.register('order-detail', (params) => this.isOdooOrderSource() ? this.renderOdooOrderDetailPage(params) : this.renderOrderDetailPage(params));
 
         // Video call page - Requirements: 6.2, 6.3
         window.router.register('video-call', (params) => this.renderVideoCallPage(params));
@@ -347,6 +365,15 @@ class LiffApp {
 
         // Settings page - personal info editor
         window.router.register('settings', () => this.renderSettingsPage());
+
+        // Odoo Integration pages
+        window.router.register('odoo-link', () => this.renderOdooLinkPage());
+        window.router.register('odoo-orders', () => this.renderOdooOrdersPage());
+        window.router.register('odoo-order-detail', (params) => this.renderOdooOrderDetailPage(params));
+        window.router.register('odoo-order-tracking', (params) => this.renderOdooOrderTrackingPage(params));
+        window.router.register('odoo-invoices', () => this.renderOdooInvoicesPage());
+        window.router.register('odoo-credit-status', () => this.renderOdooCreditStatusPage());
+        window.router.register('odoo-slip', () => this.renderOdooSlipPage());
     }
 
     /**
@@ -425,6 +452,26 @@ class LiffApp {
         // Initialize health profile page
         if (route.page === 'health-profile') {
             setTimeout(() => this.initHealthProfilePage(), 100);
+        }
+
+        // Initialize Odoo pages
+        if (route.page === 'odoo-link') {
+            setTimeout(() => this.initOdooLinkPage(), 100);
+        }
+        if (route.page === 'odoo-order-detail') {
+            setTimeout(() => this.initOdooOrderDetailPage(params), 100);
+        }
+        if (route.page === 'odoo-order-tracking') {
+            setTimeout(() => this.initOdooOrderTrackingPage(params), 100);
+        }
+        if (route.page === 'odoo-invoices') {
+            setTimeout(() => this.initOdooInvoicesPage(), 100);
+        }
+        if (route.page === 'odoo-slip') {
+            setTimeout(() => this.initOdooSlipPage(), 100);
+        }
+        if (route.page === 'odoo-credit-status') {
+            setTimeout(() => this.initOdooCreditStatusPage(), 100);
         }
     }
 
@@ -5862,6 +5909,11 @@ class LiffApp {
                         <span>บัตรสมาชิก</span>
                         <i class="fas fa-chevron-right"></i>
                     </div>
+                    <div class="profile-menu-item" onclick="window.router.navigate('/odoo-link')">
+                        <i class="fas fa-link text-primary"></i>
+                        <span>เชื่อมต่อบัญชี Odoo</span>
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
                     <div class="profile-menu-item" onclick="window.router.navigate('/points')">
                         <i class="fas fa-coins text-warning"></i>
                         <span>ประวัติแต้ม</span>
@@ -10104,6 +10156,1603 @@ class LiffApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    /**
+     * Initialize Odoo Link Page
+     */
+    async initOdooLinkPage() {
+        const content = document.getElementById('odoo-link-content');
+        if (!content) return;
+
+        // Load the actual page content via iframe or fetch
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/liff/odoo-link.php`);
+            const html = await response.text();
+            content.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading Odoo link page:', error);
+            content.innerHTML = `
+                <div class="error-state">
+                    <div class="error-icon error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h2>เกิดข้อผิดพลาด</h2>
+                    <p>ไม่สามารถโหลดหน้านี้ได้</p>
+                    <button class="btn btn-primary" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i> กลับ
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Initialize Odoo Orders Page
+     */
+    async initOdooOrdersLegacyEmbedPage() {
+        const content = document.getElementById('odoo-orders-content');
+        if (!content) return;
+
+        // Load the actual page content via iframe or fetch
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/liff/odoo-orders.php`);
+            const html = await response.text();
+            content.innerHTML = html;
+        } catch (error) {
+            console.error('Error loading Odoo orders page:', error);
+            content.innerHTML = `
+                <div class="error-state">
+                    <div class="error-icon error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h2>เกิดข้อผิดพลาด</h2>
+                    <p>ไม่สามารถโหลดหน้านี้ได้</p>
+                    <button class="btn btn-primary" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i> กลับ
+                    </button>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Initialize Odoo Order Detail Page
+     */
+    async initOdooOrderDetailPage(params) {
+        const content = document.getElementById('odoo-order-detail-content');
+        if (!content) return;
+
+        const orderId = params.id || content.dataset.orderId;
+        if (!orderId) {
+            content.innerHTML = `
+                <div class="error-state">
+                    <div class="error-icon error">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <h2>ไม่พบข้อมูล</h2>
+                    <p>ไม่พบเลขที่ออเดอร์</p>
+                    <button class="btn btn-primary" onclick="window.router.navigate('/odoo-orders')">
+                        <i class="fas fa-list"></i> ดูรายการออเดอร์
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) {
+            content.innerHTML = `<div class="error-state"><p>กรุณาเข้าสู่ระบบก่อน</p></div>`;
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-orders.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'detail',
+                    order_id: orderId,
+                    line_user_id: profile.userId,
+                    line_account_id: this.config.ACCOUNT_ID
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                this.renderOdooOrderDetailContent(content, result.data, orderId);
+            } else {
+                content.innerHTML = `
+                    <div class="error-state" style="text-align: center; padding: 40px 20px;">
+                        <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                        <h3 style="color: #666; font-size: 16px; margin-bottom: 8px;">ไม่พบข้อมูล</h3>
+                        <p style="color: #999; font-size: 14px;">${result.error || 'ไม่สามารถโหลดข้อมูลออเดอร์ได้'}</p>
+                        <button onclick="window.liffApp.initOdooOrderDetailPage({id:'${orderId}'})" style="margin-top: 16px; padding: 10px 20px; background: #11B0A6; color: white; border: none; border-radius: 8px; cursor: pointer;">ลองใหม่</button>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading order detail:', error);
+            content.innerHTML = `
+                <div class="error-state" style="text-align: center; padding: 40px 20px;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #EF4444; margin-bottom: 16px;"></i>
+                    <h3 style="color: #666;">เกิดข้อผิดพลาด</h3>
+                    <p style="color: #999;">${error.message}</p>
+                    <button onclick="window.liffApp.initOdooOrderDetailPage({id:'${orderId}'})" style="margin-top: 16px; padding: 10px 20px; background: #11B0A6; color: white; border: none; border-radius: 8px; cursor: pointer;">ลองใหม่</button>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Render Order Detail Content
+     */
+    renderOdooOrderDetailContent(container, order, orderId) {
+        const statusMap = { 'draft': 'ร่าง', 'sent': 'ส่งแล้ว', 'sale': 'ขายแล้ว', 'done': 'เสร็จสิ้น', 'cancel': 'ยกเลิก' };
+        const statusColorMap = { 'draft': '#6b7280', 'sent': '#1e40af', 'sale': '#065f46', 'done': '#065f46', 'cancel': '#991b1b' };
+        const paymentMap = { 'paid': 'ชำระแล้ว', 'partial': 'ชำระบางส่วน', 'not_paid': 'ยังไม่ชำระ', 'unpaid': 'ยังไม่ชำระ' };
+
+        const state = order.state || 'draft';
+        const statusText = statusMap[state] || state;
+        const statusColor = statusColorMap[state] || '#666';
+
+        const paymentState = order.payment_status?.payment_state || order.payment_state || 'not_paid';
+        const paymentText = paymentMap[paymentState] || paymentState;
+        const paymentColor = paymentState === 'paid' ? '#065f46' : paymentState === 'partial' ? '#92400e' : '#991b1b';
+
+        const customer = order.customer || {};
+        const orderLines = order.order_lines || order.order_line || [];
+
+        const subtotal = parseFloat(order.amount_untaxed || 0).toFixed(2);
+        const tax = parseFloat(order.amount_tax || 0).toFixed(2);
+        const total = parseFloat(order.amount_total || 0).toFixed(2);
+
+        const dateStr = order.date_order ? new Date(order.date_order).toLocaleDateString('th-TH', {
+            year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        }) : 'N/A';
+
+        let linesHtml = '';
+        if (orderLines.length > 0) {
+            orderLines.forEach(line => {
+                const productName = line.product_name || line.name || 'N/A';
+                const qty = parseFloat(line.product_uom_qty || line.qty || 0);
+                const price = parseFloat(line.price_unit || 0).toFixed(2);
+                const lineTotal = parseFloat(line.price_subtotal || 0).toFixed(2);
+                linesHtml += `
+                    <div style="display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
+                        <div style="width: 48px; height: 48px; background: #f5f5f5; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <i class="fas fa-box" style="color: #ccc;"></i>
+                        </div>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500; font-size: 14px; margin-bottom: 4px;">${this.escapeHtml(productName)}</div>
+                            <div style="font-size: 13px; color: #666;">จำนวน: ${qty} × ฿${price}</div>
+                            <div style="font-size: 14px; font-weight: 600; color: #11B0A6;">฿${lineTotal}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            linesHtml = '<p style="color: #999; text-align: center; padding: 20px;">ไม่มีรายการสินค้า</p>';
+        }
+
+        const address = order.shipping_address || {};
+        const addressParts = [address.street, address.street2, address.city, address.state, address.zip, address.country].filter(Boolean);
+        const addressText = addressParts.length > 0 ? addressParts.join(', ') : 'ไม่มีข้อมูลที่อยู่';
+
+        container.innerHTML = `
+            <div style="background: white; padding: 20px; margin-bottom: 8px;">
+                <div style="font-size: 22px; font-weight: 700; color: #333; margin-bottom: 8px;">${order.name || 'N/A'}</div>
+                <div style="font-size: 14px; color: #666; margin-bottom: 12px;">${dateStr}</div>
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <span style="padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; background: ${statusColor}20; color: ${statusColor};">${statusText}</span>
+                    <span style="padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 500; background: ${paymentColor}20; color: ${paymentColor};">${paymentText}</span>
+                </div>
+            </div>
+
+            <div style="background: white; padding: 20px; margin-bottom: 8px;">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;"><i class="fas fa-user" style="color: #11B0A6; margin-right: 8px;"></i>ข้อมูลลูกค้า</div>
+                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">ชื่อ</span>
+                    <span style="font-weight: 500; font-size: 14px;">${customer.name || order.partner_name || 'N/A'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">เบอร์โทร</span>
+                    <span style="font-weight: 500; font-size: 14px;">${customer.phone || 'N/A'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 10px 0;">
+                    <span style="color: #666; font-size: 14px;">อีเมล</span>
+                    <span style="font-weight: 500; font-size: 14px;">${customer.email || 'N/A'}</span>
+                </div>
+            </div>
+
+            <div style="background: white; padding: 20px; margin-bottom: 8px;">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;"><i class="fas fa-map-marker-alt" style="color: #11B0A6; margin-right: 8px;"></i>ที่อยู่จัดส่ง</div>
+                <div style="font-size: 14px; color: #333; line-height: 1.6;">${this.escapeHtml(addressText)}</div>
+            </div>
+
+            <div style="background: white; padding: 20px; margin-bottom: 8px;">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;"><i class="fas fa-box" style="color: #11B0A6; margin-right: 8px;"></i>รายการสินค้า (${orderLines.length} รายการ)</div>
+                ${linesHtml}
+            </div>
+
+            <div style="background: white; padding: 20px; margin-bottom: 8px;">
+                <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px;"><i class="fas fa-calculator" style="color: #11B0A6; margin-right: 8px;"></i>สรุปยอดรวม</div>
+                <div style="display: flex; justify-content: space-between; padding: 10px 0; font-size: 14px;">
+                    <span style="color: #666;">ยอดรวมสินค้า</span>
+                    <span style="font-weight: 500;">฿${subtotal}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 10px 0; font-size: 14px;">
+                    <span style="color: #666;">ภาษี</span>
+                    <span style="font-weight: 500;">฿${tax}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 14px 0; font-size: 16px; border-top: 2px solid #e0e0e0; margin-top: 8px;">
+                    <span style="font-weight: 600; color: #333;">ยอดรวมทั้งหมด</span>
+                    <span style="font-weight: 700; color: #11B0A6; font-size: 18px;">฿${total}</span>
+                </div>
+            </div>
+
+            <div style="padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                <button onclick="window.router.navigate('/odoo-order-tracking', { id: '${orderId}' })" style="padding: 14px 20px; background: #11B0A6; color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i class="fas fa-map-marker-alt"></i> ติดตามสถานะการจัดส่ง
+                </button>
+                <button onclick="window.liffApp.checkOdooPaymentStatus('${orderId}')" style="padding: 14px 20px; background: white; color: #11B0A6; border: 2px solid #11B0A6; border-radius: 12px; font-size: 15px; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i class="fas fa-credit-card"></i> ตรวจสอบสถานะการชำระเงิน
+                </button>
+            </div>
+        `;
+    }
+
+    /**
+     * Check Payment Status for an Order
+     */
+    async checkOdooPaymentStatus(orderId) {
+        const profile = window.store.get('profile');
+        if (!profile?.userId || !orderId) {
+            alert('ไม่สามารถตรวจสอบสถานะการชำระเงินได้');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-payment-status.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'check',
+                    line_user_id: profile.userId,
+                    order_id: orderId
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.payment_status) {
+                const status = result.payment_status;
+                const paymentMap = { 'paid': 'ชำระเงินแล้ว', 'partial': 'ชำระบางส่วน', 'not_paid': 'ยังไม่ชำระ', 'unpaid': 'ยังไม่ชำระ' };
+                const paymentState = status.payment_state || 'not_paid';
+                const paymentText = paymentMap[paymentState] || paymentState;
+                const amountPaid = parseFloat(status.amount_paid || 0).toFixed(2);
+                const amountDue = parseFloat(status.amount_due || 0).toFixed(2);
+
+                alert(`สถานะการชำระเงิน: ${paymentText}\n\nยอดที่ชำระแล้ว: ฿${amountPaid}\nยอดคงค้าง: ฿${amountDue}`);
+            } else {
+                alert(result.error || 'ไม่สามารถตรวจสอบสถานะการชำระเงินได้');
+            }
+        } catch (error) {
+            console.error('Payment status error:', error);
+            alert('เกิดข้อผิดพลาดในการตรวจสอบสถานะการชำระเงิน');
+        }
+    }
+
+    /**
+     * Initialize Odoo Order Tracking Page
+     * Delegates to loadOdooOrderTracking which calls API directly
+     */
+    initOdooOrderTrackingPage(params) {
+        const content = document.getElementById('odoo-order-tracking-content');
+        if (!content) return;
+
+        const orderId = params?.id || content.dataset.orderId;
+        if (!orderId) {
+            content.innerHTML = `
+                <div class="error-state" style="text-align: center; padding: 40px 20px;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                    <h3 style="color: #666; font-size: 16px;">ไม่พบเลขที่ออเดอร์</h3>
+                    <button onclick="window.router.navigate('/odoo-orders')" style="margin-top: 16px; padding: 10px 20px; background: #11B0A6; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                        <i class="fas fa-list"></i> ดูรายการออเดอร์
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        this.loadOdooOrderTracking(orderId);
+    }
+
+    /**
+     * Initialize Odoo Credit Status Page
+     * Calls API directly to fetch credit status data
+     */
+    async initOdooCreditStatusPage() {
+        const content = document.getElementById('odoo-credit-status-content');
+        if (!content) return;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) {
+            content.innerHTML = `<div class="error-state" style="text-align: center; padding: 40px 20px;"><p style="color: #666;">กรุณาเข้าสู่ระบบก่อน</p></div>`;
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-invoices.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'credit_status',
+                    line_user_id: profile.userId,
+                    line_account_id: this.config.ACCOUNT_ID
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                this.renderOdooCreditStatusContent(content, result.data);
+            } else {
+                content.innerHTML = `
+                    <div class="error-state" style="text-align: center; padding: 40px 20px;">
+                        <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                        <h3 style="color: #666; font-size: 16px; margin-bottom: 8px;">ไม่พบข้อมูล</h3>
+                        <p style="color: #999; font-size: 14px;">${result.error || 'ไม่สามารถโหลดข้อมูลสถานะเครดิตได้'}</p>
+                        <button onclick="window.liffApp.initOdooCreditStatusPage()" style="margin-top: 16px; padding: 10px 20px; background: #11B0A6; color: white; border: none; border-radius: 8px; cursor: pointer;">ลองใหม่</button>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error loading credit status:', error);
+            content.innerHTML = `
+                <div class="error-state" style="text-align: center; padding: 40px 20px;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 48px; color: #EF4444; margin-bottom: 16px;"></i>
+                    <h3 style="color: #666;">เกิดข้อผิดพลาด</h3>
+                    <p style="color: #999;">${error.message}</p>
+                    <button onclick="window.liffApp.initOdooCreditStatusPage()" style="margin-top: 16px; padding: 10px 20px; background: #11B0A6; color: white; border: none; border-radius: 8px; cursor: pointer;">ลองใหม่</button>
+                </div>
+            `;
+        }
+    }
+
+    /**
+     * Render Credit Status Content
+     */
+    renderOdooCreditStatusContent(container, data) {
+        const creditLimit = parseFloat(data.credit_limit || 0);
+        const creditUsed = parseFloat(data.credit_used || 0);
+        const creditAvailable = creditLimit - creditUsed;
+        const overdueAmount = parseFloat(data.overdue_amount || 0);
+
+        const usagePercent = creditLimit > 0 ? (creditUsed / creditLimit * 100) : 0;
+
+        let progressColor = '#11B0A6';
+        let alertHtml = '';
+
+        if (usagePercent >= 90) {
+            progressColor = '#ef4444';
+            alertHtml = `
+                <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 8px; margin-top: 16px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #991b1b; margin-bottom: 4px;">⚠️ วงเงินใกล้หมด</div>
+                    <div style="font-size: 13px; color: #7f1d1d;">คุณใช้วงเงินเครดิตไปแล้ว ${usagePercent.toFixed(0)}% กรุณาชำระเงินเพื่อเพิ่มวงเงิน</div>
+                </div>
+            `;
+        } else if (usagePercent >= 75) {
+            progressColor = '#f59e0b';
+            alertHtml = `
+                <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin-top: 16px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #92400e; margin-bottom: 4px;">⚠️ วงเงินใกล้เต็ม</div>
+                    <div style="font-size: 13px; color: #78350f;">คุณใช้วงเงินเครดิตไปแล้ว ${usagePercent.toFixed(0)}%</div>
+                </div>
+            `;
+        }
+
+        if (overdueAmount > 0) {
+            alertHtml += `
+                <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 8px; margin-top: 16px;">
+                    <div style="font-size: 14px; font-weight: 600; color: #991b1b; margin-bottom: 4px;">⚠️ มียอดเกินกำหนดชำระ</div>
+                    <div style="font-size: 13px; color: #7f1d1d;">คุณมียอดเกินกำหนดชำระ ฿${overdueAmount.toFixed(2)} กรุณาชำระโดยเร็วที่สุด</div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = `
+            <div style="background: white; margin: 16px; border-radius: 20px; padding: 24px; box-shadow: 0 4px 12px rgba(0,0,0,0.08);">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <div style="font-size: 16px; color: #666; margin-bottom: 8px;">วงเงินเครดิตทั้งหมด</div>
+                    <div style="font-size: 36px; font-weight: 700; color: #11B0A6;">฿${creditLimit.toFixed(2)}</div>
+                </div>
+
+                <div style="margin: 24px 0;">
+                    <div style="display: flex; justify-content: space-between; font-size: 14px; color: #666; margin-bottom: 8px;">
+                        <span>ใช้ไปแล้ว</span>
+                        <span>${usagePercent.toFixed(0)}%</span>
+                    </div>
+                    <div style="width: 100%; height: 12px; background: #e0e0e0; border-radius: 6px; overflow: hidden;">
+                        <div style="height: 100%; width: ${Math.min(usagePercent, 100)}%; background: ${progressColor}; border-radius: 6px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid #e0e0e0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 15px; color: #666;">ใช้ไปแล้ว</span>
+                        <span style="font-size: 18px; font-weight: 600; color: #333;">฿${creditUsed.toFixed(2)}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 15px; color: #666;">คงเหลือ</span>
+                        <span style="font-size: 18px; font-weight: 600; color: #11B0A6;">฿${creditAvailable.toFixed(2)}</span>
+                    </div>
+                    ${overdueAmount > 0 ? `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 15px; color: #666;">เกินกำหนดชำระ</span>
+                        <span style="font-size: 18px; font-weight: 600; color: #ef4444;">฿${overdueAmount.toFixed(2)}</span>
+                    </div>
+                    ` : ''}
+                </div>
+
+                ${alertHtml}
+            </div>
+        `;
+    }
+
+
+
+    /**
+     * Render Odoo Order Detail Page
+     * Requirements: US-4 - ดูรายละเอียดออเดอร์
+     */
+    // ==================== Odoo Integration ====================
+
+    /**
+     * Render Odoo Link Page
+     */
+    renderOdooLinkPage() {
+        // Initialize logic after render (via router hook or timeout)
+        setTimeout(() => this.initOdooLinkPage(), 100);
+
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">เชื่อมต่อบัญชี Odoo</h1>
+                </div>
+                <div id="odoo-link-content" class="page-content" style="padding: 16px;">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>กำลังโหลดข้อมูล...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Initialize Odoo Link Page
+     */
+    async initOdooLinkPage() {
+        const container = document.getElementById('odoo-link-content');
+        if (!container) return;
+
+        try {
+            const profile = window.store.get('profile');
+            if (!profile?.userId) {
+                container.innerHTML = `<div class="alert alert-error">กรุณาเข้าสู่ระบบก่อน</div>`;
+                return;
+            }
+
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-user-link.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'profile',
+                    line_user_id: profile.userId
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.renderOdooLinkedProfile(container, result.data);
+            } else {
+                this.renderOdooLinkForm(container);
+            }
+        } catch (error) {
+            console.error('Error init Odoo Link:', error);
+            container.innerHTML = `<div class="error-state"><p>เกิดข้อผิดพลาด: ${error.message}</p></div>`;
+        }
+    }
+
+    /**
+     * Render Odoo Link Form
+     */
+    renderOdooLinkForm(container) {
+        container.innerHTML = `
+            <div class="card" style="background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+                <p style="color: #666; font-size: 14px; margin-bottom: 20px; text-align: center;">
+                    เชื่อมต่อบัญชี LINE กับบัญชีลูกค้าใน Odoo เพื่อรับการแจ้งเตือนและดูข้อมูลออเดอร์
+                </p>
+
+                <div class="tabs" style="display: flex; gap: 8px; margin-bottom: 20px;">
+                    <button class="tab active" onclick="window.liffApp.switchOdooLinkTab('phone')" style="flex: 1; padding: 10px; border: none; background: #E0F2F1; color: #11B0A6; border-radius: 8px; font-weight: 600;">เบอร์โทร</button>
+                    <button class="tab" onclick="window.liffApp.switchOdooLinkTab('code')" style="flex: 1; padding: 10px; border: none; background: #f5f5f5; color: #666; border-radius: 8px;">รหัสลูกค้า</button>
+                    <button class="tab" onclick="window.liffApp.switchOdooLinkTab('email')" style="flex: 1; padding: 10px; border: none; background: #f5f5f5; color: #666; border-radius: 8px;">อีเมล</button>
+                </div>
+
+                <div id="tab-phone" class="tab-content">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <input type="tel" id="link-phone" class="form-control" placeholder="เบอร์โทรศัพท์ (เช่น 0812345678)" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px;">
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="window.liffApp.handleOdooLink('phone')" style="width: 100%; padding: 14px; background: #11B0A6; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600;">เชื่อมต่อด้วยเบอร์โทร</button>
+                </div>
+
+                <div id="tab-code" class="tab-content" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <input type="text" id="link-code" class="form-control" placeholder="รหัสลูกค้า (เช่น C001234)" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px;">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <input type="tel" id="link-code-phone" class="form-control" placeholder="เบอร์โทรศัพท์ (ยืนยันตัวตน)" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px;">
+                        <small style="color: #666; font-size: 12px; margin-top: 4px; display: block;">ต้องเป็นเบอร์ที่ลงทะเบียนไว้กับรหัสลูกค้า</small>
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="window.liffApp.handleOdooLink('code')" style="width: 100%; padding: 14px; background: #11B0A6; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600;">เชื่อมต่อด้วยรหัสลูกค้า</button>
+                </div>
+
+                <div id="tab-email" class="tab-content" style="display: none;">
+                    <div class="form-group" style="margin-bottom: 16px;">
+                        <input type="email" id="link-email" class="form-control" placeholder="อีเมล (เช่น example@email.com)" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px;">
+                    </div>
+                    <button class="btn btn-primary btn-block" onclick="window.liffApp.handleOdooLink('email')" style="width: 100%; padding: 14px; background: #11B0A6; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600;">เชื่อมต่อด้วยอีเมล</button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Switch Odoo Link Tab
+     */
+    switchOdooLinkTab(tab) {
+        document.querySelectorAll('#odoo-link-content .tab').forEach(t => {
+            t.classList.remove('active');
+            t.style.background = '#f5f5f5';
+            t.style.color = '#666';
+            t.style.fontWeight = 'normal';
+        });
+        document.querySelectorAll('#odoo-link-content .tab-content').forEach(c => c.style.display = 'none');
+
+        const btn = event.target;
+        btn.classList.add('active');
+        btn.style.background = '#E0F2F1';
+        btn.style.color = '#11B0A6';
+        btn.style.fontWeight = '600';
+
+        document.getElementById(`tab-${tab}`).style.display = 'block';
+    }
+
+    /**
+     * Handle Odoo Link Submission
+     */
+    async handleOdooLink(method) {
+        const profile = window.store.get('profile');
+        if (!profile?.userId) return;
+
+        let value;
+        let codePhone = null;
+
+        if (method === 'phone') {
+            value = document.getElementById('link-phone').value;
+        } else if (method === 'code') {
+            value = document.getElementById('link-code').value;
+            codePhone = document.getElementById('link-code-phone').value;
+        } else {
+            value = document.getElementById('link-email').value;
+        }
+
+        if (!value) {
+            this.showToast('กรุณากรอกข้อมูล', 'warning');
+            return;
+        }
+
+        if (method === 'code' && !codePhone) {
+            this.showToast('กรุณาระบุเบอร์โทรศัพท์เพื่อยืนยันตัวตน', 'warning');
+            return;
+        }
+
+        const btn = event.target;
+        const originalText = btn.innerText;
+        btn.disabled = true;
+        btn.innerText = 'กำลังเชื่อมต่อ...';
+
+        try {
+            const body = {
+                action: 'link',
+                line_user_id: profile.userId,
+                account_id: this.config.ACCOUNT_ID
+            };
+
+            if (method === 'phone') {
+                body.phone = value.replace(/\D/g, '');
+            } else if (method === 'code') {
+                body.customer_code = value;
+                body.phone = codePhone ? codePhone.replace(/\D/g, '') : null;
+            } else {
+                body.email = value;
+            }
+
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-user-link.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            const text = await response.text();
+
+            let result;
+            try {
+                result = JSON.parse(text);
+            } catch (e) {
+                console.error('Invalid JSON response:', text);
+                if (response.status !== 200) {
+                    this.showToast(`Server Error (${response.status}): ${text.substring(0, 50)}...`, 'error');
+                }
+                throw new Error('Invalid server response');
+            }
+
+            if (result.success) {
+                this.showToast('เชื่อมต่อสำเร็จ!', 'success');
+                this.initOdooLinkPage(); // Access via this directly as method
+            } else {
+                this.showToast(result.error || 'ไม่สามารถเชื่อมต่อได้', 'error');
+                btn.disabled = false;
+                btn.innerText = originalText;
+            }
+        } catch (error) {
+            console.error('Link error:', error);
+            if (error.message !== 'Invalid server response') {
+                this.showToast('เกิดข้อผิดพลาดในการเชื่อมต่อ', 'error');
+            }
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+    }
+
+    /**
+     * Render Linked Profile
+     */
+    renderOdooLinkedProfile(container, profile) {
+        console.log('Rendering Profile:', profile);
+
+        const linkedViaLabel = profile.linked_via === 'phone' ? 'เบอร์โทร' : profile.linked_via === 'customer_code' ? 'รหัสลูกค้า' : 'อีเมล';
+        const creditLimit = parseFloat(profile.credit_limit || 0);
+        const totalDue = parseFloat(profile.total_due || 0);
+        const creditRemaining = creditLimit - totalDue;
+        const creditPct = creditLimit > 0 ? Math.min((totalDue / creditLimit) * 100, 100) : 0;
+        const barColor = creditPct > 80 ? '#ef4444' : creditPct > 50 ? '#f59e0b' : '#11B0A6';
+
+        container.innerHTML = `
+                <!-- Profile Info -->
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">ชื่อ</span>
+                    <span style="font-weight: 600; font-size: 14px;">${profile.partner_name || '-'}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">รหัสลูกค้า</span>
+                    <span style="font-weight: 600; font-size: 14px; font-family: monospace;">${profile.customer_code || '-'}</span>
+                </div>
+                ${profile.phone ? `
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">เบอร์โทร</span>
+                    <span style="font-weight: 600; font-size: 14px;">${profile.phone}</span>
+                </div>` : ''}
+                ${profile.email ? `
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">อีเมล</span>
+                    <span style="font-weight: 600; font-size: 14px;">${profile.email}</span>
+                </div>` : ''}
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0;">
+                    <span style="color: #666; font-size: 14px;">เชื่อมต่อด้วย</span>
+                    <span style="font-weight: 600; font-size: 14px;">${linkedViaLabel}</span>
+                </div>
+
+                <!-- Credit Status -->
+                ${creditLimit > 0 ? `
+                <div style="margin: 16px 0; padding: 16px; background: #f9fafb; border-radius: 12px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center;">
+                        <div>
+                            <div style="font-size: 18px; font-weight: 700; color: #2563eb;">฿${creditLimit.toLocaleString()}</div>
+                            <div style="font-size: 11px; color: #9ca3af;">วงเงิน</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 18px; font-weight: 700; color: ${totalDue > 0 ? '#d97706' : '#9ca3af'};">฿${totalDue.toLocaleString()}</div>
+                            <div style="font-size: 11px; color: #9ca3af;">ค้างชำระ</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 18px; font-weight: 700; color: #16a34a;">฿${creditRemaining.toLocaleString()}</div>
+                            <div style="font-size: 11px; color: #9ca3af;">คงเหลือ</div>
+                        </div>
+                    </div>
+                    <div style="height: 6px; background: #e5e7eb; border-radius: 3px; margin-top: 12px; overflow: hidden;">
+                        <div style="height: 100%; width: ${creditPct}%; background: ${barColor}; border-radius: 3px; transition: width 0.5s;"></div>
+                    </div>
+                </div>` : ''}
+
+                <!-- Menu Grid -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0;">
+                    <button onclick="window.router.navigate('/odoo-orders')" style="background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-box-open" style="font-size: 24px; color: #11B0A6; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #333; font-weight: 600;">ประวัติสั่งซื้อ</div>
+                    </button>
+                    <button onclick="window.router.navigate('/odoo-orders')" style="background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-shipping-fast" style="font-size: 24px; color: #11B0A6; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #333; font-weight: 600;">ติดตามพัสดุ</div>
+                    </button>
+                    <button onclick="window.router.navigate('/odoo-invoices')" style="background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-file-invoice-dollar" style="font-size: 24px; color: #11B0A6; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #333; font-weight: 600;">ใบแจ้งหนี้</div>
+                    </button>
+                    <button onclick="window.router.navigate('/odoo-slip')" style="background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-receipt" style="font-size: 24px; color: #11B0A6; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #333; font-weight: 600;">แจ้งโอนเงิน</div>
+                    </button>
+                    <button onclick="window.router.navigate('/odoo-credit-status')" style="background: #f9f9f9; border: 1px solid #eee; border-radius: 12px; padding: 16px; text-align: center; cursor: pointer; transition: all 0.2s;">
+                        <i class="fas fa-wallet" style="font-size: 24px; color: #11B0A6; margin-bottom: 8px;"></i>
+                        <div style="font-size: 13px; color: #333; font-weight: 600;">สถานะเครดิต</div>
+                    </button>
+                </div>
+
+                <!-- Recent Orders -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 15px; font-weight: 600; color: #333;">🛒 ออเดอร์ล่าสุด</span>
+                        <span id="odoo-link-orders-count" style="font-size: 12px; color: #9ca3af;"></span>
+                    </div>
+                    <div id="odoo-link-orders" style="color: #9ca3af; text-align: center; padding: 12px; font-size: 13px;">กำลังโหลด...</div>
+                </div>
+
+                <!-- Webhook Events -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-size: 15px; font-weight: 600; color: #333;">📡 Webhook Events</span>
+                        <span id="odoo-link-wh-count" style="font-size: 12px; color: #9ca3af;"></span>
+                    </div>
+                    <div id="odoo-link-webhooks" style="color: #9ca3af; text-align: center; padding: 12px; font-size: 13px;">กำลังโหลด...</div>
+                </div>
+
+                <!-- Notification Toggle -->
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px; background: #f9fafb; border-radius: 8px; margin-bottom: 20px;">
+                    <span style="font-size: 14px; color: #333;">รับการแจ้งเตือน</span>
+                    <label class="toggle-switch" style="position: relative; width: 48px; height: 28px; display: inline-block;">
+                        <input type="checkbox" id="notif-toggle" ${profile.notification_enabled ? 'checked' : ''} onchange="window.liffApp.toggleOdooNotification(this.checked)" style="opacity: 0; width: 0; height: 0;">
+                        <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 28px;"></span>
+                    </label>
+                    <style>
+                        input:checked + .slider { background-color: #11B0A6; }
+                        input:checked + .slider:before { transform: translateX(20px); }
+                        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+                    </style>
+                </div>
+
+                <button class="btn btn-outline-danger btn-block" onclick="window.liffApp.handleOdooUnlink()" style="width: 100%; padding: 14px; border: 1px solid #ef4444; color: #ef4444; background: white; border-radius: 8px; font-size: 16px; font-weight: 600;">
+                    ยกเลิกการเชื่อมต่อ
+                </button>
+            </div>
+        `;
+
+        // Load orders and webhooks async
+        this.loadOdooLinkOrders();
+        this.loadOdooLinkWebhooks();
+    }
+
+    /**
+     * Load recent orders for Odoo Link page
+     */
+    async loadOdooLinkOrders() {
+        const el = document.getElementById('odoo-link-orders');
+        const countEl = document.getElementById('odoo-link-orders-count');
+        if (!el) return;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) { el.innerHTML = ''; return; }
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-user-link.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'orders', line_user_id: profile.userId, limit: 5 })
+            });
+            const result = await response.json();
+
+            if (!result.success) {
+                el.innerHTML = `<div style="color:#d97706;font-size:13px;">⚠️ ${result.error || 'ไม่สามารถโหลดได้'}</div>`;
+                return;
+            }
+
+            console.log('Orders API result.data:', JSON.stringify(result.data));
+
+            // Extract orders array robustly
+            let orders = [];
+            const d = result.data;
+            if (Array.isArray(d)) {
+                orders = d;
+            } else if (d && Array.isArray(d.orders)) {
+                orders = d.orders;
+            } else if (d && Array.isArray(d.result)) {
+                orders = d.result;
+            } else if (d && d.result && Array.isArray(d.result.orders)) {
+                orders = d.result.orders;
+            } else if (d && Array.isArray(d.data)) {
+                orders = d.data;
+            }
+
+            const total = d?.total || orders.length;
+            if (countEl) countEl.textContent = total + ' รายการ';
+
+            if (orders.length === 0) {
+                const debugInfo = d?.debug ? ` (${d.debug}, keys: ${JSON.stringify(d.raw_keys)})` : '';
+                el.innerHTML = `<div style="padding:16px;text-align:center;color:#9ca3af;font-size:13px;">📦 ยังไม่มีออเดอร์${debugInfo}</div>`;
+                return;
+            }
+
+            const stateColors = { draft:'#6b7280', sent:'#2563eb', sale:'#16a34a', done:'#16a34a', cancel:'#dc2626' };
+            const stateBgs = { draft:'#f3f4f6', sent:'#dbeafe', sale:'#dcfce7', done:'#dcfce7', cancel:'#fee2e2' };
+            const stateLabels = { draft:'ร่าง', sent:'ส่งแล้ว', sale:'ยืนยัน', done:'เสร็จสิ้น', cancel:'ยกเลิก' };
+
+            let html = '';
+            orders.forEach(o => {
+                const name = o.name || o.order_name || '#' + (o.id || '');
+                const amount = parseFloat(o.amount_total || 0);
+                const state = o.state || 'draft';
+                const label = o.state_display || stateLabels[state] || state;
+                const date = o.date_order ? new Date(o.date_order).toLocaleDateString('th-TH', {day:'2-digit', month:'short'}) : '';
+                html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#f9fafb;border-radius:10px;margin-bottom:6px;cursor:pointer;" onclick="window.router.navigate('/odoo-order-detail',{order_id:${o.id || 0}})">
+                    <div>
+                        <div style="font-weight:600;font-size:14px;color:#111827;">${name}</div>
+                        <div style="font-size:12px;color:#9ca3af;margin-top:2px;">${date}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-weight:700;font-size:14px;color:#16a34a;">฿${amount.toLocaleString()}</div>
+                        <span style="display:inline-block;padding:2px 8px;border-radius:50px;font-size:11px;font-weight:500;background:${stateBgs[state]||'#f3f4f6'};color:${stateColors[state]||'#6b7280'};margin-top:2px;">${label}</span>
+                    </div>
+                </div>`;
+            });
+            el.innerHTML = html;
+        } catch (err) {
+            console.error('loadOdooLinkOrders error:', err);
+            el.innerHTML = `<div style="color:#d97706;font-size:13px;">⚠️ ${err.message}</div>`;
+        }
+    }
+
+    /**
+     * Load webhook events for Odoo Link page
+     */
+    async loadOdooLinkWebhooks() {
+        const el = document.getElementById('odoo-link-webhooks');
+        const countEl = document.getElementById('odoo-link-wh-count');
+        if (!el) return;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) { el.innerHTML = ''; return; }
+
+        const eventIcons = {
+            'order.validated':'✅','order.picker_assigned':'👤','order.picking':'📦',
+            'order.picked':'✅','order.packing':'📦','order.packed':'✅',
+            'order.to_delivery':'🚚','order.in_delivery':'🚚','order.delivered':'✅',
+            'delivery.departed':'🚚','delivery.completed':'✅',
+            'payment.confirmed':'💰','payment.done':'✅',
+            'invoice.created':'📄','invoice.overdue':'⚠️'
+        };
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-webhooks-dashboard.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'list', search: profile.userId, limit: 10 })
+            });
+            const result = await response.json();
+
+            if (!result.success) {
+                el.innerHTML = `<div style="color:#d97706;font-size:13px;">⚠️ ${result.error || 'ไม่สามารถโหลดได้'}</div>`;
+                return;
+            }
+
+            const webhooks = result.data?.webhooks || [];
+            const total = result.data?.total || webhooks.length;
+            if (countEl) countEl.textContent = total + ' รายการ';
+
+            if (webhooks.length === 0) {
+                el.innerHTML = '<div style="padding:16px;text-align:center;color:#9ca3af;font-size:13px;">📡 ยังไม่มี Webhook Events</div>';
+                return;
+            }
+
+            let html = '';
+            webhooks.forEach(w => {
+                const icon = eventIcons[w.event_type] || '📌';
+                const stateDisplay = (w.new_state_display && w.new_state_display !== 'null') ? w.new_state_display : (w.event_type || '').split('.').pop();
+                const orderName = (w.order_name && w.order_name !== 'null') ? w.order_name : '';
+                const time = w.processed_at ? new Date(w.processed_at).toLocaleString('th-TH', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}) : '';
+                const badgeBg = w.status === 'success' ? '#d1fae5' : '#fee2e2';
+                const badgeColor = w.status === 'success' ? '#065f46' : '#991b1b';
+                const badgeText = w.status === 'success' ? 'OK' : 'FAIL';
+                html += `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:#f9fafb;border-radius:8px;margin-bottom:4px;font-size:13px;">
+                    <span style="font-size:16px;flex-shrink:0;">${icon}</span>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:500;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${stateDisplay} ${orderName ? '<span style="color:#11B0A6;">' + orderName + '</span>' : ''}</div>
+                        <div style="font-size:11px;color:#9ca3af;">${time}</div>
+                    </div>
+                    <span style="padding:2px 6px;border-radius:50px;font-size:10px;font-weight:600;background:${badgeBg};color:${badgeColor};flex-shrink:0;">${badgeText}</span>
+                </div>`;
+            });
+            el.innerHTML = html;
+        } catch (err) {
+            console.error('loadOdooLinkWebhooks error:', err);
+            el.innerHTML = `<div style="color:#d97706;font-size:13px;">⚠️ ${err.message}</div>`;
+        }
+    }
+
+    /**
+     * Toggle Notification
+     */
+    async toggleOdooNotification(enabled) {
+        const profile = window.store.get('profile');
+        if (!profile?.userId) return;
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-user-link.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'notification',
+                    line_user_id: profile.userId,
+                    enabled: enabled
+                })
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.showToast(result.data.message, 'success');
+            } else {
+                this.showToast(result.error, 'error');
+                document.getElementById('notif-toggle').checked = !enabled;
+            }
+        } catch (error) {
+            console.error('Toggle error:', error);
+            document.getElementById('notif-toggle').checked = !enabled;
+            this.showToast('เกิดข้อผิดพลาด', 'error');
+        }
+    }
+
+    /**
+     * Unlink Account
+     */
+    async handleOdooUnlink() {
+        if (!confirm('ต้องการยกเลิกการเชื่อมต่อบัญชีหรือไม่?')) return;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) return;
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-user-link.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'unlink',
+                    line_user_id: profile.userId
+                })
+            });
+            const result = await response.json();
+            if (result.success) {
+                this.showToast(result.data.message, 'success');
+                this.initOdooLinkPage();
+            } else {
+                this.showToast(result.error, 'error');
+            }
+        } catch (error) {
+            console.error('Unlink error:', error);
+            this.showToast('เกิดข้อผิดพลาด', 'error');
+        }
+    }
+
+    /**
+     * Render Odoo Orders Page
+     */
+    renderOdooOrdersPage() {
+        // Initialize logic
+        setTimeout(() => this.initOdooOrdersPage(), 100);
+
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">ประวัติคำสั่งซื้อ</h1>
+                </div>
+                <div class="filters-section" style="background: white; padding: 16px; margin-bottom: 8px;">
+                    <div class="search-box" style="position: relative; margin-bottom: 12px;">
+                        <i class="fas fa-search" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: #999;"></i>
+                        <input type="text" id="order-search" placeholder="ค้นหาเลขที่ออเดอร์..." onkeyup="window.liffApp.handleOrderSearch(this.value)"
+                            style="width: 100%; padding: 12px 16px 12px 40px; border: 1px solid #e0e0e0; border-radius: 10px; font-size: 15px;">
+                    </div>
+                    <div class="filter-row" style="display: flex; gap: 8px;">
+                        <select id="order-state-filter" onchange="window.liffApp.loadOdooOrders()" 
+                            style="flex: 1; padding: 10px; border: 1px solid #e0e0e0; border-radius: 8px; font-size: 14px; background: white;">
+                            <option value="">ทุกสถานะ</option>
+                            <option value="draft">ใบเสนอราคา</option>
+                            <option value="sale">คำสั่งซื้อ</option>
+                            <option value="done">สำเร็จ</option>
+                            <option value="cancel">ยกเลิก</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="odoo-orders-list" class="orders-list" style="padding: 16px; padding-top: 8px;">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>กำลังโหลดข้อมูล...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Init Odoo Orders Page
+     */
+    initOdooOrdersPage() {
+        this.loadOdooOrders();
+    }
+
+    /**
+     * Handle order search
+     */
+    handleOrderSearch(keyword) {
+        if (this.orderSearchTimeout) clearTimeout(this.orderSearchTimeout);
+        this.orderSearchTimeout = setTimeout(() => {
+            this.loadOdooOrders({ search: keyword });
+        }, 500);
+    }
+
+    /**
+     * Load Orders
+     */
+    async loadOdooOrders(params = {}) {
+        const container = document.getElementById('odoo-orders-list');
+        if (!container) return;
+
+        container.innerHTML = `
+            <div class="loading-state">
+                <div class="loading-spinner"></div>
+                <p>กำลังโหลดข้อมูล...</p>
+            </div>
+        `;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) {
+            container.innerHTML = `<div class="alert alert-error">กรุณาเข้าสู่ระบบก่อน</div>`;
+            return;
+        }
+
+        const state = document.getElementById('order-state-filter')?.value || '';
+        const search = params.search || document.getElementById('order-search')?.value || '';
+
+        try {
+            const body = {
+                action: 'list',
+                line_user_id: profile.userId,
+                line_account_id: this.config.ACCOUNT_ID,
+                state: state,
+                limit: 20
+            };
+            if (search) body.search = search;
+
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-orders.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.renderOdooOrderList(container, result.data);
+            } else {
+                container.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                        <i class="fas fa-exclamation-circle" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                        <h3 style="color: #666; font-size: 16px; margin-bottom: 8px;">ไม่พบข้อมูล</h3>
+                        <p style="color: #999; font-size: 14px;">${result.error || 'กรุณาเชื่อมต่อบัญชี Odoo ก่อน'}</p>
+                        ${result.error?.includes('เชื่อมต่อ') ?
+                        `<button class="btn btn-primary" onclick="window.router.navigate('/odoo-link')" style="margin-top: 16px; padding: 10px 20px; background: #11B0A6; color: white; border: none; border-radius: 8px;">เชื่อมต่อบัญชี</button>`
+                        : ''}
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Load orders error:', error);
+            container.innerHTML = `<div class="error-state"><p>เกิดข้อผิดพลาด: ${error.message}</p></div>`;
+        }
+    }
+
+    /**
+     * Render Order List
+     */
+    renderOdooOrderList(container, data) {
+        console.log('Rendering orders:', data);
+        // Handle various response shapes:
+        // - flat array: [...]
+        // - {orders: [...]}
+        // - {success, data: {orders:[...]}, meta:{}} (double-wrapped from Odoo)
+        let orders = [];
+        if (Array.isArray(data)) {
+            orders = data;
+        } else if (data?.orders && Array.isArray(data.orders)) {
+            orders = data.orders;
+        } else if (data?.data?.orders && Array.isArray(data.data.orders)) {
+            orders = data.data.orders;
+        } else if (data?.result && Array.isArray(data.result)) {
+            orders = data.result;
+        }
+
+        if (!orders || orders.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                    <i class="fas fa-box-open" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                    <h3 style="color: #666; font-size: 16px;">ไม่พบประวัติคำสั่งซื้อ</h3>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        orders.forEach(order => {
+            const safeOrderId = order.id ?? order.order_id ?? '';
+            const parsedDate = order.date_order ? new Date(order.date_order) : null;
+            const date = parsedDate && !Number.isNaN(parsedDate.getTime())
+                ? parsedDate.toLocaleDateString('th-TH', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                })
+                : '-';
+
+            let statusColor = '#666';
+            let statusText = order.state;
+
+            if (order.state === 'sale' || order.state === 'done') {
+                statusColor = '#10B981';
+                statusText = 'สำเร็จ';
+            } else if (order.state === 'cancel') {
+                statusColor = '#EF4444';
+                statusText = 'ยกเลิก';
+            } else {
+                statusColor = '#F59E0B';
+                statusText = 'รอชำระ/ยืนยัน';
+            }
+
+            html += `
+                <div class="order-card" onclick="window.router.navigate('/odoo-order-detail', { id: '${safeOrderId}' })" style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                        <span style="font-weight: 600; color: #333;">${order.name}</span>
+                        <span style="color: ${statusColor}; font-weight: 500; font-size: 13px;">${statusText}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: #666;">
+                        <span>${date}</span>
+                        <span>${order.amount_total} ${order.currency_id?.[1] || 'THB'}</span>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    }
+
+    renderOdooOrderDetailPage(params) {
+        const orderId = params.id || '';
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">รายละเอียดออเดอร์</h1>
+                </div>
+                <div id="odoo-order-detail-content" class="page-content" data-order-id="${this.escapeHtml(orderId)}">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>กำลังโหลด...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render Odoo Order Tracking Page
+     * Requirements: US-5 - ติดตามสถานะออเดอร์
+     */
+    renderOdooOrderTrackingPage(params) {
+        const orderId = params.id || '';
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">ติดตามออเดอร์</h1>
+                </div>
+                <div id="odoo-order-tracking-content" class="page-content" data-order-id="${this.escapeHtml(orderId)}">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>กำลังโหลด...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render Odoo Invoices Page
+     * Requirements: US-6 - ดูรายการใบแจ้งหนี้
+     */
+    renderOdooInvoicesPage() {
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">ใบแจ้งหนี้ Odoo</h1>
+                </div>
+                <div id="odoo-invoices-content" class="page-content">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>กำลังโหลด...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Render Odoo Credit Status Page
+     * Requirements: US-7 - ดูสถานะวงเงินเครดิต
+     */
+    renderOdooCreditStatusPage() {
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">สถานะวงเงินเครดิต</h1>
+                </div>
+                <div id="odoo-credit-status-content" class="page-content">
+                    <div class="loading-state">
+                        <div class="loading-spinner"></div>
+                        <p>กำลังโหลด...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Init Odoo Invoices Page
+     */
+    initOdooInvoicesPage() {
+        this.loadOdooInvoices();
+    }
+
+    /**
+     * Load Invoices
+     */
+    async loadOdooInvoices() {
+        const container = document.getElementById('odoo-invoices-content');
+        if (!container) return;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) {
+            container.innerHTML = `<div class="alert alert-error">กรุณาเข้าสู่ระบบก่อน</div>`;
+            return;
+        }
+
+        try {
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-invoices.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'list',
+                    line_user_id: profile.userId,
+                    line_account_id: this.config.ACCOUNT_ID,
+                    limit: 20
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                // Handle wrapped response
+                const invoices = Array.isArray(result.data) ? result.data : (result.data?.invoices || []);
+
+                if (invoices.length > 0) {
+                    let html = '';
+                    invoices.forEach(inv => {
+                        const date = new Date(inv.date).toLocaleDateString('th-TH', {
+                            year: 'numeric', month: 'short', day: 'numeric'
+                        });
+
+                        let statusColor = '#666';
+                        let statusText = inv.state;
+
+                        if (inv.state === 'posted') {
+                            if (inv.payment_state === 'paid') {
+                                statusColor = '#10B981';
+                                statusText = 'ชำระแล้ว';
+                            } else {
+                                statusColor = '#F59E0B';
+                                statusText = 'ค้างชำระ';
+                            }
+                        } else if (inv.state === 'cancel') {
+                            statusColor = '#EF4444';
+                            statusText = 'ยกเลิก';
+                        } else {
+                            statusText = 'ฉบับร่าง';
+                        }
+
+                        html += `
+                        <div class="card" style="margin-bottom: 12px; padding: 16px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                                <span style="font-weight: 600;">${inv.name}</span>
+                                <span style="color: ${statusColor}; font-weight: 500;">${statusText}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 13px; color: #666;">
+                                <span>${date}</span>
+                                <span>${inv.amount_total} ${inv.currency_id?.[1] || 'THB'}</span>
+                            </div>
+                        </div>
+                    `;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = `
+                    <div class="empty-state" style="text-align: center; padding: 40px 20px;">
+                        <i class="fas fa-file-invoice-dollar" style="font-size: 48px; color: #ccc; margin-bottom: 16px;"></i>
+                        <h3 style="color: #666; font-size: 16px;">ไม่พบใบแจ้งหนี้</h3>
+                    </div>
+                `;
+                }
+            }
+        } catch (error) {
+            console.error('Load invoices error:', error);
+            container.innerHTML = `<div class="error-state"><p>เกิดข้อผิดพลาด: ${error.message}</p></div>`;
+        }
+    }
+
+
+
+    /**
+     * Load Order Tracking
+     */
+    async loadOdooOrderTracking(orderId) {
+        const container = document.getElementById('odoo-order-tracking-content');
+        if (!container) return;
+
+        const profile = window.store.get('profile');
+        if (!profile?.userId) return;
+
+        try {
+            // Using odoo-orders.php with action=tracking
+            const response = await fetch(`${this.config.BASE_URL}/api/odoo-orders.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'tracking',
+                    order_id: orderId,
+                    line_user_id: profile.userId,
+                    line_account_id: this.config.ACCOUNT_ID
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success && result.data) {
+                // Handle wrapped response
+                const tracks = Array.isArray(result.data) ? result.data : (result.data?.tracking || []);
+
+                if (tracks.length === 0) {
+                    container.innerHTML = `<div class="error-state"><p>ไม่พบประวัติการติดตาม</p></div>`;
+                    return;
+                }
+
+                // Render timeline
+                let html = '<div class="timeline" style="position: relative; padding-left: 20px; border-left: 2px solid #e0e0e0; margin-left: 10px;">';
+
+                tracks.forEach(track => {
+                    const date = new Date(track.date).toLocaleString('th-TH');
+                    html += `
+                        <div class="timeline-item" style="position: relative; margin-bottom: 24px; padding-left: 20px;">
+                            <div class="timeline-dot" style="position: absolute; left: -29px; top: 0; width: 16px; height: 16px; border-radius: 50%; background: #11B0A6; border: 2px solid white;"></div>
+                            <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">${track.stage || track.name}</div>
+                            <div style="font-size: 12px; color: #666;">${date}</div>
+                            ${track.description ? `<div style="font-size: 13px; color: #444; margin-top: 4px;">${track.description}</div>` : ''}
+                        </div>
+                     `;
+                });
+
+                html += '</div>';
+                container.innerHTML = html;
+            } else {
+                container.innerHTML = `<div class="error-state"><p>${result.error || 'ไม่พบข้อมูลการติดตาม'}</p></div>`;
+            }
+        } catch (error) {
+            console.error('Load tracking error:', error);
+            container.innerHTML = `<div class="error-state"><p>เกิดข้อผิดพลาด: ${error.message}</p></div>`;
+        }
+    }
+
+    /**
+     * Render Odoo Slip Page
+     */
+    renderOdooSlipPage() {
+        return `
+            <div class="page-container">
+                <div class="page-header">
+                    <button class="btn-back" onclick="window.router.back()">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <h1 class="page-title">แจ้งโอนเงิน</h1>
+                </div>
+                <div id="odoo-slip-content" class="page-content" style="padding: 20px;">
+                    <form id="slip-form" onsubmit="window.liffApp.handleSlipUpload(event)">
+                        <div style="text-align: center; margin-bottom: 24px;">
+                            <div id="slip-preview-container" style="width: 100%; height: 200px; background: #f5f5f5; border: 2px dashed #ddd; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative;">
+                                <img id="slip-preview" style="max-width: 100%; max-height: 100%; display: none;">
+                                <div id="slip-placeholder" style="text-align: center;">
+                                    <i class="fas fa-camera" style="font-size: 32px; color: #ccc; margin-bottom: 8px;"></i>
+                                    <p style="color: #999; font-size: 14px;">แตะเพื่ออัพโหลดรูปภาพ</p>
+                                </div>
+                                <input type="file" id="slip-file" accept="image/*" style="opacity: 0; position: absolute; top: 0; left: 0; width: 100%; height: 100%; cursor: pointer;" onchange="window.liffApp.previewSlipImage(this)">
+                            </div>
+                        </div>
+                        
+                        <div class="form-group" style="margin-bottom: 16px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500;">จำนวนเงิน</label>
+                            <input type="number" step="0.01" id="slip-amount" class="form-control" placeholder="0.00" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                        </div>
+
+                        <div class="form-group" style="margin-bottom: 24px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500;">วันที่โอน</label>
+                            <input type="datetime-local" id="slip-date" class="form-control" style="width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px;">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary btn-block" style="width: 100%; padding: 14px; background: #11B0A6; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 16px;">
+                            ส่งหลักฐานการโอนเงิน
+                        </button>
+                    </form>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Init Slip Page
+     */
+    initOdooSlipPage() {
+        // Set default date to now
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+
+        const dateInput = document.getElementById('slip-date');
+        if (dateInput) {
+            dateInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+        }
+    }
+
+    /**
+     * Preview Slip Image
+     */
+    previewSlipImage(input) {
+        const preview = document.getElementById('slip-preview');
+        const placeholder = document.getElementById('slip-placeholder');
+
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                preview.src = e.target.result;
+                preview.style.display = 'block';
+                placeholder.style.display = 'none';
+            }
+
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    /**
+     * Handle Slip Upload
+     */
+    async handleSlipUpload(event) {
+        event.preventDefault();
+
+        const fileInput = document.getElementById('slip-file');
+        const amount = document.getElementById('slip-amount').value;
+        const transferDate = document.getElementById('slip-date').value;
+
+        if (!fileInput.files || !fileInput.files[0]) {
+            alert('กรุณาเลือกรูปหลักฐานการโอน');
+            return;
+        }
+
+        if (!amount) {
+            alert('กรุณาระบุจำนวนเงิน');
+            return;
+        }
+
+        const submitBtn = event.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerHTML;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังส่งข้อมูล...';
+        submitBtn.disabled = true;
+
+        try {
+            const profile = window.store.get('profile');
+            const file = fileInput.files[0];
+
+            // Read file as base64
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+
+            reader.onload = async () => {
+                const base64 = reader.result.split(',')[1];
+
+                try {
+                    const response = await fetch(`${this.config.BASE_URL}/api/odoo-slip-upload.php`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            line_user_id: profile.userId,
+                            image_base64: base64, // Direct upload
+                            amount: amount,
+                            transfer_date: transferDate
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        const slipData = result.data || {};
+                        const isMatched = slipData.matched || slipData.status === 'matched';
+                        let msg = '';
+                        if (isMatched) {
+                            msg = '✅ ส่งหลักฐานและจับคู่เรียบร้อยแล้ว';
+                            if (slipData.order_name) msg += `\n📦 ออเดอร์: ${slipData.order_name}`;
+                            if (slipData.amount) msg += `\n💰 ยอดเงิน: ฿${parseFloat(slipData.amount).toFixed(2)}`;
+                        } else {
+                            msg = '✅ ส่งหลักฐานเรียบร้อยแล้ว\n⏳ รอเจ้าหน้าที่ตรวจสอบและจับคู่การชำระเงิน';
+                        }
+                        alert(msg);
+                        window.router.back();
+                    } else {
+                        throw new Error(result.error || 'Upload failed');
+                    }
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    alert('เกิดข้อผิดพลาด: ' + error.message);
+                    submitBtn.innerHTML = originalText;
+                    submitBtn.disabled = false;
+                }
+            };
+        } catch (error) {
+            console.error('Upload error:', error);
+            alert('เกิดข้อผิดพลาด: ' + error.message);
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
+        }
     }
 }
 

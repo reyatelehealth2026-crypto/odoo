@@ -110,17 +110,51 @@ try {
                             <li>• เขียนแคปชั่นขายสินค้า</li>
                             <li>• ช่วยคิดไอเดียโปรโมชั่น</li>
                             <li>• แปลภาษา</li>
-                            <li>• ตอบคำถามทั่วไป</li>
+                            <li>• วิเคราะห์รูปภาพ 📸</li>
                         </ul>
                     </div>
                 </div>
                 
-                <div class="p-4 border-t bg-white">
-                    <form onsubmit="sendStudioChat(event)" class="flex gap-2">
-                        <input type="text" id="studioChatInput" class="flex-1 px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="พิมพ์ข้อความ...">
-                        <button type="submit" class="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors">
-                            <i class="fas fa-paper-plane"></i>
+                <!-- Quick Actions -->
+                <div class="px-4 py-2 bg-gray-100 border-t">
+                    <div class="flex gap-2 overflow-x-auto pb-2">
+                        <button onclick="askStudioQuick('เขียนข้อความต้อนรับลูกค้าใหม่')" class="px-3 py-1.5 text-xs bg-white rounded-lg hover:bg-gray-50 whitespace-nowrap border">
+                            👋 ต้อนรับลูกค้า
                         </button>
+                        <button onclick="askStudioQuick('คิดโปรโมชั่นสำหรับร้านขายยา')" class="px-3 py-1.5 text-xs bg-white rounded-lg hover:bg-gray-50 whitespace-nowrap border">
+                            🎁 คิดโปรโมชั่น
+                        </button>
+                        <button onclick="askStudioQuick('ช่วยตอบคำถามลูกค้าเรื่องการจัดส่ง')" class="px-3 py-1.5 text-xs bg-white rounded-lg hover:bg-gray-50 whitespace-nowrap border">
+                            📦 ตอบเรื่องจัดส่ง
+                        </button>
+                        <button onclick="clearStudioChat()" class="px-3 py-1.5 text-xs bg-white rounded-lg hover:bg-gray-50 whitespace-nowrap border text-red-600">
+                            🗑️ ล้างแชท
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="p-4 border-t bg-white">
+                    <form onsubmit="sendStudioChat(event)" class="space-y-2">
+                        <!-- Image Preview -->
+                        <div id="studioChatImagePreview" class="hidden">
+                            <div class="relative inline-block">
+                                <img id="studioChatImagePreviewImg" class="max-h-32 rounded-lg border">
+                                <button type="button" onclick="clearStudioChatImage()" class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full hover:bg-red-600">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-2">
+                            <input type="file" id="studioChatImageInput" accept="image/*" class="hidden" onchange="handleStudioChatImage(event)">
+                            <button type="button" onclick="document.getElementById('studioChatImageInput').click()" class="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors" title="แนบรูปภาพ">
+                                <i class="fas fa-image"></i>
+                            </button>
+                            <input type="text" id="studioChatInput" class="flex-1 px-4 py-3 border rounded-xl focus:ring-2 focus:ring-purple-500" placeholder="พิมพ์ข้อความหรือแนบรูป...">
+                            <button type="submit" id="studioChatSendBtn" class="px-6 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors">
+                                <i class="fas fa-paper-plane"></i>
+                            </button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -135,6 +169,29 @@ try {
                         <p class="text-sm text-pink-200">Imagen 4.0 - สร้างรูปจริงจาก AI</p>
                     </div>
                     <div class="p-6">
+                        <!-- Template Quick Select -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">เทมเพลตสำเร็จรูป</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" onclick="useImageTemplate('product')" class="px-3 py-2 text-sm bg-gradient-to-r from-blue-50 to-blue-100 hover:from-blue-100 hover:to-blue-200 rounded-lg border border-blue-200 text-left">
+                                    <div class="font-medium">📦 รูปสินค้า</div>
+                                    <div class="text-xs text-gray-600">ถ่ายสินค้าสวยงาม</div>
+                                </button>
+                                <button type="button" onclick="useImageTemplate('food')" class="px-3 py-2 text-sm bg-gradient-to-r from-orange-50 to-orange-100 hover:from-orange-100 hover:to-orange-200 rounded-lg border border-orange-200 text-left">
+                                    <div class="font-medium">🍔 อาหาร</div>
+                                    <div class="text-xs text-gray-600">ถ่ายอาหารน่าทาน</div>
+                                </button>
+                                <button type="button" onclick="useImageTemplate('promo')" class="px-3 py-2 text-sm bg-gradient-to-r from-pink-50 to-pink-100 hover:from-pink-100 hover:to-pink-200 rounded-lg border border-pink-200 text-left">
+                                    <div class="font-medium">🎉 โปรโมชั่น</div>
+                                    <div class="text-xs text-gray-600">แบนเนอร์โปรโมท</div>
+                                </button>
+                                <button type="button" onclick="useImageTemplate('social')" class="px-3 py-2 text-sm bg-gradient-to-r from-purple-50 to-purple-100 hover:from-purple-100 hover:to-purple-200 rounded-lg border border-purple-200 text-left">
+                                    <div class="font-medium">📱 โซเชียล</div>
+                                    <div class="text-xs text-gray-600">โพสต์โซเชียล</div>
+                                </button>
+                            </div>
+                        </div>
+                        
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">รายละเอียดรูปภาพ (Prompt)</label>
                             <textarea id="studioImagePrompt" rows="4" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-pink-500" placeholder="เช่น: กาแฟลาเต้ร้อน ในถ้วยเซรามิกสีขาว วางบนโต๊ะไม้..."></textarea>
@@ -250,6 +307,25 @@ try {
                         <p class="text-sm text-orange-200">แคปชั่นโซเชียลมีเดียสุดปัง</p>
                     </div>
                     <div class="p-6">
+                        <!-- Upload Image for Caption -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">📸 อัปโหลดรูปเพื่อสร้างแคปชั่น (ไม่บังคับ)</label>
+                            <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:border-orange-400 transition-colors cursor-pointer" onclick="document.getElementById('studioCaptionImageInput').click()">
+                                <input type="file" id="studioCaptionImageInput" accept="image/*" class="hidden" onchange="handleStudioCaptionImage(event)">
+                                <div id="studioCaptionImagePreview" class="hidden">
+                                    <img id="studioCaptionImagePreviewImg" class="max-h-40 mx-auto rounded-lg mb-2">
+                                    <button type="button" onclick="event.stopPropagation(); clearStudioCaptionImage()" class="text-sm text-red-600 hover:underline">
+                                        <i class="fas fa-times mr-1"></i>ลบรูป
+                                    </button>
+                                </div>
+                                <div id="studioCaptionImagePlaceholder">
+                                    <i class="fas fa-cloud-upload-alt text-4xl text-gray-400 mb-2"></i>
+                                    <p class="text-sm text-gray-600">คลิกเพื่ออัปโหลดรูป</p>
+                                    <p class="text-xs text-gray-400">AI จะวิเคราะห์รูปและสร้างแคปชั่นให้อัตโนมัติ</p>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <div class="mb-4">
                             <label class="block text-sm font-medium text-gray-700 mb-2">ประเภทแคปชั่น</label>
                             <select id="studioCaptionType" class="w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-orange-500">
@@ -397,6 +473,8 @@ let studioCurrentImageStyle = 'realistic';
 let studioCurrentFlexColor = '#06C755';
 let studioCurrentFlexJson = null;
 let studioChatHistory = [];
+let studioChatImageData = null;
+let studioCaptionImageData = null;
 
 // Tab Switching
 function switchStudioTab(tab) {
@@ -464,10 +542,17 @@ async function saveStudioApiKey() {
     }
 }
 
-// Gemini API Call
-async function callStudioGemini(text, systemInstruction = '') {
+// Gemini API Call (with Vision support)
+async function callStudioGemini(text, systemInstruction = '', imageData = null) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${studioCurrentApiKey}`;
-    const body = { contents: [{ parts: [{ text }] }] };
+    const parts = [];
+    
+    if (imageData) {
+        parts.push({ inlineData: { mimeType: imageData.mimeType, data: imageData.data } });
+    }
+    parts.push({ text });
+    
+    const body = { contents: [{ parts }] };
     if (systemInstruction) body.systemInstruction = { parts: [{ text: systemInstruction }] };
     
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -483,32 +568,100 @@ async function sendStudioChat(e) {
     
     const input = document.getElementById('studioChatInput');
     const message = input.value.trim();
-    if (!message) return;
+    if (!message && !studioChatImageData) return;
     
-    addStudioChatMessage(message, 'user');
+    const displayMessage = message || '📸 [รูปภาพ]';
+    addStudioChatMessage(displayMessage, 'user', studioChatImageData?.preview);
     input.value = '';
     const typingId = addStudioTypingIndicator();
+    
+    const sendBtn = document.getElementById('studioChatSendBtn');
+    sendBtn.disabled = true;
     
     try {
         let context = studioChatHistory.slice(-10).map(m => `${m.role}: ${m.content}`).join('\n');
         const prompt = context ? `${context}\nUser: ${message}` : message;
-        const response = await callStudioGemini(prompt, 'คุณคือ AI Assistant ที่ช่วยเหลือเรื่องธุรกิจ การตลาด และการขายออนไลน์ ตอบเป็นภาษาไทย กระชับ เป็นมิตร');
+        const systemPrompt = studioChatImageData 
+            ? 'คุณคือ AI Assistant ที่ช่วยวิเคราะห์รูปภาพและตอบคำถาม ตอบเป็นภาษาไทย กระชับ เป็นมิตร อธิบายรูปภาพอย่างละเอียด'
+            : 'คุณคือ AI Assistant ที่ช่วยเหลือเรื่องธุรกิจ การตลาด และการขายออนไลน์ ตอบเป็นภาษาไทย กระชับ เป็นมิตร';
+        
+        const response = await callStudioGemini(prompt, systemPrompt, studioChatImageData);
         
         document.getElementById(typingId)?.remove();
         addStudioChatMessage(response, 'ai');
         studioChatHistory.push({ role: 'User', content: message });
         studioChatHistory.push({ role: 'AI', content: response });
+        
+        clearStudioChatImage();
     } catch (err) {
         document.getElementById(typingId)?.remove();
         addStudioChatMessage('เกิดข้อผิดพลาด: ' + err.message, 'ai');
+    } finally {
+        sendBtn.disabled = false;
     }
 }
 
-function addStudioChatMessage(text, type) {
+function handleStudioChatImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const base64 = event.target.result.split(',')[1];
+        studioChatImageData = {
+            mimeType: file.type,
+            data: base64,
+            preview: event.target.result
+        };
+        
+        document.getElementById('studioChatImagePreviewImg').src = event.target.result;
+        document.getElementById('studioChatImagePreview').classList.remove('hidden');
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearStudioChatImage() {
+    studioChatImageData = null;
+    document.getElementById('studioChatImagePreview').classList.add('hidden');
+    document.getElementById('studioChatImageInput').value = '';
+}
+
+function askStudioQuick(question) {
+    document.getElementById('studioChatInput').value = question;
+    document.getElementById('studioChatInput').focus();
+}
+
+function clearStudioChat() {
+    if (!confirm('ต้องการล้างประวัติการสนทนาหรือไม่?')) return;
+    studioChatHistory = [];
+    const container = document.getElementById('studioChatMessages');
+    container.innerHTML = `
+        <div class="studio-chat-bubble ai rounded-2xl p-4 text-gray-700">
+            <p>สวัสดีครับ! 👋 ผมคือ AI Assistant พร้อมช่วยเหลือคุณ</p>
+            <p class="text-sm mt-2">ลองถามอะไรก็ได้ เช่น:</p>
+            <ul class="text-sm mt-1 space-y-1 text-gray-600">
+                <li>• เขียนแคปชั่นขายสินค้า</li>
+                <li>• ช่วยคิดไอเดียโปรโมชั่น</li>
+                <li>• แปลภาษา</li>
+                <li>• วิเคราะห์รูปภาพ 📸</li>
+            </ul>
+        </div>
+    `;
+    showStudioToast('ล้างแชทแล้ว');
+}
+
+function addStudioChatMessage(text, type, imagePreview = null) {
     const container = document.getElementById('studioChatMessages');
     const div = document.createElement('div');
     div.className = `studio-chat-bubble ${type} rounded-2xl p-4 ${type === 'user' ? 'ml-auto text-white' : 'mr-auto text-gray-700'}`;
-    div.innerHTML = typeof marked !== 'undefined' ? marked.parse(text) : text;
+    
+    let content = '';
+    if (imagePreview) {
+        content += `<img src="${imagePreview}" class="max-w-full max-h-48 rounded-lg mb-2">`;
+    }
+    content += typeof marked !== 'undefined' ? marked.parse(text) : text;
+    
+    div.innerHTML = content;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }
@@ -526,7 +679,22 @@ function addStudioTypingIndicator() {
 }
 
 // Image Functions
-function setStudioImageStyle(style) { studioCurrentImageStyle = style; }
+function setStudioImageStyle(style) { 
+    studioCurrentImageStyle = style;
+    document.querySelectorAll('.studio-style-btn').forEach(btn => btn.classList.remove('active', 'ring-2', 'ring-pink-500'));
+    event.target.classList.add('active', 'ring-2', 'ring-pink-500');
+}
+
+function useImageTemplate(type) {
+    const templates = {
+        product: 'สินค้าวางบนพื้นหลังสีขาว แสงสว่างนุ่มนวล มุมมองสวยงาม สไตล์โปรดักส์ช็อต คุณภาพสูง',
+        food: 'อาหารจานสวยงาม แสงธรรมชาติ มุมมองจากด้านบน สไตล์ฟู้ดโฟโตกราฟี น่าทาน สดใหม่',
+        promo: 'แบนเนอร์โปรโมชั่น สีสันสดใส ข้อความชัดเจน ดีไซน์ทันสมัย ดึงดูดสายตา',
+        social: 'โพสต์โซเชียลมีเดีย สไตล์มินิมอล สีพาสเทล ดูสะอาดตา เหมาะกับ Instagram'
+    };
+    document.getElementById('studioImagePrompt').value = templates[type] || '';
+    showStudioToast('ใช้เทมเพลต: ' + type);
+}
 
 async function generateStudioImage() {
     if (!studioCurrentApiKey) { openStudioApiModal(); return; }
@@ -596,10 +764,36 @@ function copyStudioFlexJson() {
 }
 
 // Caption Functions
+function handleStudioCaptionImage(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(event) {
+        const base64 = event.target.result.split(',')[1];
+        studioCaptionImageData = {
+            mimeType: file.type,
+            data: base64
+        };
+        
+        document.getElementById('studioCaptionImagePreviewImg').src = event.target.result;
+        document.getElementById('studioCaptionImagePreview').classList.remove('hidden');
+        document.getElementById('studioCaptionImagePlaceholder').classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+}
+
+function clearStudioCaptionImage() {
+    studioCaptionImageData = null;
+    document.getElementById('studioCaptionImagePreview').classList.add('hidden');
+    document.getElementById('studioCaptionImagePlaceholder').classList.remove('hidden');
+    document.getElementById('studioCaptionImageInput').value = '';
+}
+
 async function generateStudioCaption() {
     if (!studioCurrentApiKey) { openStudioApiModal(); return; }
     const prompt = document.getElementById('studioCaptionPrompt').value.trim();
-    if (!prompt) { showStudioToast('กรุณากรอกรายละเอียด', true); return; }
+    if (!prompt && !studioCaptionImageData) { showStudioToast('กรุณากรอกรายละเอียดหรืออัปโหลดรูป', true); return; }
     
     const btn = document.getElementById('btnStudioGenCaption');
     btn.disabled = true;
@@ -610,11 +804,20 @@ async function generateStudioCaption() {
         const includeHashtags = document.getElementById('studioIncludeHashtags').checked;
         const includeEmoji = document.getElementById('studioIncludeEmoji').checked;
         
-        const systemPrompt = `สร้างแคปชั่นโซเชียลมีเดียภาษาไทย ประเภท: ${type} ${includeHashtags ? 'ใส่ Hashtags 5-10 อัน' : ''} ${includeEmoji ? 'ใส่ Emoji' : ''} สร้าง 3 เวอร์ชัน: สั้น, กลาง, ยาว`;
-        const caption = await callStudioGemini(prompt, systemPrompt);
+        let systemPrompt = `สร้างแคปชั่นโซเชียลมีเดียภาษาไทย ประเภท: ${type} ${includeHashtags ? 'ใส่ Hashtags 5-10 อัน' : ''} ${includeEmoji ? 'ใส่ Emoji' : ''} สร้าง 3 เวอร์ชัน: สั้น, กลาง, ยาว`;
+        let finalPrompt = prompt;
+        
+        if (studioCaptionImageData) {
+            systemPrompt = `วิเคราะห์รูปภาพและ` + systemPrompt;
+            finalPrompt = prompt ? `${prompt}\n\nวิเคราะห์รูปภาพและสร้างแคปชั่นที่เหมาะสม` : 'วิเคราะห์รูปภาพนี้และสร้างแคปชั่นที่น่าสนใจ';
+        }
+        
+        const caption = await callStudioGemini(finalPrompt, systemPrompt, studioCaptionImageData);
         
         document.getElementById('studioCaptionResult').innerHTML = `<div class="prose prose-sm max-w-none">${typeof marked !== 'undefined' ? marked.parse(caption) : caption}</div>`;
         showStudioToast('สร้างแคปชั่นสำเร็จ!');
+        
+        if (studioCaptionImageData) clearStudioCaptionImage();
     } catch (err) {
         showStudioToast('เกิดข้อผิดพลาด: ' + err.message, true);
     } finally {

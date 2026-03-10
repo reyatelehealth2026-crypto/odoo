@@ -41,6 +41,7 @@ try {
     require_once __DIR__ . '/../config/config.php';
     require_once __DIR__ . '/../config/database.php';
 } catch (Throwable $e) {
+    logInboxApiException($e, 'catch');
     echo json_encode(['success' => false, 'error' => 'Failed to load config: ' . $e->getMessage()]);
     exit;
 }
@@ -49,6 +50,7 @@ try {
 try {
     $db = Database::getInstance()->getConnection();
 } catch (Throwable $e) {
+    logInboxApiException($e, 'catch');
     echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
     exit;
 }
@@ -92,14 +94,19 @@ function loadService(string $className, $db, $lineAccountId)
 }
 
 /**
- * Send JSON response
+ * Send JSON response (always valid JSON even on encode failure)
  * @param array $data Response data
  * @param int $statusCode HTTP status code
  */
 function sendResponse(array $data, int $statusCode = 200): void
 {
     http_response_code($statusCode);
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    $flags = JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT | (defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0);
+    $json = json_encode($data, $flags);
+    if ($json === false) {
+        $json = json_encode(['success' => false, 'error' => 'Invalid response data']);
+    }
+    echo $json;
     exit;
 }
 
@@ -111,6 +118,27 @@ function sendResponse(array $data, int $statusCode = 200): void
 function sendError(string $message, int $statusCode = 400): void
 {
     sendResponse(['success' => false, 'error' => $message], $statusCode);
+}
+
+/**
+ * Log exceptions that happen inside inbox-v2 endpoints.
+ */
+function logInboxApiException(Throwable $exception, string $context = 'inbox-v2', ?array $extra = null): void
+{
+    $message = sprintf(
+        "[%s][%s] %s in %s:%d",
+        'inbox-v2',
+        $context,
+        $exception->getMessage(),
+        $exception->getFile(),
+        $exception->getLine()
+    );
+
+    error_log($message);
+
+    if ($extra) {
+        error_log(sprintf("[%s][%s] context: %s", 'inbox-v2', $context, json_encode($extra, JSON_UNESCAPED_UNICODE)));
+    }
 }
 
 /**
@@ -170,6 +198,9 @@ try {
             }
 
             $imageUrl = $_POST['image_url'] ?? getJsonBody()['image_url'] ?? '';
+            if (!empty($imageUrl) && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                sendError('Invalid image URL format');
+            }
 
             if (empty($imageUrl)) {
                 sendError('Image URL is required');
@@ -208,6 +239,9 @@ try {
             }
 
             $imageUrl = $_POST['image_url'] ?? getJsonBody()['image_url'] ?? '';
+            if (!empty($imageUrl) && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                sendError('Invalid image URL format');
+            }
 
             if (empty($imageUrl)) {
                 sendError('Image URL is required');
@@ -249,6 +283,13 @@ try {
             $imageUrl = $_POST['image_url'] ?? $body['image_url'] ?? '';
             $userId = (int) ($_POST['user_id'] ?? $body['user_id'] ?? 0);
 
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
+            if (!empty($imageUrl) && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                sendError('Invalid image URL format');
+            }
+
             if (empty($imageUrl)) {
                 sendError('Image URL is required');
             }
@@ -287,6 +328,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -317,6 +361,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $minMessages = (int) ($_GET['min_messages'] ?? 5);
 
             if (!$userId) {
@@ -513,6 +560,7 @@ try {
                     try {
                         $pricing = $pricingEngine->calculateMargin((int) $drug['id']);
                     } catch (Exception $e) {
+                        logInboxApiException($e, 'catch');
                         // Pricing calculation failed, continue without it
                         $pricing = null;
                     }
@@ -552,6 +600,7 @@ try {
                     ]
                 ]);
             } catch (PDOException $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Database error: ' . $e->getMessage(), 500);
             }
             break;
@@ -566,8 +615,14 @@ try {
             }
 
             $query = trim($_GET['query'] ?? '');
+            if (empty($query)) {
+                sendError('Search query is required');
+            }
             if (mb_strlen($query) < 2) {
                 sendError('Query must be at least 2 characters');
+            }
+            if (mb_strlen($query) > 100) {
+                sendError('Query is too long (max 100 characters)');
             }
 
             try {
@@ -632,6 +687,7 @@ try {
                 ]);
 
             } catch (PDOException $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Database error: ' . $e->getMessage(), 500);
             }
             break;
@@ -702,6 +758,7 @@ try {
                 ]);
 
             } catch (PDOException $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Database error: ' . $e->getMessage(), 500);
             }
             break;
@@ -784,6 +841,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -857,6 +917,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -888,6 +951,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -941,35 +1007,7 @@ try {
         // ============================================
         // GET /search-drugs - Search drug inventory
         // Requirements: 10.2
-        // ============================================
-        case 'search_drugs':
-        case 'search-drugs':
-            if ($method !== 'GET') {
-                sendError('Method not allowed', 405);
-            }
-
-            $query = $_GET['q'] ?? $_GET['query'] ?? '';
-            $inStockOnly = filter_var($_GET['in_stock'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
-            $limit = (int) ($_GET['limit'] ?? 20);
-
-            if (empty($query)) {
-                sendError('Search query is required');
-            }
-
-            $integration = loadService('PharmacyIntegrationService', $db, $lineAccountId);
-
-            if (!$integration) {
-                sendError('Integration service not available', 503);
-            }
-
-            $result = $integration->searchDrugInventory($query, $inStockOnly, $limit);
-
-            sendResponse([
-                'success' => true,
-                'data' => $result,
-                'count' => count($result)
-            ]);
-            break;
+        // search_drugs moved to consolidated search section at line 611
 
         // ============================================
         // GET /drug-pricing-data - Get drug pricing from business_items
@@ -1048,6 +1086,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $drugName = $_GET['drug_name'] ?? $_GET['drug'] ?? '';
 
             if (!$userId) {
@@ -1083,6 +1124,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $limit = (int) ($_GET['limit'] ?? 20);
 
             if (!$userId) {
@@ -1143,6 +1187,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $symptoms = $_GET['symptoms'] ?? '';
             $type = $_GET['type'] ?? '';
             $message = $_GET['message'] ?? '';
@@ -1172,6 +1219,7 @@ try {
                         break;
                     }
                 } catch (Throwable $e) {
+                    logInboxApiException($e, 'catch');
                     error_log("Chat history search error: " . $e->getMessage());
                 }
             }
@@ -1199,6 +1247,7 @@ try {
                         break;
                     }
                 } catch (Throwable $e) {
+                    logInboxApiException($e, 'catch');
                     error_log("Message search error: " . $e->getMessage());
                 }
             }
@@ -1257,6 +1306,7 @@ try {
                         ]
                     ]);
                 } catch (PDOException $e) {
+                    logInboxApiException($e, 'catch');
                     sendResponse([
                         'success' => true,
                         'data' => [
@@ -1359,6 +1409,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -1422,6 +1475,9 @@ try {
 
             $drugId = (int) ($_GET['drug_id'] ?? $_GET['id'] ?? 0);
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$drugId) {
                 sendError('Drug ID is required');
@@ -1464,6 +1520,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $message = $_GET['message'] ?? '';
 
             if (!$userId) {
@@ -1510,6 +1569,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -1541,6 +1603,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $stage = $_GET['stage'] ?? '';
             $hasUrgent = filter_var($_GET['has_urgent'] ?? 'false', FILTER_VALIDATE_BOOLEAN);
 
@@ -1581,6 +1646,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
 
             if (!$userId) {
                 sendError('User ID is required');
@@ -1697,6 +1765,7 @@ try {
                     ]
                 ]);
             } catch (PDOException $e) {
+                logInboxApiException($e, 'catch');
                 error_log("Analytics query error: " . $e->getMessage());
                 sendResponse([
                     'success' => true,
@@ -1822,6 +1891,7 @@ try {
                     'expires_at' => $expiresAt
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to save pending order: ' . $e->getMessage());
             }
             break;
@@ -1864,6 +1934,7 @@ try {
                         $tier = ['name' => 'Silver', 'icon' => '🥈', 'color' => '#6B7280'];
                     }
                 } catch (Exception $e) {
+                    logInboxApiException($e, 'catch');
                 }
 
                 // Get stats
@@ -1879,6 +1950,7 @@ try {
                     $stmt->execute([$userId]);
                     $stats['message_count'] = $stmt->fetchColumn();
                 } catch (Exception $e) {
+                    logInboxApiException($e, 'catch');
                 }
 
                 // Get tags
@@ -1890,6 +1962,7 @@ try {
                     $stmt->execute([$userId]);
                     $tags = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Exception $e) {
+                    logInboxApiException($e, 'catch');
                 }
 
                 // Get all available tags for selector
@@ -1899,23 +1972,17 @@ try {
                     $stmt->execute([$lineAccountId]);
                     $allTags = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Exception $e) {
+                    logInboxApiException($e, 'catch');
                 }
 
-                // Get notes - try customer_notes first, fallback to user_notes
+                // Get notes from user_notes table (ORDER BY user_id ASC per table; per user we order by created_at DESC)
                 $notes = [];
                 try {
-                    // Try customer_notes table first
-                    $stmt = $db->prepare("SELECT id, user_id, content, created_by, created_at FROM customer_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
+                    $stmt = $db->prepare("SELECT id, user_id, note as content, created_by, created_at FROM user_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
                     $stmt->execute([$userId]);
                     $notes = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Exception $e) {
-                    // Fallback to user_notes table
-                    try {
-                        $stmt = $db->prepare("SELECT id, user_id, note as content, created_by, created_at FROM user_notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 10");
-                        $stmt->execute([$userId]);
-                        $notes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                    } catch (Exception $e2) {
-                    }
+                    logInboxApiException($e, 'catch');
                 }
 
                 // Get recent transactions
@@ -1925,6 +1992,7 @@ try {
                     $stmt->execute([$userId]);
                     $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 } catch (Exception $e) {
+                    logInboxApiException($e, 'catch');
                 }
 
                 sendResponse([
@@ -1941,6 +2009,7 @@ try {
                     ]
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to load CRM data: ' . $e->getMessage());
             }
             break;
@@ -1961,15 +2030,9 @@ try {
             }
 
             try {
-                // Try customer_notes first, fallback to user_notes
-                try {
-                    $stmt = $db->prepare("INSERT INTO customer_notes (user_id, content, created_by, created_at) VALUES (?, ?, ?, NOW())");
-                    $stmt->execute([$userId, $content, $adminId ?? 'Admin']);
-                } catch (Exception $e) {
-                    // Fallback to user_notes table
-                    $stmt = $db->prepare("INSERT INTO user_notes (user_id, note, created_at) VALUES (?, ?, NOW())");
-                    $stmt->execute([$userId, $content]);
-                }
+                // Use user_notes table only
+                $stmt = $db->prepare("INSERT INTO user_notes (user_id, note, created_by, created_at) VALUES (?, ?, ?, NOW())");
+                $stmt->execute([$userId, $content, $adminId ?? null]);
 
                 sendResponse([
                     'success' => true,
@@ -1977,6 +2040,7 @@ try {
                     'note_id' => $db->lastInsertId()
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to add note: ' . $e->getMessage());
             }
             break;
@@ -2024,6 +2088,7 @@ try {
                     'tag_id' => $tagId
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to add tag: ' . $e->getMessage());
             }
             break;
@@ -2052,6 +2117,7 @@ try {
                     'message' => 'Tag removed successfully'
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to remove tag: ' . $e->getMessage());
             }
             break;
@@ -2080,6 +2146,7 @@ try {
                     'message' => 'Tag assigned successfully'
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to assign tag: ' . $e->getMessage());
             }
             break;
@@ -2104,7 +2171,13 @@ try {
             }
 
             try {
-                $stmt = $db->prepare("UPDATE users SET {$field} = ? WHERE id = ?");
+                // If updating display_name, save to custom_display_name instead
+                // This prevents webhook from overwriting it with LINE API data
+                if ($field === 'display_name') {
+                    $stmt = $db->prepare("UPDATE users SET custom_display_name = ? WHERE id = ?");
+                } else {
+                    $stmt = $db->prepare("UPDATE users SET {$field} = ? WHERE id = ?");
+                }
                 $stmt->execute([$value ?: null, $userId]);
 
                 sendResponse([
@@ -2112,6 +2185,7 @@ try {
                     'message' => 'Customer info updated successfully'
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to update customer info: ' . $e->getMessage());
             }
             break;
@@ -2143,6 +2217,7 @@ try {
                     'data' => $templates
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get templates: ' . $e->getMessage());
             }
             break;
@@ -2182,6 +2257,7 @@ try {
                     'id' => $templateId
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to create template: ' . $e->getMessage());
             }
             break;
@@ -2233,6 +2309,7 @@ try {
                     sendError('Failed to update template');
                 }
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to update template: ' . $e->getMessage());
             }
             break;
@@ -2268,6 +2345,7 @@ try {
                     sendError('Failed to delete template');
                 }
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to delete template: ' . $e->getMessage());
             }
             break;
@@ -2310,6 +2388,7 @@ try {
                     $stmt = $db->prepare("INSERT INTO chat_status_history (user_id, line_account_id, old_status, new_status, changed_by) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([$userId, $lineAccountId, $oldStatus, $status ?: null, $adminId]);
                 } catch (Exception $e) {
+                    logInboxApiException($e, 'catch');
                     // History table might not exist yet, ignore
                 }
 
@@ -2318,6 +2397,7 @@ try {
                     'message' => 'Chat status updated successfully'
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to update chat status: ' . $e->getMessage());
             }
             break;
@@ -2340,6 +2420,7 @@ try {
                     'message' => "Marked {$affected} messages as read"
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to mark messages as read: ' . $e->getMessage());
             }
             break;
@@ -2368,6 +2449,7 @@ try {
                     'data' => $admins
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get admin list: ' . $e->getMessage());
             }
             break;
@@ -2428,6 +2510,7 @@ try {
                     sendError('Failed to assign conversation');
                 }
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to assign conversation: ' . $e->getMessage());
             }
             break;
@@ -2467,6 +2550,7 @@ try {
                     'message' => $message
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to unassign conversation: ' . $e->getMessage());
             }
             break;
@@ -2496,6 +2580,7 @@ try {
                     'data' => $assignment
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get assignment: ' . $e->getMessage());
             }
             break;
@@ -2594,6 +2679,7 @@ try {
                 ]);
 
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to mark as read: ' . $e->getMessage());
             }
             break;
@@ -2635,6 +2721,10 @@ try {
             if (!empty($_GET['assigneeId'])) {
                 $filters['assigneeId'] = $_GET['assigneeId']; // Can be 'unassigned' or admin ID
             }
+            // Platform filter: 'line', 'facebook', 'tiktok', or null (all)
+            if (!empty($_GET['platform']) && in_array($_GET['platform'], ['line', 'facebook', 'tiktok'])) {
+                $filters['platform'] = $_GET['platform'];
+            }
 
             // Validate limit
             if ($limit < 1 || $limit > 100) {
@@ -2671,6 +2761,7 @@ try {
                     'filters' => $filters
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get conversations: ' . $e->getMessage());
             }
             break;
@@ -2686,6 +2777,9 @@ try {
             }
 
             $userId = (int) ($_GET['user_id'] ?? 0);
+            if ($userId <= 0) {
+                sendError('Invalid user ID');
+            }
             $cursor = $_GET['cursor'] ?? null;
             $limit = (int) ($_GET['limit'] ?? 50);
 
@@ -2721,54 +2815,12 @@ try {
                     'data' => $result
                 ]);
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get messages: ' . $e->getMessage());
             }
             break;
 
-        // ============================================
-        // GET /poll - Poll for delta updates
-        // Returns only new messages since last check
-        // Requirements: 4.3
-        // ============================================
-        case 'poll':
-        case 'poll_updates':
-            if ($method !== 'GET') {
-                sendError('Method not allowed', 405);
-            }
-
-            $since = (int) ($_GET['since'] ?? 0);
-
-            if (!$since) {
-                sendError('Since timestamp is required');
-            }
-
-            try {
-                require_once __DIR__ . '/../classes/InboxService.php';
-                $inboxService = new InboxService($db, $lineAccountId);
-
-                $result = $inboxService->pollUpdates($lineAccountId, $since);
-
-                // Add Last-Modified header for HTTP caching
-                $lastModified = gmdate('D, d M Y H:i:s', time()) . ' GMT';
-                header("Last-Modified: {$lastModified}");
-                header("Cache-Control: no-cache, must-revalidate");
-
-                // Check If-Modified-Since header
-                $ifModifiedSince = $_SERVER['HTTP_IF_MODIFIED_SINCE'] ?? '';
-                if (!empty($result['new_messages']) && $ifModifiedSince === $lastModified) {
-                    http_response_code(304);
-                    exit;
-                }
-
-                sendResponse([
-                    'success' => true,
-                    'data' => $result,
-                    'timestamp' => time()
-                ]);
-            } catch (Exception $e) {
-                sendError('Failed to poll updates: ' . $e->getMessage());
-            }
-            break;
+        // poll moved to consolidated section at line 166
 
         // ============================================
         // POST /logPerformanceMetric - Log performance metrics
@@ -2830,6 +2882,7 @@ try {
                 ]);
 
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to log performance metrics: ' . $e->getMessage());
             }
             break;
@@ -2879,6 +2932,7 @@ try {
                 ]);
 
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get performance metrics: ' . $e->getMessage());
             }
             break;
@@ -2928,6 +2982,7 @@ try {
                     WHERE u.line_account_id = ?
                     AND (
                         u.display_name LIKE ?
+                        OR u.real_name LIKE ?
                         OR u.phone LIKE ?
                         OR u.id IN (
                             SELECT DISTINCT user_id 
@@ -2954,6 +3009,7 @@ try {
                     $lineAccountId, // unread_count
                     $lineAccountId, // main WHERE
                     $searchTerm,    // display_name
+                    $searchTerm,    // real_name
                     $searchTerm,    // phone
                     $lineAccountId, // messages subquery
                     $searchTerm,    // message content
@@ -2974,6 +3030,7 @@ try {
                 ]);
 
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to search conversations: ' . $e->getMessage());
             }
             break;
@@ -3072,6 +3129,7 @@ try {
                 ]);
 
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Failed to get chat content: ' . $e->getMessage());
             }
             break;
@@ -3395,6 +3453,7 @@ try {
                 ]);
 
             } catch (Exception $e) {
+                logInboxApiException($e, 'catch');
                 sendError('Error sending batch messages: ' . $e->getMessage());
             }
             break;
@@ -3464,6 +3523,10 @@ try {
     }
 
 } catch (Throwable $e) {
+    logInboxApiException($e, 'catch');
     error_log("Inbox V2 API Error: " . $e->getMessage() . "\n" . $e->getTraceAsString());
-    sendError('Internal server error: ' . $e->getMessage(), 500);
+    // Use safe message for client (avoid invalid UTF-8 or huge trace breaking JSON)
+    $safeMsg = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', '', $e->getMessage());
+    $safeMsg = mb_convert_encoding($safeMsg, 'UTF-8', 'UTF-8') ?: 'Internal server error';
+    sendError('Internal server error: ' . (strlen($safeMsg) > 200 ? substr($safeMsg, 0, 200) . '...' : $safeMsg), 500);
 }

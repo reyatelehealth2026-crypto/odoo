@@ -294,8 +294,9 @@ class AutoTagManager
             // ตรวจสอบว่ามี tag นี้แล้วหรือยัง
             $stmt = $this->db->prepare("SELECT id FROM user_tag_assignments WHERE user_id = ? AND tag_id = ?");
             $stmt->execute([$userId, $tagId]);
-            if ($stmt->fetch())
-                return false; // มีแล้ว
+            if ($stmt->fetch()) {
+                return ['success' => false, 'error' => 'Tag already assigned', 'code' => 'TAG_ALREADY_ASSIGNED'];
+            }
 
             // ติด tag
             $stmt = $this->db->prepare("INSERT INTO user_tag_assignments (user_id, tag_id, assigned_by) VALUES (?, ?, ?)");
@@ -304,9 +305,9 @@ class AutoTagManager
             // บันทึก log
             $this->logTagAction($userId, $tagId, $ruleId, 'assign', $triggerType, $data);
 
-            return true;
+            return ['success' => true];
         } catch (Exception $e) {
-            return false;
+            return ['success' => false, 'error' => 'Failed to assign tag: ' . $e->getMessage(), 'code' => 'TAG_ASSIGN_FAILED'];
         }
     }
 

@@ -26,7 +26,7 @@ require_once 'classes/ActivityLogger.php';
 require_once 'includes/components/tabs.php';
 
 $db = Database::getInstance()->getConnection();
-$activityLogger = ActivityLogger::getInstance($db);
+$activityLogger = new ActivityLogger($db);
 $pageTitle = 'Broadcast';
 
 // Get current bot ID

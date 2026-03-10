@@ -28,6 +28,8 @@ register_shutdown_function(function () {
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../classes/LineAPI.php';
+require_once __DIR__ . '/../classes/DripCampaignService.php';
+require_once __DIR__ . '/../classes/LinkTrackingService.php';
 
 // Load LineAccountManager if exists
 $lineManager = null;
@@ -576,63 +578,119 @@ try {
             echo json_encode(['success' => true, 'is_active' => (bool) $newStatus, 'message' => $newStatus ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว']);
             break;
 
+        // ==================== DRIP CAMPAIGNS ====================
+        case 'drip_list_campaigns':
+            $service = new DripCampaignService($db, $currentBotId);
+            $campaigns = $service->listCampaignsWithStats();
+            $summary = $service->getQueueSummary();
+            ob_end_clean();
+            echo json_encode(['success' => true, 'campaigns' => $campaigns, 'summary' => $summary]);
+            break;
+
+        case 'drip_create_campaign':
+            $service = new DripCampaignService($db, $currentBotId);
+            $payload = $jsonInput ?? $_POST;
+            $name = trim($payload['name'] ?? '');
+            $triggerType = $payload['trigger_type'] ?? 'follow';
+            if (!$name) throw new Exception('กรุณาระบุชื่อ Campaign');
+            $campaign = $service->createCampaign($name, $triggerType, $payload['trigger_config'] ?? null);
+            ob_end_clean();
+            echo json_encode(['success' => true, 'campaign' => $campaign]);
+            break;
+
+        case 'drip_update_campaign':
+            $service = new DripCampaignService($db, $currentBotId);
+            $payload = $jsonInput ?? $_POST;
+            $campaignId = (int) ($payload['campaign_id'] ?? 0);
+            if (!$campaignId) throw new Exception('ไม่พบ Campaign');
+            $campaign = $service->updateCampaign($campaignId, $payload);
+            ob_end_clean();
+            echo json_encode(['success' => true, 'campaign' => $campaign]);
+            break;
+
+        case 'drip_toggle_campaign':
+            $service = new DripCampaignService($db, $currentBotId);
+            $campaignId = (int) ($_POST['campaign_id'] ?? 0);
+            if (!$campaignId) throw new Exception('ไม่พบ Campaign');
+            $campaign = $service->toggleCampaign($campaignId);
+            ob_end_clean();
+            echo json_encode(['success' => true, 'campaign' => $campaign]);
+            break;
+
+        case 'drip_delete_campaign':
+            $service = new DripCampaignService($db, $currentBotId);
+            $campaignId = (int) ($_POST['campaign_id'] ?? 0);
+            if (!$campaignId) throw new Exception('ไม่พบ Campaign');
+            $campaign = $service->deleteCampaign($campaignId);
+            ob_end_clean();
+            echo json_encode(['success' => true, 'deleted' => $campaign]);
+            break;
+
+        case 'drip_add_step':
+            $service = new DripCampaignService($db, $currentBotId);
+            $payload = $jsonInput ?? $_POST;
+            $campaignId = (int) ($payload['campaign_id'] ?? 0);
+            if (!$campaignId) throw new Exception('ไม่พบ Campaign');
+            if (isset($payload['delay_value'], $payload['delay_unit'])) {
+                $payload['delay_minutes'] = (int) $payload['delay_value'] * (int) $payload['delay_unit'];
+            }
+            $step = $service->addStep($campaignId, $payload);
+            ob_end_clean();
+            echo json_encode(['success' => true, 'step' => $step]);
+            break;
+
+        case 'drip_delete_step':
+            $service = new DripCampaignService($db, $currentBotId);
+            $campaignId = (int) ($_POST['campaign_id'] ?? 0);
+            $stepId = (int) ($_POST['step_id'] ?? 0);
+            if (!$campaignId || !$stepId) throw new Exception('ข้อมูลไม่ครบ');
+            $service->deleteStep($campaignId, $stepId);
+            ob_end_clean();
+            echo json_encode(['success' => true]);
+            break;
+
         // ==================== LINK TRACKING ====================
         case 'create_link':
-            $url = trim($_POST['url'] ?? '');
-            $title = trim($_POST['title'] ?? '');
-            if (!$url)
-                throw new Exception('กรุณาระบุ URL');
-            if (!filter_var($url, FILTER_VALIDATE_URL))
-                throw new Exception('URL ไม่ถูกต้อง');
-
-            $shortCode = substr(md5(uniqid() . time()), 0, 8);
-
-            // Ensure table exists
-            try {
-                $db->query("SELECT 1 FROM tracked_links LIMIT 1");
-            } catch (Exception $e) {
-                $db->exec("CREATE TABLE IF NOT EXISTS tracked_links (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    line_account_id INT DEFAULT NULL,
-                    short_code VARCHAR(20) NOT NULL UNIQUE,
-                    original_url TEXT NOT NULL,
-                    title VARCHAR(255),
-                    click_count INT DEFAULT 0,
-                    unique_clicks INT DEFAULT 0,
-                    last_clicked_at TIMESTAMP NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
-            }
-
-            $stmt = $db->prepare("INSERT INTO tracked_links (line_account_id, short_code, original_url, title) VALUES (?, ?, ?, ?)");
-            $stmt->execute([$currentBotId, $shortCode, $url, $title]);
+            $service = new LinkTrackingService($db, $currentBotId);
+            $payload = $jsonInput ?? $_POST;
+            $url = trim($payload['url'] ?? '');
+            $title = trim($payload['title'] ?? '');
+            if (!$url) throw new Exception('กรุณาระบุ URL');
+            if (!filter_var($url, FILTER_VALIDATE_URL)) throw new Exception('URL ไม่ถูกต้อง');
+            $link = $service->createLink($url, $title);
             ob_end_clean();
-            echo json_encode(['success' => true, 'link_id' => $db->lastInsertId(), 'short_code' => $shortCode]);
+            echo json_encode(['success' => true, 'link' => $link]);
             break;
 
         case 'update_link':
-            $linkId = (int) $_POST['link_id'];
-            $url = trim($_POST['url'] ?? '');
-            $title = trim($_POST['title'] ?? '');
-            if (!$linkId || !$url)
-                throw new Exception('กรุณาระบุข้อมูลให้ครบ');
-            if (!filter_var($url, FILTER_VALIDATE_URL))
-                throw new Exception('URL ไม่ถูกต้อง');
-
-            $stmt = $db->prepare("UPDATE tracked_links SET original_url = ?, title = ? WHERE id = ?");
-            $stmt->execute([$url, $title, $linkId]);
+            $service = new LinkTrackingService($db, $currentBotId);
+            $payload = $jsonInput ?? $_POST;
+            $linkId = (int) ($payload['link_id'] ?? 0);
+            $url = trim($payload['url'] ?? '');
+            $title = trim($payload['title'] ?? '');
+            if (!$linkId || !$url) throw new Exception('กรุณาระบุข้อมูลให้ครบ');
+            if (!filter_var($url, FILTER_VALIDATE_URL)) throw new Exception('URL ไม่ถูกต้อง');
+            $link = $service->updateLink($linkId, $url, $title);
             ob_end_clean();
-            echo json_encode(['success' => true, 'message' => 'อัพเดท Link สำเร็จ']);
+            echo json_encode(['success' => true, 'link' => $link]);
             break;
 
         case 'delete_link':
-            $linkId = (int) $_POST['link_id'];
-            if (!$linkId)
-                throw new Exception('Missing link_id');
-            $stmt = $db->prepare("DELETE FROM tracked_links WHERE id = ?");
-            $stmt->execute([$linkId]);
+            $service = new LinkTrackingService($db, $currentBotId);
+            $linkId = (int) ($_POST['link_id'] ?? 0);
+            if (!$linkId) throw new Exception('Missing link_id');
+            $service->deleteLink($linkId);
             ob_end_clean();
-            echo json_encode(['success' => true, 'message' => 'ลบ Link สำเร็จ']);
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'bulk_delete_links':
+            $service = new LinkTrackingService($db, $currentBotId);
+            $payload = $jsonInput ?? $_POST;
+            $ids = $payload['link_ids'] ?? [];
+            $deleted = $service->deleteLinks(is_array($ids) ? $ids : []);
+            ob_end_clean();
+            echo json_encode(['success' => true, 'deleted' => $deleted]);
             break;
 
         case 'save_gemini_key':

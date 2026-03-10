@@ -13,38 +13,26 @@ function getOrCreateUser($db, $line, $userId, $lineAccountId = null, $groupId = 
     $stmt->execute([$userId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
     
+    // ดึงข้อมูลโปรไฟล์จาก LINE (ทุกครั้งเพื่ออัพเดทข้อมูลให้ล่าสุด)
+    $profile = null;
+    try {
+        if ($groupId) {
+            // ถ้ามาจากกลุ่ม ใช้ getGroupMemberProfile
+            $profile = $line->getGroupMemberProfile($groupId, $userId);
+        } else {
+            // ถ้ามาจากแชทส่วนตัว ใช้ getProfile
+            $profile = $line->getProfile($userId);
+        }
+    } catch (Exception $e) {
+        error_log("getOrCreateUser profile error: " . $e->getMessage());
+    }
+    
+    $displayName = $profile['displayName'] ?? 'Unknown';
+    $pictureUrl = $profile['pictureUrl'] ?? '';
+    $statusMessage = $profile['statusMessage'] ?? '';
+    
     // ถ้ายังไม่มี ให้สร้างใหม่
     if (!$user) {
-        // ดึงข้อมูลโปรไฟล์จาก LINE - ใช้ getProfile() เสมอเพื่อให้ได้รูปโปรไฟล์ที่ถูกต้อง
-        $profile = null;
-        try {
-            // ใช้ getProfile() โดยตรง ไม่ว่าจะมาจากกลุ่มหรือแชทส่วนตัว
-            $profile = $line->getProfile($userId);
-            
-            if ($profile && !empty($profile['pictureUrl'])) {
-                error_log("getOrCreateUser: Successfully got profile with picture for user: {$userId}");
-            } else {
-                error_log("getOrCreateUser: WARNING - Profile has no picture URL for user: {$userId}");
-            }
-        } catch (Exception $e) {
-            error_log("getOrCreateUser profile error: " . $e->getMessage() . " for user: {$userId}");
-        }
-
-        // ตรวจสอบว่าได้ profile มาหรือไม่
-        if (!$profile || !is_array($profile)) {
-            error_log("getOrCreateUser: WARNING - No profile data available for user: {$userId}");
-            $profile = [];
-        }
-
-        $displayName = $profile['displayName'] ?? 'Unknown';
-        $pictureUrl = $profile['pictureUrl'] ?? '';
-        $statusMessage = $profile['statusMessage'] ?? '';
-        
-        // Log เมื่อไม่มีรูปโปรไฟล์
-        if (empty($pictureUrl)) {
-            error_log("getOrCreateUser: WARNING - No picture URL for user: {$userId}, displayName: {$displayName}");
-        }
-        
         // บันทึกผู้ใช้ใหม่
         try {
             $stmt = $db->query("SHOW COLUMNS FROM users LIKE 'line_account_id'");
@@ -76,13 +64,81 @@ function getOrCreateUser($db, $line, $userId, $lineAccountId = null, $groupId = 
             $user = $stmt->fetch(PDO::FETCH_ASSOC);
         }
     } else {
-        // ถ้ามีอยู่แล้ว แต่ยังไม่มี line_account_id ให้อัพเดท
+        // ถ้ามีอยู่แล้ว ให้อัพเดทข้อมูล profile (ถ้ามีการเปลี่ยนแปลง)
+        $needsUpdate = false;
+        $updateFields = [];
+        $updateValues = [];
+
+        // ตรวจสอบว่ามีข้อมูลใหม่จาก profile หรือไม่
+        if ($profile) {
+            if (!empty($displayName) && $displayName !== 'Unknown' && $displayName !== $user['display_name']) {
+                $updateFields[] = "display_name = ?";
+                $updateValues[] = $displayName;
+                $needsUpdate = true;
+            }
+            if (!empty($pictureUrl) && $pictureUrl !== $user['picture_url']) {
+                $updateFields[] = "picture_url = ?";
+                $updateValues[] = $pictureUrl;
+                $needsUpdate = true;
+            }
+            if (!empty($statusMessage)) {
+                $updateFields[] = "status_message = ?";
+                $updateValues[] = $statusMessage;
+                $needsUpdate = true;
+            }
+        }
+
+        // อัพเดท line_account_id ถ้ายังไม่มี
         if ($lineAccountId && empty($user['line_account_id'])) {
+            $updateFields[] = "line_account_id = ?";
+            $updateValues[] = $lineAccountId;
+            $needsUpdate = true;
+        }
+
+        // ทำการอัพเดทถ้ามีการเปลี่ยนแปลง
+        if ($needsUpdate && !empty($updateFields)) {
             try {
-                $stmt = $db->prepare("UPDATE users SET line_account_id = ? WHERE id = ? AND (line_account_id IS NULL OR line_account_id = 0)");
-                $stmt->execute([$lineAccountId, $user['id']]);
-                $user['line_account_id'] = $lineAccountId;
-            } catch (Exception $e) {}
+                $updateValues[] = $user['id'];
+                $sql = "UPDATE users SET " . implode(", ", $updateFields) . " WHERE id = ?";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($updateValues);
+                
+                // อัพเดทข้อมูลใน array
+                if (!empty($displayName) && $displayName !== 'Unknown') {
+                    $user['display_name'] = $displayName;
+                }
+                if (!empty($pictureUrl)) {
+                    $user['picture_url'] = $pictureUrl;
+                }
+                if ($lineAccountId) {
+                    $user['line_account_id'] = $lineAccountId;
+                }
+            } catch (Exception $e) {
+                error_log("getOrCreateUser update error: " . $e->getMessage());
+            }
+        }
+
+        // อัพเดทข้อมูล follower ด้วย (ถ้ามี lineAccountId และมี profile ใหม่)
+        if ($lineAccountId && $profile) {
+            try {
+                $stmt = $db->prepare("
+                    UPDATE account_followers 
+                    SET display_name = ?, 
+                        picture_url = ?, 
+                        status_message = ?,
+                        last_interaction_at = NOW()
+                    WHERE line_account_id = ? AND line_user_id = ?
+                ");
+                $stmt->execute([
+                    $displayName,
+                    $pictureUrl,
+                    $statusMessage,
+                    $lineAccountId,
+                    $userId
+                ]);
+            } catch (Exception $e) {
+                error_log("getOrCreateUser update follower error: " . $e->getMessage());
+            }
         }
     }
     
