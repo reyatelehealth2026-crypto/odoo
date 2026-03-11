@@ -30,12 +30,12 @@ $orderDataSource = getShopOrderDataSource($db, $currentBotId);
 $isOdooMode = $orderDataSource === 'odoo';
 
 // Get active tab from URL
-$activeTab = $_GET['tab'] ?? ($isOdooMode ? 'odoo-customers' : 'executive');
+$activeTab = $_GET['tab'] ?? 'executive';
 
 // Validate tab
-$validTabs = ['executive', 'crm', 'odoo-overview', 'odoo-customers'];
+$validTabs = ['executive', 'crm'];
 if (!in_array($activeTab, $validTabs)) {
-    $activeTab = getActiveTab($tabs, 'executive');
+    $activeTab = 'executive';
 }
 
 // Trigger scheduled broadcasts in background
@@ -49,8 +49,6 @@ $context = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 1]]
 $pageTitles = [
     'executive' => 'Executive Dashboard',
     'crm' => 'CRM Dashboard',
-    'odoo-overview' => 'Odoo Overview',
-    'odoo-customers' => 'จัดการลูกค้า Odoo',
 ];
 $pageTitle = $pageTitles[$activeTab] ?? 'Dashboard';
 
@@ -62,14 +60,8 @@ require_once 'includes/header.php';
     <div class="bg-white rounded-xl shadow-sm">
         <?php
         switch ($activeTab) {
-            case 'odoo-overview':
-                include 'includes/dashboard/odoo-overview.php';
-                break;
             case 'crm':
                 include 'includes/dashboard/crm.php';
-                break;
-            case 'odoo-customers':
-                include 'includes/dashboard/odoo-customers.php';
                 break;
             case 'executive':
             default:
