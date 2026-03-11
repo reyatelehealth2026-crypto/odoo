@@ -1158,5 +1158,6 @@
     </div>
 
     <script src="odoo-dashboard.js?v=<?= filemtime(__DIR__ . '/odoo-dashboard.js') ?>"></script>
+    <script src="odoo-dashboard-local.js?v=<?= filemtime(__DIR__ . '/odoo-dashboard-local.js') ?>"></script>
 </body>
 </html>
