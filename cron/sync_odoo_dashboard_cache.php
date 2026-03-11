@@ -93,6 +93,9 @@ try {
         $processedAtColumn = resolveWebhookTimeColumn($db);
         $processedAtExpr = $processedAtColumn ?: 'NOW()';
         
+        // Order key extraction from JSON payload
+        $orderKeyExpr = "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_name')), ''), CAST(order_id AS CHAR))";
+        
         $where = "status = 'success'";
         $params = [];
         
@@ -108,7 +111,7 @@ try {
         // Get order snapshot from webhooks
         $snapshotSql = "
             SELECT
-                order_key,
+                {$orderKeyExpr} as order_key,
                 MIN({$processedAtExpr}) as first_event_at,
                 MAX({$processedAtExpr}) as last_event_at,
                 MAX(CAST(COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.amount_total')), ''), '0') AS DECIMAL(14,2))) as amount_total,
@@ -131,8 +134,8 @@ try {
                 MIN(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.date_order')), '') AS DATE)) as date_order,
                 MAX(CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.expected_delivery_date')), '') AS DATE)) as expected_delivery_date
             FROM odoo_webhooks_log
-            WHERE {$where} AND order_key IS NOT NULL AND order_key != ''
-            GROUP BY order_key
+            WHERE {$where} AND {$orderKeyExpr} IS NOT NULL AND {$orderKeyExpr} != ''
+            GROUP BY {$orderKeyExpr}
         ";
         
         $stmt = $db->prepare($snapshotSql);
@@ -223,7 +226,7 @@ try {
                 payload_summary, webhook_log_id, processed_at
             )
             SELECT 
-                order_key,
+                {$orderKeyExpr} as order_key,
                 event_type,
                 CASE 
                     WHEN event_type LIKE 'sale.order.%' THEN 'order'
@@ -245,7 +248,7 @@ try {
                 {$processedAtExpr}
             FROM odoo_webhooks_log
             WHERE {$eventsWhere}
-            AND order_key IS NOT NULL
+            AND {$orderKeyExpr} IS NOT NULL
             ON DUPLICATE KEY UPDATE
                 status = VALUES(status),
                 new_state = VALUES(new_state),
@@ -340,7 +343,7 @@ try {
                     NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.invoice.number')), '')
                 ) as inv_num,
                 CAST(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.invoice.id')), '') AS UNSIGNED) as inv_id,
-                order_key,
+                {$orderKeyExpr} as order_key,
                 JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.id')),
                 JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.partner_id')),
                 JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.name')),
