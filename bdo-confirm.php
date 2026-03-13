@@ -715,11 +715,42 @@ function clearSelection() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// MATCH HELPER — build correct payload for slip_match_bdo
+// Prefers slip_inbox_id + matches[] (Odoo-first).
+// Falls back to legacy slip_id + bdo_id if slip_inbox_id is absent.
+// ═══════════════════════════════════════════════════════════════
+function _buildMatchPayload(slip, bdo, note) {
+  const slipInboxId = parseInt(slip.slip_inbox_id || slip.odoo_slip_id || 0, 10);
+  const bdoId       = parseInt(bdo.bdo_id || bdo.id || 0, 10);
+  const bdoAmt      = parseFloat(bdo.amount_total || bdo.amount_net_to_pay || bdo.amount || 0);
+
+  if (slipInboxId > 0 && bdoId > 0) {
+    return {
+      action:        'slip_match_bdo',
+      slip_inbox_id: slipInboxId,
+      line_user_id:  slip.line_user_id || '',
+      matches:       [{ bdo_id: bdoId, amount: bdoAmt }],
+      note:          note || '',
+    };
+  }
+  // Legacy fallback — local-only match via slip_id + bdo_id
+  return {
+    action:  'slip_match_bdo',
+    slip_id: parseInt(slip.id || slip.slip_id || 0, 10),
+    bdo_id:  bdoId,
+    note:    note || '',
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CONFIRM SUGGESTION (single)
 // ═══════════════════════════════════════════════════════════════
 async function confirmSuggestion(slipId, bdoId, btn) {
   if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i>'; }
-  const result = await whApi({action:'slip_match_bdo', slip_id:slipId, bdo_id:bdoId, note:''});
+  // Look up full objects so _buildMatchPayload can use slip_inbox_id
+  const slip = _slips.find(s => (s.id || s.slip_id) == slipId) || { id: slipId };
+  const bdo  = _bdos.find(b => (b.bdo_id || b.id) == bdoId)   || { bdo_id: bdoId };
+  const result = await whApi(_buildMatchPayload(slip, bdo, ''));
   if (result?.success) {
     const card = btn?.closest('.sugg-item');
     if (card) { card.style.background='#f0fdf4'; card.style.borderColor='#86efac'; card.innerHTML='<div style="padding:6px;color:#16a34a;font-size:0.83rem;"><i class="bi bi-check-circle-fill"></i> จับคู่สำเร็จแล้ว</div>'; }
@@ -751,8 +782,7 @@ async function batchConfirmMatches() {
 
   let ok = 0, fail = 0;
   for (const m of toConfirm) {
-    const sid = m.slip.id || m.slip.slip_id, bid = m.bdo.bdo_id || m.bdo.id;
-    const r = await whApi({action:'slip_match_bdo', slip_id:sid, bdo_id:bid, note:'Batch match: '+m.confidence});
+    const r = await whApi(_buildMatchPayload(m.slip, m.bdo, 'Batch match: '+m.confidence));
     if (r?.success) ok++; else fail++;
   }
   btn.disabled = false; btn.innerHTML = '<i class="bi bi-check2-all"></i> ยืนยันทั้งหมด';
@@ -765,8 +795,7 @@ async function batchConfirmMatches() {
 // ═══════════════════════════════════════════════════════════════
 async function autoConfirmExact(list) {
   for (const m of list) {
-    const sid = m.slip.id || m.slip.slip_id, bid = m.bdo.bdo_id || m.bdo.id;
-    await whApi({action:'slip_match_bdo', slip_id:sid, bdo_id:bid, note:'Auto-confirm exact_bdo_id'});
+    await whApi(_buildMatchPayload(m.slip, m.bdo, 'Auto-confirm exact_bdo_id'));
   }
   if (list.length) { toast('✅ Auto-confirm '+list.length+' คู่ exact', 'ok'); loadAll(); }
 }
@@ -785,13 +814,20 @@ async function confirmManualMatch() {
 
   let ok = 0, fail = 0;
   for (const slip of selSlips) {
-    const matches = selBdos.map(b => ({bdo_id: b.bdo_id||b.id, amount: parseFloat(b.amount_total||b.amount_net_to_pay||0)}));
-    const r = await whApi({
-      action: 'slip_match_bdo',
-      slip_inbox_id: slip.odoo_slip_id || slip.id,
-      line_user_id: slip.line_user_id || '',
-      matches, note
-    });
+    const slipInboxId = parseInt(slip.slip_inbox_id || slip.odoo_slip_id || 0, 10);
+    let r;
+    if (slipInboxId > 0) {
+      // Odoo-first: send all selected BDOs as matches array
+      const matches = selBdos.map(b => ({
+        bdo_id: parseInt(b.bdo_id||b.id||0, 10),
+        amount: parseFloat(b.amount_total||b.amount_net_to_pay||b.amount||0)
+      }));
+      r = await whApi({ action:'slip_match_bdo', slip_inbox_id:slipInboxId, line_user_id:slip.line_user_id||'', matches, note });
+    } else {
+      // Legacy: match to first selected BDO only
+      const bdo = selBdos[0];
+      r = await whApi(_buildMatchPayload(slip, bdo, note));
+    }
     if (r?.success) ok++; else { fail++; toast('❌ '+(r?.error||'เกิดข้อผิดพลาด'), 'err'); }
   }
 
@@ -816,7 +852,16 @@ async function unmatchCurrentSlip() {
   const {slipId, status} = _currentSlipForUnmatch;
   if (['posted','done'].includes(status)) { toast('ไม่สามารถยกเลิกได้ สถานะ: '+status, 'err'); return; }
   if (!confirm('ยืนยันการยกเลิกการจับคู่สลิปนี้?')) return;
-  const r = await whApi({action:'unmatch_slip', slip_id: slipId, reason:'ยกเลิกจาก BDO Confirm'});
+
+  // Try Odoo-first unmatch if slip_inbox_id is available
+  const slip = _slips.find(s => (s.id || s.slip_id) == slipId);
+  const slipInboxId = parseInt(slip?.slip_inbox_id || slip?.odoo_slip_id || 0, 10);
+  let r;
+  if (slipInboxId > 0) {
+    r = await whApi({ action:'slip_unmatch', slip_inbox_id:slipInboxId, line_user_id:slip?.line_user_id||'', reason:'ยกเลิกจาก BDO Confirm' });
+  } else {
+    r = await whApi({ action:'unmatch_slip', slip_id:slipId, reason:'ยกเลิกจาก BDO Confirm' });
+  }
   if (r?.success) { toast('✅ ยกเลิกการจับคู่เรียบร้อยแล้ว', 'ok'); closeModal('slipModal'); loadAll(); }
   else toast('❌ '+(r?.error||'เกิดข้อผิดพลาด'), 'err');
 }

@@ -3649,6 +3649,16 @@ function slipMatchBdoProxy($db, $input)
     $matches     = $input['matches'] ?? [];
     $note        = trim((string) ($input['note'] ?? ''));
 
+    // ── Legacy fallback: slip_id + bdo_id (no slip_inbox_id) ──────────────
+    // When slip_inbox_id is absent the slip has not been synced to Odoo yet.
+    // Update local DB only; Odoo will pick up the match on next sync.
+    $legacySlipId = (int) ($input['slip_id'] ?? 0);
+    $legacyBdoId  = (int) ($input['bdo_id']  ?? 0);
+
+    if (!$slipInboxId && $legacySlipId > 0 && $legacyBdoId > 0) {
+        return _legacyLocalMatch($db, $legacySlipId, $legacyBdoId, $note);
+    }
+
     if (!$slipInboxId || empty($matches)) {
         return ['success' => false, 'error' => 'Missing slip_inbox_id or matches'];
     }
@@ -3682,6 +3692,43 @@ function slipMatchBdoProxy($db, $input)
         ['success' => true, 'source' => 'odoo'],
         $odooResult['result']['data'] ?? []
     );
+}
+
+/**
+ * Legacy local-only match: update odoo_slip_uploads directly when slip_inbox_id is not yet available.
+ */
+function _legacyLocalMatch($db, int $slipId, int $bdoId, string $note): array
+{
+    try {
+        // Fetch BDO info for denormalized fields
+        $bdoRow = null;
+        try {
+            $stmt = $db->prepare("SELECT bdo_name, partner_id FROM odoo_bdos WHERE bdo_id = ? LIMIT 1");
+            $stmt->execute([$bdoId]);
+            $bdoRow = $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch (Exception $e) { /* table may not exist yet */ }
+
+        $db->prepare("
+            UPDATE odoo_slip_uploads
+            SET status = 'matched',
+                bdo_id = ?,
+                bdo_name = ?,
+                match_confidence = 'manual',
+                match_reason = ?,
+                matched_at = NOW()
+            WHERE id = ?
+        ")->execute([
+            $bdoId,
+            $bdoRow['bdo_name'] ?? null,
+            $note ?: 'Manual match (legacy)',
+            $slipId,
+        ]);
+
+        return ['success' => true, 'source' => 'local', 'message' => 'Matched locally (slip_inbox_id not yet available)'];
+    } catch (Exception $e) {
+        error_log("[_legacyLocalMatch] failed: " . $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
 }
 
 /**
