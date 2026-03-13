@@ -72,7 +72,10 @@ try {
             s.line_user_id,
             s.line_account_id,
             s.odoo_slip_id,
+            s.slip_inbox_id,
+            s.slip_inbox_name,
             s.bdo_id,
+            s.bdo_name,
             s.invoice_id,
             s.order_id,
             s.amount,
@@ -82,6 +85,9 @@ try {
             s.uploaded_by,
             s.message_id,
             s.status,
+            s.match_confidence,
+            s.delivery_type,
+            s.bdo_amount,
             s.match_reason,
             s.uploaded_at,
             s.matched_at,
@@ -103,6 +109,9 @@ try {
     foreach ($slips as &$slip) {
         $slip['id']     = (int) $slip['id'];
         $slip['amount'] = $slip['amount'] !== null ? (float) $slip['amount'] : null;
+        $slip['slip_inbox_id'] = $slip['slip_inbox_id'] !== null ? (int) $slip['slip_inbox_id'] : null;
+        $slip['bdo_id'] = $slip['bdo_id'] !== null ? (int) $slip['bdo_id'] : null;
+        $slip['bdo_amount'] = $slip['bdo_amount'] !== null ? (float) $slip['bdo_amount'] : null;
 
         if ($slip['image_path']) {
             $slip['image_full_url'] = $baseUrl . '/' . ltrim($slip['image_path'], '/');

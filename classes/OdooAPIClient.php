@@ -495,9 +495,12 @@ class OdooAPIClient
      * @param array $options Filter options (state, limit, offset)
      * @return array BDO list
      */
-    public function getBdoList($lineUserId, $options = [])
+    public function getBdoList($lineUserId = null, $options = [])
     {
-        $params = array_merge(['line_user_id' => $lineUserId], $options);
+        $params = $options;
+        if ($lineUserId !== null && $lineUserId !== '') {
+            $params['line_user_id'] = $lineUserId;
+        }
         return $this->call('/reya/bdo/list', $params);
     }
 

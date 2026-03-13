@@ -1037,7 +1037,7 @@
 
     <!-- ═══════════════════════ BDO DETAIL MODAL ═══════════════════════ -->
     <div id="bdoDetailModal" class="modal-backdrop-custom" onclick="if(event.target===this){this.classList.remove('active');}">
-        <div class="detail-modal-container" style="max-width:750px;">
+        <div class="detail-modal-container" style="max-width:960px;">
             <div class="detail-modal-header">
                 <h5><i class="bi bi-file-earmark-check" style="color:var(--success);"></i> <span id="bdoDetailTitle">รายละเอียด BDO</span></h5>
                 <button class="detail-modal-close" onclick="document.getElementById('bdoDetailModal').classList.remove('active')">&times;</button>
@@ -1123,6 +1123,7 @@
                     <div><span style="font-size:0.72rem;color:var(--gray-500);">ออเดอร์</span><div style="font-weight:500;font-size:0.85rem;color:#1d4ed8;" id="bsaOrderName">-</div></div>
                     <div><span style="font-size:0.72rem;color:var(--gray-500);">ยอดเงิน</span><div style="font-weight:700;font-size:1rem;color:#059669;" id="bsaAmount">-</div></div>
                 </div>
+                <div style="font-size:0.75rem;color:var(--gray-500);margin-top:8px;">การยืนยันจะ sync กับ Odoo โดยตรง และรองรับทั้ง 1:1 และ 1:N ตาม BDO API ใหม่</div>
             </div>
             <div style="flex:1;overflow-y:auto;padding:16px 24px;">
                 <div style="font-weight:600;font-size:0.85rem;color:var(--gray-700);margin-bottom:8px;"><i class="bi bi-images"></i> สลิปที่ยังไม่ได้จับคู่ (คลิกเลือก)</div>

@@ -701,6 +701,35 @@ class OdooWebhookHandler
     }
 
     /**
+     * Check if a column exists on a table.
+     *
+     * @param string $tableName
+     * @param string $columnName
+     * @return bool
+     */
+    private function hasTableColumn($tableName, $columnName)
+    {
+        if (!$this->tableExists($tableName)) {
+            return false;
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                SELECT COUNT(*)
+                FROM information_schema.COLUMNS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = ?
+                  AND COLUMN_NAME = ?
+            ");
+            $stmt->execute([$tableName, $columnName]);
+            return ((int) $stmt->fetchColumn()) > 0;
+        } catch (Exception $e) {
+            error_log('[hasTableColumn] ' . $tableName . '.' . $columnName . ': ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Get current retry count from webhook log.
      *
      * @param string $deliveryId
@@ -1931,68 +1960,64 @@ class OdooWebhookHandler
     public function handleBdoConfirmed($data, $notify, $template)
     {
         try {
-            // ---- Phase 3: Save BDO context for auto-populate slip upload ----
             $this->saveBdoContext($data);
 
-            // 12.1.1 Extract QR Payment data
-            $emvcoPayload = $data['payment']['promptpay']['qr_data']['raw_payload'] ?? null;
-
-            if (empty($emvcoPayload)) {
-                error_log('BDO Confirmed: No EMVCo payload found');
-                return [];
-            }
-
-            // 12.1.2 Generate QR Code
-            require_once __DIR__ . '/QRCodeGenerator.php';
-            $qrGenerator = new QRCodeGenerator();
-
-            $bdoRef = $data['bdo_ref'] ?? 'BDO_' . time();
-            $qrResult = $qrGenerator->generatePromptPayQR($emvcoPayload, $bdoRef);
-
-            if (!$qrResult['success']) {
-                error_log('BDO Confirmed: QR generation failed - ' . ($qrResult['error'] ?? 'Unknown error'));
-                return [];
-            }
-
-            // Get full URL for QR code
-            $baseUrl = defined('BASE_URL') ? BASE_URL : 'https://cny.re-ya.com';
-            $qrCodeUrl = $baseUrl . $qrResult['url'];
-
-            // 12.1.3 Extract invoice URL
-            $invoiceUrl = $data['invoice']['pdf_url'] ?? '';
-
-            // 12.1.4 สร้าง Flex Message พร้อม QR
-            require_once __DIR__ . '/OdooFlexTemplates.php';
-            $flexBubble = OdooFlexTemplates::bdoPaymentRequest($data, $qrCodeUrl);
-
-            // 12.1.5 ส่งให้ลูกค้า
             $sentTo = [];
+            $customerPartnerId = $data['customer']['partner_id'] ?? $data['customer']['id'] ?? null;
+            $salesPartnerId = $data['salesperson']['partner_id'] ?? $data['salesperson']['id'] ?? null;
+            $emvcoPayload = $data['payment']['promptpay']['qr_data']['raw_payload'] ?? null;
+            $statementPdfUrl = $this->getBdoStatementPublicUrl($data);
+            $flexBubble = null;
+
+            if (!empty($emvcoPayload)) {
+                require_once __DIR__ . '/QRCodeGenerator.php';
+                $qrGenerator = new QRCodeGenerator();
+
+                $bdoRef = $data['bdo_ref'] ?? $data['bdo_name'] ?? ('BDO_' . time());
+                $qrResult = $qrGenerator->generatePromptPayQR($emvcoPayload, $bdoRef);
+
+                if (!empty($qrResult['success']) && !empty($qrResult['url'])) {
+                    $baseUrl = rtrim(defined('BASE_URL') ? BASE_URL : 'https://cny.re-ya.com', '/');
+                    $qrCodeUrl = $baseUrl . $qrResult['url'];
+                    require_once __DIR__ . '/OdooFlexTemplates.php';
+                    $flexBubble = OdooFlexTemplates::bdoPaymentRequest($data, $qrCodeUrl);
+                } else {
+                    error_log('BDO Confirmed: QR generation failed - ' . ($qrResult['error'] ?? 'Unknown error'));
+                }
+            } else {
+                error_log('BDO Confirmed: No EMVCo payload found');
+            }
 
             // Send to customer if enabled
-            // [TEMPORARILY DISABLED] All LINE notifications to customers are disabled
-            if (false && $notify['customer'] && !empty($data['customer']['partner_id'])) {
-                $user = $this->findLineUserAcrossAccounts($data['customer']['partner_id'], $data['customer']['line_user_id'] ?? null);
+            if (!empty($notify['customer']) && !empty($customerPartnerId)) {
+                $user = $this->findLineUserAcrossAccounts($customerPartnerId, $data['customer']['line_user_id'] ?? null);
                 if ($user && $user['line_notification_enabled']) {
-                    $this->sendLineFlexMessage(
-                        $user['line_user_id'],
-                        $user['channel_access_token'],
-                        $flexBubble,
-                        '💳 แจ้งชำระเงิน - ' . ($data['order_ref'] ?? 'ออเดอร์')
-                    );
+                    if ($flexBubble) {
+                        $this->sendLineFlexMessage(
+                            $user['line_user_id'],
+                            $user['channel_access_token'],
+                            $flexBubble,
+                            'แจ้งชำระเงิน - ' . ($data['order_ref'] ?? $data['bdo_name'] ?? 'BDO')
+                        );
+                    }
+
+                    $followUpMessage = $this->buildBdoConfirmedCustomerMessage($data, $statementPdfUrl);
+                    if ($followUpMessage !== '') {
+                        $this->sendLineMessage(
+                            $user['line_user_id'],
+                            $user['channel_access_token'],
+                            $followUpMessage
+                        );
+                    }
                     $sentTo[] = 'customer';
                 }
             }
 
             // Send to salesperson if enabled
-            if ($notify['salesperson'] && !empty($data['salesperson']['partner_id'])) {
-                $user = $this->findLineUserAcrossAccounts($data['salesperson']['partner_id'], $data['salesperson']['line_user_id'] ?? null);
+            if (!empty($notify['salesperson']) && !empty($salesPartnerId)) {
+                $user = $this->findLineUserAcrossAccounts($salesPartnerId, $data['salesperson']['line_user_id'] ?? null);
                 if ($user && $user['line_notification_enabled']) {
-                    // Add salesperson prefix to message
-                    $salespersonMessage = "👤 แจ้งเตือนสำหรับเซลล์\n\n";
-                    $salespersonMessage .= "BDO ได้รับการยืนยันแล้ว\n";
-                    $salespersonMessage .= "ออเดอร์: " . ($data['order_ref'] ?? '') . "\n";
-                    $salespersonMessage .= "ลูกค้า: " . ($data['customer']['name'] ?? '') . "\n";
-                    $salespersonMessage .= "ยอดเงิน: ฿" . number_format($data['amount_total'] ?? 0, 2);
+                    $salespersonMessage = $this->buildBdoConfirmedSalespersonMessage($data, $statementPdfUrl);
 
                     $this->sendLineMessage(
                         $user['line_user_id'],
@@ -2003,12 +2028,159 @@ class OdooWebhookHandler
                 }
             }
 
-            return $sentTo;
+            return array_values(array_unique($sentTo));
 
         } catch (Exception $e) {
             error_log('Error in handleBdoConfirmed: ' . $e->getMessage());
             return [];
         }
+    }
+
+    /**
+     * Build follow-up text for customer after BDO confirmed.
+     *
+     * @param array $data
+     * @param string|null $statementPdfUrl
+     * @return string
+     */
+    private function buildBdoConfirmedCustomerMessage(array $data, $statementPdfUrl = null)
+    {
+        $lines = [];
+        $bdoName = $data['bdo_name'] ?? $data['bdo_ref'] ?? '-';
+        $orderName = $data['sale_order']['name'] ?? $data['order_ref'] ?? '-';
+        $amount = number_format((float) ($data['payment']['amount'] ?? $data['amount_total'] ?? 0), 2);
+        $deliveryType = $data['delivery_type'] ?? null;
+
+        $lines[] = 'ยืนยันคำขอชำระเงินแล้ว';
+        $lines[] = 'BDO: ' . $bdoName;
+        if ($orderName !== '-') {
+            $lines[] = 'ออเดอร์: ' . $orderName;
+        }
+        $lines[] = 'ยอดชำระ: ฿' . $amount;
+
+        if ($deliveryType === 'private') {
+            $lines[] = 'หลังชำระเงินสำเร็จ ระบบจะเตรียมจัดส่งสินค้าให้ทันที';
+        } elseif ($deliveryType === 'company') {
+            $lines[] = 'สามารถแนบสลิปชำระเงินกลับมาในแชตนี้ได้เลย';
+        }
+
+        $financialSummary = $this->buildBdoFinancialSummaryLines($data);
+        if (!empty($financialSummary)) {
+            $lines[] = '';
+            $lines = array_merge($lines, $financialSummary);
+        }
+
+        if (!empty($statementPdfUrl)) {
+            $lines[] = '';
+            $lines[] = 'Statement PDF: ' . $statementPdfUrl;
+        }
+
+        return trim(implode("\n", $lines));
+    }
+
+    /**
+     * Build salesperson notification for BDO confirmed event.
+     *
+     * @param array $data
+     * @param string|null $statementPdfUrl
+     * @return string
+     */
+    private function buildBdoConfirmedSalespersonMessage(array $data, $statementPdfUrl = null)
+    {
+        $lines = [];
+        $lines[] = 'แจ้งเตือนสำหรับเซลล์';
+        $lines[] = '';
+        $lines[] = 'BDO ได้รับการยืนยันแล้ว';
+        $lines[] = 'BDO: ' . ($data['bdo_name'] ?? $data['bdo_ref'] ?? '-');
+        $lines[] = 'ออเดอร์: ' . ($data['sale_order']['name'] ?? $data['order_ref'] ?? '-');
+        $lines[] = 'ลูกค้า: ' . ($data['customer']['name'] ?? '-');
+        $lines[] = 'ยอดเงิน: ฿' . number_format((float) ($data['amount_total'] ?? $data['payment']['amount'] ?? 0), 2);
+
+        $financialSummary = $this->buildBdoFinancialSummaryLines($data);
+        if (!empty($financialSummary)) {
+            $lines[] = '';
+            $lines = array_merge($lines, $financialSummary);
+        }
+
+        if (!empty($statementPdfUrl)) {
+            $lines[] = '';
+            $lines[] = 'Statement PDF: ' . $statementPdfUrl;
+        }
+
+        return trim(implode("\n", $lines));
+    }
+
+    /**
+     * Convert selected financial items into concise text lines.
+     *
+     * @param array $data
+     * @return array
+     */
+    private function buildBdoFinancialSummaryLines(array $data)
+    {
+        $financialSummary = is_array($data['financial_summary'] ?? null) ? $data['financial_summary'] : [];
+        $selectedInvoices = $financialSummary['selected_invoices'] ?? $data['selected_invoices'] ?? [];
+        $selectedCreditNotes = $financialSummary['selected_credit_notes'] ?? $data['selected_credit_notes'] ?? [];
+
+        $lines = [];
+
+        if (!empty($selectedInvoices) && is_array($selectedInvoices)) {
+            $invoiceNames = [];
+            foreach (array_slice($selectedInvoices, 0, 3) as $invoice) {
+                $invoiceName = $invoice['number'] ?? $invoice['invoice_number'] ?? $invoice['name'] ?? null;
+                if ($invoiceName) {
+                    $invoiceNames[] = $invoiceName;
+                }
+            }
+            if (!empty($invoiceNames)) {
+                $suffix = count($selectedInvoices) > 3 ? ' +' . (count($selectedInvoices) - 3) . ' รายการ' : '';
+                $lines[] = 'ใบแจ้งหนี้ที่เลือก: ' . implode(', ', $invoiceNames) . $suffix;
+            }
+        }
+
+        if (!empty($selectedCreditNotes) && is_array($selectedCreditNotes)) {
+            $creditNoteNames = [];
+            foreach (array_slice($selectedCreditNotes, 0, 3) as $creditNote) {
+                $creditNoteName = $creditNote['number'] ?? $creditNote['credit_note_number'] ?? $creditNote['name'] ?? null;
+                if ($creditNoteName) {
+                    $creditNoteNames[] = $creditNoteName;
+                }
+            }
+            if (!empty($creditNoteNames)) {
+                $suffix = count($selectedCreditNotes) > 3 ? ' +' . (count($selectedCreditNotes) - 3) . ' รายการ' : '';
+                $lines[] = 'เครดิตโน้ตที่เลือก: ' . implode(', ', $creditNoteNames) . $suffix;
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Build public URL for saved BDO statement PDF.
+     *
+     * @param array $data
+     * @return string|null
+     */
+    private function getBdoStatementPublicUrl(array $data)
+    {
+        $baseUrl = rtrim(defined('BASE_URL') ? BASE_URL : 'https://cny.re-ya.com', '/');
+        $explicitPath = $data['statement_pdf_path'] ?? null;
+
+        if (!empty($explicitPath)) {
+            return $baseUrl . '/' . ltrim($explicitPath, '/');
+        }
+
+        if (empty($data['statement_pdf']['available'])) {
+            return null;
+        }
+
+        $bdoName = $data['bdo_name'] ?? $data['bdo_ref'] ?? ($data['bdo_id'] ?? null);
+        if (!$bdoName) {
+            return null;
+        }
+
+        $filename = 'BDO_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', (string) $bdoName) . '_Statement.pdf';
+        return $baseUrl . '/uploads/bdo_statements/' . $filename;
     }
 
     public function handleDeliveryDeparted($data, $notify, $template)
@@ -2420,6 +2592,9 @@ class OdooWebhookHandler
             $deliveryType = $data['delivery_type'] ?? null;
             $newState     = $data['new_state'] ?? 'waiting';
             $qrPayload    = $data['payment']['promptpay']['qr_data']['raw_payload'] ?? null;
+            $financialSummary = is_array($data['financial_summary'] ?? null) ? $data['financial_summary'] : [];
+            $selectedInvoices = $financialSummary['selected_invoices'] ?? $data['selected_invoices'] ?? null;
+            $selectedCreditNotes = $financialSummary['selected_credit_notes'] ?? $data['selected_credit_notes'] ?? null;
 
             if (!$lineUserId || !$bdoId) {
                 error_log('[saveBdoContext] Missing line_user_id or bdo_id, skipping');
@@ -2448,32 +2623,55 @@ class OdooWebhookHandler
 
             $deliveryId = $this->currentDeliveryId;
 
+            $insertColumns = [
+                'line_user_id' => $lineUserId,
+                'bdo_id' => (int) $bdoId,
+                'bdo_name' => $bdoName,
+                'amount' => $amount !== null ? (float) $amount : null,
+                'delivery_type' => $deliveryType,
+                'state' => $newState,
+                'qr_payload' => $qrPayload,
+                'statement_pdf_path' => $statementPdfPath,
+                'webhook_delivery_id' => $deliveryId,
+            ];
+
+            if ($this->hasTableColumn('odoo_bdo_context', 'financial_summary_json')) {
+                $insertColumns['financial_summary_json'] = !empty($financialSummary)
+                    ? json_encode($financialSummary, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null;
+            }
+            if ($this->hasTableColumn('odoo_bdo_context', 'selected_invoices_json')) {
+                $insertColumns['selected_invoices_json'] = !empty($selectedInvoices)
+                    ? json_encode($selectedInvoices, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null;
+            }
+            if ($this->hasTableColumn('odoo_bdo_context', 'selected_credit_notes_json')) {
+                $insertColumns['selected_credit_notes_json'] = !empty($selectedCreditNotes)
+                    ? json_encode($selectedCreditNotes, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+                    : null;
+            }
+
+            $columnNames = array_keys($insertColumns);
+            $placeholders = implode(', ', array_fill(0, count($columnNames), '?'));
+            $updateParts = [];
+            foreach ($columnNames as $columnName) {
+                if (in_array($columnName, ['state', 'webhook_delivery_id'], true)) {
+                    $updateParts[] = "{$columnName} = VALUES({$columnName})";
+                    continue;
+                }
+                $updateParts[] = "{$columnName} = COALESCE(VALUES({$columnName}), {$columnName})";
+            }
+            $updateParts[] = 'updated_at = NOW()';
+
             $stmt = $this->db->prepare("
                 INSERT INTO odoo_bdo_context
-                    (line_user_id, bdo_id, bdo_name, amount, delivery_type, state, qr_payload, statement_pdf_path, webhook_delivery_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (" . implode(', ', $columnNames) . ")
+                VALUES ({$placeholders})
                 ON DUPLICATE KEY UPDATE
-                    bdo_name = COALESCE(VALUES(bdo_name), bdo_name),
-                    amount = COALESCE(VALUES(amount), amount),
-                    delivery_type = COALESCE(VALUES(delivery_type), delivery_type),
-                    state = VALUES(state),
-                    qr_payload = COALESCE(VALUES(qr_payload), qr_payload),
-                    statement_pdf_path = COALESCE(VALUES(statement_pdf_path), statement_pdf_path),
-                    webhook_delivery_id = VALUES(webhook_delivery_id),
-                    updated_at = NOW()
-            ");
+                    " . implode(",\n                    ", $updateParts)
+            );
 
-            $stmt->execute([
-                $lineUserId,
-                (int) $bdoId,
-                $bdoName,
-                $amount !== null ? (float) $amount : null,
-                $deliveryType,
-                $newState,
-                $qrPayload,
-                $statementPdfPath,
-                $deliveryId
-            ]);
+            $stmt->execute(array_values($insertColumns));
 
             error_log("[saveBdoContext] Saved: line_user_id=$lineUserId, bdo_id=$bdoId, amount=$amount, delivery_type=$deliveryType");
 

@@ -154,18 +154,23 @@ try {
         // BDO Matching Actions (staging-ready Odoo endpoints)              //
         // ================================================================ //
         case 'bdo_list_live':
+        case 'odoo_bdo_list_api':
             $result = getBdoListLive($db, $input);
             break;
         case 'bdo_detail_live':
+        case 'odoo_bdo_detail_api':
             $result = getBdoDetailLive($db, $input);
             break;
         case 'slip_match_bdo':
+        case 'odoo_slip_match_api':
             $result = slipMatchBdo($db, $input);
             break;
         case 'slip_unmatch':
+        case 'odoo_slip_unmatch_api':
             $result = slipUnmatch($db, $input);
             break;
         case 'statement_pdf':
+        case 'odoo_bdo_statement_pdf':
             streamStatementPdf($db, $input);
             exit; // PDF streams directly, no JSON wrapper
         default:
@@ -1488,10 +1493,19 @@ function getOdooSlips($db, $input)
             status,
             image_path,
             image_url,
+            bdo_id,
+            bdo_name,
+            delivery_type,
+            bdo_amount,
+            match_confidence,
+            slip_inbox_id,
+            slip_inbox_name,
             invoice_id,
             order_id,
             uploaded_at,
-            match_reason
+            matched_at,
+            match_reason,
+            uploaded_by
         FROM odoo_slip_uploads
         WHERE line_user_id = ?
         ORDER BY uploaded_at DESC
@@ -1503,6 +1517,9 @@ function getOdooSlips($db, $input)
     foreach ($rows as &$row) {
         $row['id']     = (int) $row['id'];
         $row['amount'] = $row['amount'] !== null ? (float) $row['amount'] : null;
+        $row['bdo_id'] = $row['bdo_id'] !== null ? (int) $row['bdo_id'] : null;
+        $row['bdo_amount'] = $row['bdo_amount'] !== null ? (float) $row['bdo_amount'] : null;
+        $row['slip_inbox_id'] = $row['slip_inbox_id'] !== null ? (int) $row['slip_inbox_id'] : null;
         if ($row['image_path']) {
             $row['image_full_url'] = $baseUrl . '/' . ltrim($row['image_path'], '/');
         } else {
@@ -2894,6 +2911,7 @@ function getOdooBdos($db, $input)
     $partnerId   = trim((string) ($input['partner_id']   ?? ''));
     $lineUserId  = trim((string) ($input['line_user_id'] ?? ''));
     $customerRef = trim((string) ($input['customer_ref'] ?? ''));
+    $search      = trim((string) ($input['search'] ?? ''));
     $limit       = min((int) ($input['limit']  ?? 100), 500);
     $offset      = max((int) ($input['offset'] ?? 0), 0);
 
@@ -2921,6 +2939,14 @@ function getOdooBdos($db, $input)
         } elseif ($customerRef !== '') {
             $where[] = 'customer_ref = ?';
             $params[] = $customerRef;
+        }
+        if ($search !== '') {
+            $where[] = '(bdo_name LIKE ? OR order_name LIKE ? OR customer_ref LIKE ? OR line_user_id LIKE ?)';
+            $searchLike = '%' . $search . '%';
+            $params[] = $searchLike;
+            $params[] = $searchLike;
+            $params[] = $searchLike;
+            $params[] = $searchLike;
         }
 
         $whereClause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
@@ -3043,6 +3069,12 @@ function getOdooBdos($db, $input)
         $fbWhere[] = "{$refExpr} = ?";
         $fbParams[] = $customerRef;
     }
+    if ($search !== '') {
+        $fbWhere[] = "({$bdoNameExpr} LIKE ? OR {$orderNameExpr} LIKE ?)";
+        $searchLike = '%' . $search . '%';
+        $fbParams[] = $searchLike;
+        $fbParams[] = $searchLike;
+    }
     $fbWhereClause = 'WHERE ' . implode(' AND ', $fbWhere);
 
     try {
@@ -3141,16 +3173,24 @@ function getSalespersonList($db)
 function getBdoListLive($db, $input)
 {
     $lineUserId    = trim((string) ($input['line_user_id'] ?? ''));
+    $partnerId     = (int) ($input['partner_id'] ?? 0);
     $lineAccountId = (int) ($input['line_account_id'] ?? 0);
     $state         = trim((string) ($input['state'] ?? ''));
+    $search        = trim((string) ($input['search'] ?? ''));
     $limit         = min((int) ($input['limit'] ?? 20), 50);
     $offset        = max((int) ($input['offset'] ?? 0), 0);
 
-    if ($lineUserId === '') {
-        throw new Exception('Missing line_user_id');
+    if ($lineUserId === '' && $partnerId <= 0) {
+        return array_merge(
+            getOdooBdos($db, array_merge($input, ['search' => $search, 'limit' => $limit, 'offset' => $offset])),
+            ['source' => 'sync_table_search']
+        );
     }
 
-    // Resolve line_account_id if not provided
+    if ($lineUserId === '' && $partnerId > 0) {
+        $lineUserId = resolveLineUserIdFromPartner($db, $partnerId);
+    }
+
     if ($lineAccountId <= 0) {
         $lineAccountId = resolveLineAccountId($db, $lineUserId);
     }
@@ -3166,8 +3206,11 @@ function getBdoListLive($db, $input)
             if ($state !== '') {
                 $options['state'] = $state;
             }
+            if ($partnerId > 0) {
+                $options['partner_id'] = $partnerId;
+            }
 
-            $result = $odoo->getBdoList($lineUserId, $options);
+            $result = $odoo->getBdoList($lineUserId !== '' ? $lineUserId : null, $options);
 
             return [
                 'bdos'   => $result['data']['bdos'] ?? $result['bdos'] ?? [],
@@ -3184,7 +3227,7 @@ function getBdoListLive($db, $input)
 
     // Fallback: sync table
     return array_merge(
-        getOdooBdos($db, array_merge($input, ['limit' => $limit, 'offset' => $offset])),
+        getOdooBdos($db, array_merge($input, ['line_user_id' => $lineUserId, 'partner_id' => $partnerId, 'limit' => $limit, 'offset' => $offset])),
         ['odoo_error' => $odooError, 'source' => 'sync_table_fallback']
     );
 }
@@ -3199,10 +3242,19 @@ function getBdoDetailLive($db, $input)
 {
     $lineUserId    = trim((string) ($input['line_user_id'] ?? ''));
     $bdoId         = (int) ($input['bdo_id'] ?? 0);
+    $partnerId     = (int) ($input['partner_id'] ?? 0);
     $lineAccountId = (int) ($input['line_account_id'] ?? 0);
 
-    if ($lineUserId === '' || $bdoId <= 0) {
-        throw new Exception('Missing line_user_id or bdo_id');
+    if ($bdoId <= 0) {
+        throw new Exception('Missing bdo_id');
+    }
+
+    if ($lineUserId === '' && $partnerId > 0) {
+        $lineUserId = resolveLineUserIdFromPartner($db, $partnerId);
+    }
+
+    if ($lineUserId === '') {
+        throw new Exception('Missing line_user_id');
     }
 
     if ($lineAccountId <= 0) {
@@ -3230,28 +3282,98 @@ function slipMatchBdo($db, $input)
 {
     $lineUserId    = trim((string) ($input['line_user_id'] ?? ''));
     $slipInboxId   = (int) ($input['slip_inbox_id'] ?? 0);
-    $matches       = $input['matches'] ?? [];
+    $matches       = is_array($input['matches'] ?? null) ? $input['matches'] : [];
     $note          = trim((string) ($input['note'] ?? ''));
     $lineAccountId = (int) ($input['line_account_id'] ?? 0);
-    $localSlipId   = (int) ($input['local_slip_id'] ?? 0);
+    $localSlipId   = (int) ($input['local_slip_id'] ?? ($input['slip_id'] ?? 0));
+    $legacyBdoId   = (int) ($input['bdo_id'] ?? 0);
+    $legacyAmount  = isset($input['amount']) ? (float) $input['amount'] : null;
 
-    if ($lineUserId === '' || $slipInboxId <= 0 || empty($matches)) {
-        throw new Exception('Missing line_user_id, slip_inbox_id, or matches');
+    if (empty($matches) && $legacyBdoId > 0) {
+        $matches = [[
+            'bdo_id' => $legacyBdoId,
+            'amount' => $legacyAmount,
+        ]];
+    }
+
+    $localSlip = null;
+    if ($localSlipId > 0) {
+        $stmt = $db->prepare("
+            SELECT id, line_user_id, line_account_id, slip_inbox_id, odoo_slip_id, bdo_id, amount,
+                   transfer_date, image_path, invoice_id, order_id
+            FROM odoo_slip_uploads
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$localSlipId]);
+        $localSlip = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    if ($lineUserId === '' && $localSlip) {
+        $lineUserId = trim((string) ($localSlip['line_user_id'] ?? ''));
+    }
+    if ($slipInboxId <= 0 && $localSlip) {
+        $slipInboxId = (int) ($localSlip['slip_inbox_id'] ?? $localSlip['odoo_slip_id'] ?? 0);
+    }
+    if ($lineAccountId <= 0 && $localSlip) {
+        $lineAccountId = (int) ($localSlip['line_account_id'] ?? 0);
+    }
+
+    if ($lineUserId === '') {
+        throw new Exception('Missing line_user_id');
+    }
+    if (empty($matches)) {
+        throw new Exception('Missing matches');
+    }
+
+    $normalizedMatches = [];
+    foreach ($matches as $match) {
+        $matchBdoId = (int) ($match['bdo_id'] ?? 0);
+        if ($matchBdoId <= 0) {
+            continue;
+        }
+        $matchAmount = isset($match['amount']) ? (float) $match['amount'] : null;
+        if ($matchAmount === null || $matchAmount <= 0) {
+            $matchAmount = resolveBdoAmount($db, $matchBdoId);
+        }
+        $normalizedMatches[] = [
+            'bdo_id' => $matchBdoId,
+            'amount' => $matchAmount,
+        ];
+    }
+
+    if (empty($normalizedMatches)) {
+        throw new Exception('No valid BDO matches');
     }
 
     if ($lineAccountId <= 0) {
         $lineAccountId = resolveLineAccountId($db, $lineUserId);
     }
+    if ($lineAccountId <= 0) {
+        throw new Exception('Cannot resolve line_account_id for this user');
+    }
 
     require_once __DIR__ . '/../classes/OdooAPIClient.php';
-    $odoo       = new OdooAPIClient($db, $lineAccountId);
-    $odooResult = $odoo->matchSlipBdo($lineUserId, $slipInboxId, $matches, $note);
+    $odoo = new OdooAPIClient($db, $lineAccountId);
+
+    if ($slipInboxId <= 0 && $localSlip) {
+        $slipInboxId = ensureOdooSlipInboxId($db, $odoo, $localSlip, $lineUserId);
+    }
+    if ($slipInboxId <= 0) {
+        throw new Exception('Missing slip_inbox_id');
+    }
+
+    $odooResult = $odoo->matchSlipBdo($lineUserId, $slipInboxId, $normalizedMatches, $note);
 
     // Update local slip record if local_slip_id provided
     if ($localSlipId > 0) {
         $matchedBdos = $odooResult['data']['matched_bdos'] ?? $odooResult['matched_bdos'] ?? [];
         $confidence  = $odooResult['data']['match_confidence'] ?? $odooResult['match_confidence'] ?? 'manual';
         $firstBdoName = !empty($matchedBdos) ? ($matchedBdos[0]['bdo_name'] ?? null) : null;
+        $firstBdoId = !empty($matchedBdos) ? (int) ($matchedBdos[0]['bdo_id'] ?? ($normalizedMatches[0]['bdo_id'] ?? 0)) : (int) ($normalizedMatches[0]['bdo_id'] ?? 0);
+        $slipInboxName = $odooResult['data']['slip_inbox_name'] ?? $odooResult['slip_inbox_name'] ?? null;
+        $deliveryType = !empty($matchedBdos) ? ($matchedBdos[0]['delivery_type'] ?? null) : null;
+        $totalMatched = $odooResult['data']['total_matched'] ?? $odooResult['total_matched'] ?? null;
 
         $db->prepare("
             UPDATE odoo_slip_uploads
@@ -3259,14 +3381,22 @@ function slipMatchBdo($db, $input)
                 match_reason = ?,
                 matched_at = NOW(),
                 slip_inbox_id = ?,
+                slip_inbox_name = COALESCE(?, slip_inbox_name),
                 match_confidence = ?,
-                bdo_name = COALESCE(?, bdo_name)
+                bdo_id = COALESCE(?, bdo_id),
+                bdo_name = COALESCE(?, bdo_name),
+                delivery_type = COALESCE(?, delivery_type),
+                bdo_amount = COALESCE(?, bdo_amount)
             WHERE id = ?
         ")->execute([
-            'BDO match via dashboard: ' . json_encode(array_column($matches, 'bdo_id')),
+            'BDO match via dashboard: ' . json_encode(array_column($normalizedMatches, 'bdo_id')),
             $slipInboxId,
+            $slipInboxName,
             $confidence,
+            $firstBdoId > 0 ? $firstBdoId : null,
             $firstBdoName,
+            $deliveryType,
+            $totalMatched !== null ? (float) $totalMatched : null,
             $localSlipId
         ]);
     }
@@ -3274,6 +3404,8 @@ function slipMatchBdo($db, $input)
     return [
         'odoo_result' => $odooResult,
         'local_updated' => $localSlipId > 0,
+        'line_user_id' => $lineUserId,
+        'slip_inbox_id' => $slipInboxId,
     ];
 }
 
@@ -3289,7 +3421,29 @@ function slipUnmatch($db, $input)
     $slipInboxId   = (int) ($input['slip_inbox_id'] ?? 0);
     $reason        = trim((string) ($input['reason'] ?? 'Unmatched via dashboard'));
     $lineAccountId = (int) ($input['line_account_id'] ?? 0);
-    $localSlipId   = (int) ($input['local_slip_id'] ?? 0);
+    $localSlipId   = (int) ($input['local_slip_id'] ?? ($input['slip_id'] ?? 0));
+
+    $localSlip = null;
+    if ($localSlipId > 0) {
+        $stmt = $db->prepare("
+            SELECT id, line_user_id, line_account_id, slip_inbox_id, odoo_slip_id
+            FROM odoo_slip_uploads
+            WHERE id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$localSlipId]);
+        $localSlip = $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    if ($lineUserId === '' && $localSlip) {
+        $lineUserId = trim((string) ($localSlip['line_user_id'] ?? ''));
+    }
+    if ($slipInboxId <= 0 && $localSlip) {
+        $slipInboxId = (int) ($localSlip['slip_inbox_id'] ?? $localSlip['odoo_slip_id'] ?? 0);
+    }
+    if ($lineAccountId <= 0 && $localSlip) {
+        $lineAccountId = (int) ($localSlip['line_account_id'] ?? 0);
+    }
 
     if ($lineUserId === '' || $slipInboxId <= 0) {
         throw new Exception('Missing line_user_id or slip_inbox_id');
@@ -3297,6 +3451,9 @@ function slipUnmatch($db, $input)
 
     if ($lineAccountId <= 0) {
         $lineAccountId = resolveLineAccountId($db, $lineUserId);
+    }
+    if ($lineAccountId <= 0) {
+        throw new Exception('Cannot resolve line_account_id for this user');
     }
 
     require_once __DIR__ . '/../classes/OdooAPIClient.php';
@@ -3312,7 +3469,11 @@ function slipUnmatch($db, $input)
                 matched_at = NULL,
                 match_confidence = NULL,
                 bdo_name = NULL,
-                slip_inbox_id = NULL
+                slip_inbox_id = NULL,
+                slip_inbox_name = NULL,
+                bdo_id = NULL,
+                delivery_type = NULL,
+                bdo_amount = NULL
             WHERE id = ?
         ")->execute(['Unmatched: ' . $reason, $localSlipId]);
     }
@@ -3422,6 +3583,88 @@ function getPendingBdoOrdersApi($db, $input)
     }
 }
 
+function ensureOdooSlipInboxId($db, $odoo, array $localSlip, $lineUserId)
+{
+    $existingId = (int) ($localSlip['slip_inbox_id'] ?? $localSlip['odoo_slip_id'] ?? 0);
+    if ($existingId > 0) {
+        return $existingId;
+    }
+
+    $imagePath = trim((string) ($localSlip['image_path'] ?? ''));
+    if ($imagePath === '') {
+        throw new Exception('Local slip image is missing');
+    }
+
+    $fullPath = realpath(__DIR__ . '/../' . ltrim($imagePath, '/'));
+    if ($fullPath === false || !is_file($fullPath)) {
+        throw new Exception('Local slip image file not found');
+    }
+
+    $imageData = file_get_contents($fullPath);
+    if ($imageData === false || strlen($imageData) < 100) {
+        throw new Exception('Local slip image file is empty');
+    }
+
+    $extension = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+    $mimeMap = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    $mimeType = $mimeMap[$extension] ?? 'image/jpeg';
+    $filename = basename($fullPath);
+
+    $uploadOptions = [];
+    if (!empty($localSlip['amount'])) {
+        $uploadOptions['amount'] = (float) $localSlip['amount'];
+    }
+    if (!empty($localSlip['transfer_date'])) {
+        $uploadOptions['transfer_date'] = $localSlip['transfer_date'];
+    }
+    if (!empty($localSlip['invoice_id'])) {
+        $uploadOptions['invoice_id'] = (int) $localSlip['invoice_id'];
+    }
+    if (!empty($localSlip['order_id'])) {
+        $uploadOptions['order_id'] = (int) $localSlip['order_id'];
+    }
+
+    $uploadResult = $odoo->uploadSlip($lineUserId, base64_encode($imageData), $uploadOptions);
+    $slipData = $uploadResult['data']['slip'] ?? $uploadResult['slip'] ?? [];
+    $slipInboxId = (int) ($slipData['slip_inbox_id'] ?? 0);
+    if ($slipInboxId <= 0) {
+        throw new Exception('Odoo did not return slip_inbox_id');
+    }
+
+    $db->prepare("
+        UPDATE odoo_slip_uploads
+        SET slip_inbox_id = ?,
+            slip_inbox_name = COALESCE(?, slip_inbox_name),
+            odoo_slip_id = COALESCE(?, odoo_slip_id),
+            status = COALESCE(?, status),
+            match_confidence = COALESCE(?, match_confidence),
+            bdo_id = COALESCE(?, bdo_id),
+            bdo_name = COALESCE(?, bdo_name),
+            delivery_type = COALESCE(?, delivery_type),
+            bdo_amount = COALESCE(?, bdo_amount)
+        WHERE id = ?
+    ")->execute([
+        $slipInboxId,
+        $slipData['slip_inbox_name'] ?? null,
+        !empty($slipData['id']) ? (int) $slipData['id'] : null,
+        $slipData['status'] ?? null,
+        $slipData['match_confidence'] ?? null,
+        !empty($slipData['bdo_id']) ? (int) $slipData['bdo_id'] : null,
+        $slipData['bdo_name'] ?? null,
+        $slipData['delivery_type'] ?? null,
+        isset($slipData['bdo_amount']) ? (float) $slipData['bdo_amount'] : null,
+        (int) $localSlip['id'],
+    ]);
+
+    return $slipInboxId;
+}
+
 /**
  * Helper: Resolve line_account_id from line_user_id.
  */
@@ -3440,4 +3683,65 @@ function resolveLineAccountId($db, $lineUserId)
     $stmt->execute([$lineUserId]);
     $val = $stmt->fetchColumn();
     return ($val !== false && $val !== null) ? (int) $val : 0;
+}
+
+function resolveLineUserIdFromPartner($db, $partnerId)
+{
+    if ((int) $partnerId <= 0) {
+        return '';
+    }
+
+    try {
+        $stmt = $db->prepare('SELECT line_user_id FROM odoo_line_users WHERE odoo_partner_id = ? AND line_user_id IS NOT NULL LIMIT 1');
+        $stmt->execute([(int) $partnerId]);
+        $val = $stmt->fetchColumn();
+        if ($val !== false && $val !== null) {
+            return trim((string) $val);
+        }
+    } catch (Exception $e) {
+        error_log('[resolveLineUserIdFromPartner] odoo_line_users: ' . $e->getMessage());
+    }
+
+    try {
+        $stmt = $db->prepare('SELECT line_user_id FROM odoo_bdo_context WHERE bdo_id IN (SELECT bdo_id FROM odoo_bdos WHERE partner_id = ? ORDER BY updated_at DESC LIMIT 5) AND line_user_id IS NOT NULL ORDER BY updated_at DESC LIMIT 1');
+        $stmt->execute([(int) $partnerId]);
+        $val = $stmt->fetchColumn();
+        return ($val !== false && $val !== null) ? trim((string) $val) : '';
+    } catch (Exception $e) {
+        error_log('[resolveLineUserIdFromPartner] odoo_bdo_context: ' . $e->getMessage());
+        return '';
+    }
+}
+
+function resolveBdoAmount($db, $bdoId)
+{
+    if ((int) $bdoId <= 0) {
+        return null;
+    }
+
+    try {
+        $stmt = $db->prepare("
+            SELECT COALESCE(amount_total, amount) AS amount_value
+            FROM (
+                SELECT amount_total, NULL AS amount FROM odoo_bdos WHERE bdo_id = ? LIMIT 1
+            ) b
+        ");
+        $stmt->execute([(int) $bdoId]);
+        $value = $stmt->fetchColumn();
+        if ($value !== false && $value !== null && $value !== '') {
+            return (float) $value;
+        }
+    } catch (Exception $e) {
+        error_log('[resolveBdoAmount] odoo_bdos: ' . $e->getMessage());
+    }
+
+    try {
+        $stmt = $db->prepare('SELECT amount FROM odoo_bdo_context WHERE bdo_id = ? ORDER BY updated_at DESC LIMIT 1');
+        $stmt->execute([(int) $bdoId]);
+        $value = $stmt->fetchColumn();
+        return ($value !== false && $value !== null && $value !== '') ? (float) $value : null;
+    } catch (Exception $e) {
+        error_log('[resolveBdoAmount] odoo_bdo_context: ' . $e->getMessage());
+        return null;
+    }
 }

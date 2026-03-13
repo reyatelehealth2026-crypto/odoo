@@ -34,6 +34,9 @@ try {
             state VARCHAR(20) DEFAULT 'waiting',
             qr_payload TEXT DEFAULT NULL COMMENT 'PromptPay QR raw payload',
             statement_pdf_path VARCHAR(255) DEFAULT NULL,
+            financial_summary_json JSON DEFAULT NULL,
+            selected_invoices_json JSON DEFAULT NULL,
+            selected_credit_notes_json JSON DEFAULT NULL,
             webhook_delivery_id VARCHAR(128) DEFAULT NULL COMMENT 'delivery_id of bdo.confirmed webhook',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -70,6 +73,31 @@ try {
             $results[] = "✅ Added column odoo_slip_uploads.$column";
         } else {
             $results[] = "⏭️ Column odoo_slip_uploads.$column already exists";
+        }
+    }
+
+    // ------------------------------------------------------------------ //
+    // 2.5 Add new columns to odoo_bdo_context (if not exist)
+    // ------------------------------------------------------------------ //
+    $contextColumnsToAdd = [
+        'financial_summary_json' => "JSON DEFAULT NULL",
+        'selected_invoices_json' => "JSON DEFAULT NULL",
+        'selected_credit_notes_json' => "JSON DEFAULT NULL",
+    ];
+
+    foreach ($contextColumnsToAdd as $column => $definition) {
+        $check = $db->query("
+            SELECT COUNT(*) FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'odoo_bdo_context'
+              AND COLUMN_NAME = '$column'
+        ")->fetchColumn();
+
+        if ((int)$check === 0) {
+            $db->exec("ALTER TABLE odoo_bdo_context ADD COLUMN $column $definition");
+            $results[] = "✅ Added column odoo_bdo_context.$column";
+        } else {
+            $results[] = "⏭️ Column odoo_bdo_context.$column already exists";
         }
     }
 
