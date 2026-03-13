@@ -660,6 +660,7 @@ function getCustomerList($db, $input)
     $invoiceFilter = trim((string) ($input['invoice_filter'] ?? ''));
     $sortBy = trim((string) ($input['sort_by'] ?? ''));
     $salespersonId = trim((string) ($input['salesperson_id'] ?? ''));
+    $fastMode = !empty($input['fast']) && $search === '' && $invoiceFilter === '' && $sortBy === '' && $salespersonId === '';
 
     // Salesperson JSON expressions (used in webhook fallback)
     $spIdExpr   = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.salesperson.id')), '')";
@@ -747,8 +748,8 @@ function getCustomerList($db, $input)
     $recentWindowWhere = webhookRecentWindowWhere(
         $db,
         $processedAtColumn,
-        ($invoiceFilter === 'unpaid' || $invoiceFilter === 'overdue') ? 365 : 180,
-        ($invoiceFilter === 'unpaid' || $invoiceFilter === 'overdue') ? 120000 : 80000
+        $fastMode ? 120 : (($invoiceFilter === 'unpaid' || $invoiceFilter === 'overdue') ? 365 : 180),
+        $fastMode ? 50000 : (($invoiceFilter === 'unpaid' || $invoiceFilter === 'overdue') ? 120000 : 80000)
     );
 
     $customerIdExpr    = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.id')), '')";
@@ -779,14 +780,17 @@ function getCustomerList($db, $input)
 
     $whereClause = 'WHERE ' . implode(' AND ', $where);
 
-    $countSql = "SELECT COUNT(*) FROM (
-        SELECT {$customerKeyExpr} as customer_key
-        FROM odoo_webhooks_log {$whereClause}
-        GROUP BY customer_key
-    ) t";
-    $countStmt = $db->prepare($countSql);
-    $countStmt->execute($params);
-    $total = (int) $countStmt->fetchColumn();
+    $total = 0;
+    if (!$fastMode) {
+        $countSql = "SELECT COUNT(*) FROM (
+            SELECT {$customerKeyExpr} as customer_key
+            FROM odoo_webhooks_log {$whereClause}
+            GROUP BY customer_key
+        ) t";
+        $countStmt = $db->prepare($countSql);
+        $countStmt->execute($params);
+        $total = (int) $countStmt->fetchColumn();
+    }
 
     $orderKeyExpr = "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_name')), ''), CAST(order_id AS CHAR))";
     $amtExpr = "CAST(COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.amount_total')), ''), '0') AS DECIMAL(14,2))";
@@ -818,27 +822,33 @@ function getCustomerList($db, $input)
     $stmt->execute($params);
     $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Compute accurate spend: MAX amount per unique order, then SUM (avoids counting same order across multiple events)
-    $custKeys = array_filter(array_column($customers, 'customer_key'));
-    if (!empty($custKeys)) {
-        $ph = implode(',', array_fill(0, count($custKeys), '?'));
-        $spendStmt = $db->prepare("
-            SELECT ckey, SUM(max_amt) as spend FROM (
-                SELECT {$customerKeyExpr} as ckey, {$orderKeyExpr} as okey, MAX({$amtExpr}) as max_amt
-                FROM odoo_webhooks_log
-                WHERE status = 'success' AND {$customerKeyExpr} IN ({$ph})" . ($search === '' && $recentWindowWhere !== '' ? " AND {$recentWindowWhere}" : "") . "
-                GROUP BY ckey, okey
-            ) per_order GROUP BY ckey
-        ");
-        $spendStmt->execute($custKeys);
-        $spendMap = [];
-        while ($r = $spendStmt->fetch(PDO::FETCH_ASSOC)) {
-            $spendMap[$r['ckey']] = (float) $r['spend'];
+    if (!$fastMode) {
+        // Compute accurate spend: MAX amount per unique order, then SUM (avoids counting same order across multiple events)
+        $custKeys = array_filter(array_column($customers, 'customer_key'));
+        if (!empty($custKeys)) {
+            $ph = implode(',', array_fill(0, count($custKeys), '?'));
+            $spendStmt = $db->prepare("
+                SELECT ckey, SUM(max_amt) as spend FROM (
+                    SELECT {$customerKeyExpr} as ckey, {$orderKeyExpr} as okey, MAX({$amtExpr}) as max_amt
+                    FROM odoo_webhooks_log
+                    WHERE status = 'success' AND {$customerKeyExpr} IN ({$ph})" . ($search === '' && $recentWindowWhere !== '' ? " AND {$recentWindowWhere}" : "") . "
+                    GROUP BY ckey, okey
+                ) per_order GROUP BY ckey
+            ");
+            $spendStmt->execute($custKeys);
+            $spendMap = [];
+            while ($r = $spendStmt->fetch(PDO::FETCH_ASSOC)) {
+                $spendMap[$r['ckey']] = (float) $r['spend'];
+            }
+            foreach ($customers as &$cu) {
+                $cu['spend_30d'] = $spendMap[$cu['customer_key']] ?? 0;
+            }
+            unset($cu);
         }
-        foreach ($customers as &$cu) {
-            $cu['spend_30d'] = $spendMap[$cu['customer_key']] ?? 0;
-        }
-        unset($cu);
+    }
+
+    if ($fastMode) {
+        $total = count($customers);
     }
 
     return ['customers' => $customers, 'total' => $total, 'source' => 'webhook', 'limit' => $limit, 'offset' => $offset];

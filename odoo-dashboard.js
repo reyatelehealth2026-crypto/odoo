@@ -332,7 +332,9 @@ async function loadCustomers(){
     const invoiceFilter=document.getElementById('custInvoiceFilter')?.value||'';
     const sortBy=document.getElementById('custSortBy')?.value||'';
     const salespersonId=document.getElementById('custSalesperson')?.value||'';
-    const result=await whApiCall({action:'customer_list',limit:custPageSize,offset:custCurrentOffset,search:document.getElementById('custSearch')?.value||'',invoice_filter:invoiceFilter,sort_by:sortBy,salesperson_id:salespersonId});
+    const search=document.getElementById('custSearch')?.value||'';
+    const fastMode=!search && !invoiceFilter && !sortBy && !salespersonId;
+    const result=await whApiCall({action:'customer_list',limit:custPageSize,offset:custCurrentOffset,search,invoice_filter:invoiceFilter,sort_by:sortBy,salesperson_id:salespersonId,fast:fastMode?1:0});
     if(!result||!result.success){c.innerHTML='<p style="padding:1rem;color:var(--gray-500);">'+escapeHtml((result&&result.error)||'Error')+'</p>';return;}
     const {customers,total}=result.data;
     const tc=document.getElementById('custTotalCount');if(tc)tc.textContent=Number(total||0).toLocaleString()+' รายการ';
@@ -2755,7 +2757,7 @@ async function loadMatchingCustomerGrid(forceRefresh){
     if(gridEl) gridEl.innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>';
 
     const [custRes, slipRes, bdoRes] = await Promise.all([
-        whApiCall({action:'customer_list', limit:80, offset:0}),
+        whApiCall({action:'customer_list', limit:80, offset:0, fast:1}),
         fetch('api/slips-list.php?status=pending&limit=60&offset=0').then(r=>r.json()).catch(()=>({success:false})),
         whApiCall({action:'odoo_bdo_list_api', limit:80, offset:0})
     ]);
