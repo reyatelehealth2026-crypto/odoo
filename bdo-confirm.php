@@ -1,923 +1,887 @@
 <?php
 /**
- * BDO Confirm — Sales Matching Workspace
- *
- * หน้าหลักสำหรับ Sales ทำ BDO Confirm / Slip Matching
- * ใช้ได้ทั้งแบบ standalone และ embed ใน inboxreya ผ่าน iframe/SSO
- *
- * Features:
- *  - BDO list (waiting state) พร้อม financial breakdown
- *  - Slip list (pending/unmatched) พร้อม slip image preview
- *  - Matching workspace: 1:1, 1:N, N:1 พร้อม amount validation
- *  - Smart suggestions (auto-detect bdo_id + exact amount)
- *  - Statement PDF download
- *  - Unmatch (blocked if posted/done)
- *  - Staged loading: BDO list first, detail on demand
- *
- * @version 1.0.0 (March 2026 — cny_reya_connector v11.0.1.3.0)
+ * BDO Confirm — Slip Matching Workspace
+ * Logic เดิมจาก odoo-dashboard.js + odoo-webhooks-dashboard.php
+ * ปรับให้ standalone, fast load, ไม่ล่ม
  */
-
 if (session_status() === PHP_SESSION_NONE) session_start();
-
 require_once __DIR__ . '/config/config.php';
-require_once __DIR__ . '/config/database.php';
 
-// Auth: require admin session
+// Auth
 if (empty($_SESSION['admin_user']['id'])) {
     header('Location: auth/login.php');
     exit;
 }
 
-$pageTitle = 'BDO Confirm — Slip Matching';
-$apiBase   = 'api/bdo-inbox-api.php';
-$internalSecret = defined('INTERNAL_API_SECRET') ? INTERNAL_API_SECRET : '';
+$odooBase = defined('ODOO_API_BASE_URL') ? rtrim(ODOO_API_BASE_URL, '/') : 'https://erp.cnyrxapp.com';
 ?>
 <!DOCTYPE html>
 <html lang="th">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title><?= htmlspecialchars($pageTitle) ?></title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<title>BDO Confirm — Slip Matching</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 <style>
-:root {
-    --primary: #2563eb;
-    --primary-light: #dbeafe;
-    --success: #16a34a;
-    --success-light: #dcfce7;
-    --warning: #d97706;
-    --warning-light: #fef3c7;
-    --danger: #dc2626;
-    --danger-light: #fee2e2;
-    --gray-50: #f9fafb;
-    --gray-100: #f3f4f6;
-    --gray-200: #e5e7eb;
-    --gray-400: #9ca3af;
-    --gray-500: #6b7280;
-    --gray-600: #4b5563;
-    --gray-700: #374151;
-    --gray-800: #1f2937;
-    --radius: 10px;
-    --shadow: 0 1px 4px rgba(0,0,0,.08);
+:root{
+  --primary:#6366f1;--primary-light:#e0e7ff;
+  --success:#10b981;--success-light:#d1fae5;
+  --warning:#f59e0b;--warning-light:#fef3c7;
+  --danger:#ef4444;--danger-light:#fee2e2;
+  --gray-50:#f8fafc;--gray-100:#f1f5f9;--gray-200:#e2e8f0;
+  --gray-300:#cbd5e1;--gray-400:#94a3b8;--gray-500:#64748b;
+  --gray-600:#475569;--gray-700:#334155;--gray-800:#1e293b;
+  --radius:12px;--shadow:0 4px 16px rgba(0,0,0,.06);
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--gray-50); color: var(--gray-800); font-size: 14px; }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'IBM Plex Sans Thai',system-ui,sans-serif;background:var(--gray-50);color:var(--gray-800);font-size:14px;}
+
+/* Header */
+.top-bar{background:#fff;border-bottom:1px solid var(--gray-200);padding:10px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:50;}
+.top-bar h1{font-size:1.05rem;font-weight:700;color:var(--gray-900);}
 
 /* Layout */
-.page-header { background: white; border-bottom: 1px solid var(--gray-200); padding: 12px 20px; display: flex; align-items: center; gap: 12px; }
-.page-header h1 { font-size: 1.1rem; font-weight: 700; color: var(--gray-800); }
-.page-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
-@media (max-width: 900px) { .page-body { grid-template-columns: 1fr; } }
+.page-wrap{padding:16px;max-width:1440px;margin:0 auto;}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
+@media(max-width:1100px){.three-col{grid-template-columns:1fr 1fr;}}
+@media(max-width:700px){.three-col{grid-template-columns:1fr;}}
 
 /* Cards */
-.card { background: white; border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
-.card-header { padding: 12px 16px; border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; justify-content: space-between; }
-.card-title { font-weight: 600; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
-.card-body { padding: 12px 16px; }
+.card{background:#fff;border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+.card-hd{padding:10px 14px;border-bottom:1px solid var(--gray-100);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.card-hd-title{font-weight:700;font-size:0.88rem;display:flex;align-items:center;gap:6px;}
+.card-body{padding:10px 14px;}
+.scroll-area{overflow-y:auto;max-height:420px;}
+
+/* KPI row */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+.kpi-card{background:#fff;border-radius:10px;padding:10px 14px;box-shadow:var(--shadow);text-align:center;}
+.kpi-num{font-size:1.6rem;font-weight:800;line-height:1;}
+.kpi-lbl{font-size:0.72rem;color:var(--gray-500);margin-top:3px;}
+
+/* Suggestion item */
+.sugg-item{display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--gray-200);border-radius:10px;padding:8px 10px;margin-bottom:6px;transition:box-shadow .15s;}
+.sugg-item:hover{box-shadow:0 2px 10px rgba(99,102,241,.12);}
+.sugg-item.conf-exact_bdo_id{border-color:#86efac33;background:#f0fdf4;}
+.sugg-item.conf-exact_amount{border-color:#93c5fd33;background:#eff6ff;}
+.sugg-item.conf-bdo_id_amount_diff{border-color:#fcd34d33;background:#fffbeb;}
+.sugg-item.conf-fuzzy{border-color:#d8b4fe33;background:#faf5ff;}
+
+/* Slip / BDO card */
+.match-card{display:flex;align-items:center;gap:8px;padding:7px 8px;margin-bottom:5px;border:2px solid var(--gray-200);border-radius:10px;cursor:pointer;background:#fff;transition:all .15s;}
+.match-card:hover{border-color:var(--primary);}
+.match-card.selected{border-color:var(--primary);background:var(--primary-light);}
+.match-card.has-sugg{border-color:#a5b4fc;background:#f5f3ff;}
+.slip-thumb{width:38px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;border:1px solid var(--gray-200);}
+.slip-thumb-ph{width:38px;height:48px;background:var(--gray-100);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+/* Group header */
+.group-hd{display:flex;align-items:center;gap:6px;font-size:0.72rem;font-weight:700;background:var(--gray-100);padding:3px 8px;border-radius:6px;margin-bottom:5px;border-left:3px solid var(--primary);}
+.group-hd.bdo-group{border-left-color:var(--warning);}
+
+/* Summary bar */
+.sum-bar{background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:10px 14px;margin-top:10px;display:none;}
+.sum-bar.show{display:block;}
+.sum-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+.sum-item{text-align:center;}
+.sum-lbl{font-size:0.7rem;color:var(--gray-500);}
+.sum-val{font-weight:700;font-size:1rem;}
 
 /* Badges */
-.badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 50px; font-size: 0.72rem; font-weight: 600; }
-.badge-waiting { background: var(--warning-light); color: var(--warning); }
-.badge-matched { background: var(--success-light); color: var(--success); }
-.badge-new, .badge-unmatched { background: var(--gray-100); color: var(--gray-600); }
-.badge-posted, .badge-done { background: var(--primary-light); color: var(--primary); }
-.badge-private { background: #fce7f3; color: #be185d; }
-.badge-company { background: #e0f2fe; color: #0369a1; }
-
-/* BDO List */
-.bdo-item { padding: 10px 12px; border: 2px solid var(--gray-200); border-radius: 8px; cursor: pointer; transition: all .15s; margin-bottom: 8px; }
-.bdo-item:hover { border-color: var(--primary); background: var(--primary-light); }
-.bdo-item.selected { border-color: var(--primary); background: var(--primary-light); }
-.bdo-item-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.bdo-name { font-weight: 700; font-size: 0.9rem; color: var(--primary); }
-.bdo-amount { font-weight: 700; font-size: 1rem; color: var(--gray-800); }
-.bdo-meta { font-size: 0.78rem; color: var(--gray-500); display: flex; gap: 8px; flex-wrap: wrap; }
-.bdo-financial { margin-top: 8px; padding: 8px; background: var(--gray-50); border-radius: 6px; font-size: 0.78rem; }
-.fin-row { display: flex; justify-content: space-between; padding: 2px 0; }
-.fin-row.total { font-weight: 700; border-top: 1px solid var(--gray-200); margin-top: 4px; padding-top: 4px; }
-
-/* Slip List */
-.slip-item { padding: 8px 10px; border: 2px solid var(--gray-200); border-radius: 8px; cursor: pointer; transition: all .15s; margin-bottom: 6px; display: flex; gap: 10px; align-items: flex-start; }
-.slip-item:hover { border-color: var(--primary); }
-.slip-item.selected { border-color: var(--success); background: var(--success-light); }
-.slip-thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 6px; flex-shrink: 0; background: var(--gray-100); }
-.slip-thumb-placeholder { width: 52px; height: 52px; border-radius: 6px; background: var(--gray-100); display: flex; align-items: center; justify-content: center; color: var(--gray-400); flex-shrink: 0; }
-.slip-info { flex: 1; min-width: 0; }
-.slip-amount { font-weight: 700; font-size: 0.95rem; }
-.slip-meta { font-size: 0.75rem; color: var(--gray-500); }
-.slip-confidence { font-size: 0.72rem; }
-
-/* Match Summary Bar */
-.match-bar { position: sticky; bottom: 0; background: white; border-top: 2px solid var(--gray-200); padding: 12px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; z-index: 10; }
-.match-bar-amounts { display: flex; gap: 16px; flex: 1; }
-.match-bar-item { text-align: center; }
-.match-bar-label { font-size: 0.72rem; color: var(--gray-500); }
-.match-bar-value { font-weight: 700; font-size: 1rem; }
+.badge-conf{display:inline-flex;align-items:center;padding:1px 6px;border-radius:50px;font-size:0.65rem;font-weight:600;}
+.badge-exact_bdo_id{background:#dcfce7;color:#16a34a;}
+.badge-exact_amount{background:#dbeafe;color:#1d4ed8;}
+.badge-bdo_id_amount_diff{background:#fef9c3;color:#92400e;}
+.badge-fuzzy{background:#f3e8ff;color:#6d28d9;}
+.badge-pending{background:#fef3c7;color:#d97706;}
+.badge-matched{background:#dcfce7;color:#16a34a;}
+.badge-new{background:var(--gray-100);color:var(--gray-600);}
+.badge-private{background:#fce7f3;color:#be185d;}
+.badge-company{background:#e0f2fe;color:#0369a1;}
 
 /* Buttons */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 7px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none; transition: all .15s; }
-.btn-primary { background: var(--primary); color: white; }
-.btn-primary:hover { background: #1d4ed8; }
-.btn-primary:disabled { background: var(--gray-400); cursor: not-allowed; }
-.btn-success { background: var(--success); color: white; }
-.btn-success:hover { background: #15803d; }
-.btn-danger { background: var(--danger); color: white; }
-.btn-danger:hover { background: #b91c1c; }
-.btn-outline { background: white; color: var(--gray-700); border: 1px solid var(--gray-300); }
-.btn-outline:hover { background: var(--gray-50); }
-.btn-sm { padding: 4px 10px; font-size: 0.78rem; }
-
-/* Suggestions */
-.suggestion-item { padding: 8px 12px; border-radius: 8px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
-.suggestion-exact { background: var(--success-light); border: 1px solid #86efac; }
-.suggestion-bdo-id { background: var(--primary-light); border: 1px solid #93c5fd; }
-.suggestion-mismatch { background: var(--warning-light); border: 1px solid #fcd34d; }
-
-/* Detail panel */
-.detail-panel { padding: 12px; background: var(--gray-50); border-radius: 8px; margin-top: 8px; }
-.detail-row { display: flex; justify-content: space-between; padding: 3px 0; font-size: 0.82rem; }
-.detail-label { color: var(--gray-500); }
-.detail-value { font-weight: 600; }
+.btn-confirm{background:linear-gradient(135deg,#16a34a,#059669);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.btn-dismiss{background:var(--gray-100);color:var(--gray-600);border:none;border-radius:8px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-family:inherit;white-space:nowrap;}
+.btn-main{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:0.85rem;font-weight:600;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;}
+.btn-main:disabled{background:var(--gray-400);cursor:not-allowed;}
+.btn-outline{background:#fff;color:var(--gray-700);border:1px solid var(--gray-300);border-radius:8px;padding:6px 14px;font-size:0.82rem;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:6px;}
+.btn-outline:hover{background:var(--gray-50);}
+.btn-danger{background:var(--danger);color:#fff;border:none;border-radius:8px;padding:5px 12px;font-size:0.78rem;cursor:pointer;font-family:inherit;}
 
 /* Loading */
-.loading { text-align: center; padding: 32px; color: var(--gray-400); }
-.spin { animation: spin .8s linear infinite; display: inline-block; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.loading{text-align:center;padding:2rem;color:var(--gray-400);}
+.spin{animation:spin .8s linear infinite;display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg);}}
 
 /* Toast */
-.toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
-.toast { padding: 10px 16px; border-radius: 8px; color: white; font-size: 0.85rem; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,.15); animation: slideIn .2s ease; }
-.toast-success { background: var(--success); }
-.toast-error { background: var(--danger); }
-.toast-warning { background: var(--warning); }
-@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.toast-wrap{position:fixed;top:14px;right:14px;z-index:9999;display:flex;flex-direction:column;gap:6px;}
+.toast{padding:9px 16px;border-radius:8px;color:#fff;font-size:0.83rem;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.15);animation:fadeIn .2s ease;}
+.toast-ok{background:#16a34a;}.toast-err{background:#dc2626;}.toast-warn{background:#d97706;}
+@keyframes fadeIn{from{opacity:0;transform:translateX(30px);}to{opacity:1;transform:none;}}
 
 /* Modal */
-.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; align-items: center; justify-content: center; }
-.modal-overlay.active { display: flex; }
-.modal { background: white; border-radius: var(--radius); max-width: 520px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,.2); }
-.modal-header { padding: 16px 20px; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; }
-.modal-body { padding: 16px 20px; }
-.modal-footer { padding: 12px 20px; border-top: 1px solid var(--gray-200); display: flex; gap: 8px; justify-content: flex-end; }
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:200;align-items:center;justify-content:center;}
+.modal-bg.open{display:flex;}
+.modal-box{background:#fff;border-radius:14px;max-width:480px;width:92%;max-height:88vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2);}
+.modal-hd{padding:14px 18px;border-bottom:1px solid var(--gray-200);display:flex;justify-content:space-between;align-items:center;font-weight:700;}
+.modal-body{padding:14px 18px;}
+.modal-ft{padding:10px 18px;border-top:1px solid var(--gray-200);display:flex;gap:8px;justify-content:flex-end;}
 
-/* Note input */
-.note-input { width: 100%; padding: 8px 10px; border: 1px solid var(--gray-200); border-radius: 7px; font-size: 0.85rem; resize: none; }
-.note-input:focus { outline: none; border-color: var(--primary); }
+/* Note textarea */
+.note-ta{width:100%;padding:7px 10px;border:1px solid var(--gray-200);border-radius:8px;font-size:0.83rem;resize:none;font-family:inherit;}
+.note-ta:focus{outline:none;border-color:var(--primary);}
 
-/* Tabs */
-.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--gray-200); margin-bottom: 12px; }
-.tab { padding: 7px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; color: var(--gray-500); }
-.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+/* Matched today table */
+.matched-table{width:100%;border-collapse:collapse;font-size:0.82rem;}
+.matched-table th{background:var(--gray-50);padding:5px 8px;border-bottom:2px solid var(--gray-200);text-align:left;font-weight:600;}
+.matched-table td{padding:4px 8px;border-bottom:1px solid var(--gray-100);}
+.matched-table tr:hover td{background:#f0fdf4;}
 
-/* Diff indicator */
-.diff-ok { color: var(--success); }
-.diff-over { color: var(--warning); }
-.diff-under { color: var(--danger); }
-
-/* Empty state */
-.empty { text-align: center; padding: 32px 16px; color: var(--gray-400); }
-.empty i { font-size: 2rem; display: block; margin-bottom: 8px; }
+/* Filter tabs */
+.filter-tabs{display:flex;gap:4px;margin-bottom:10px;}
+.ftab{padding:5px 12px;border-radius:20px;font-size:0.78rem;font-weight:600;cursor:pointer;border:1.5px solid var(--gray-200);background:#fff;color:var(--gray-600);transition:all .15s;}
+.ftab.active{background:var(--primary);color:#fff;border-color:var(--primary);}
 </style>
 </head>
 <body>
 
-<div class="page-header">
-    <i class="bi bi-receipt-cutoff" style="font-size:1.4rem;color:var(--primary);"></i>
-    <h1>BDO Confirm — Slip Matching</h1>
-    <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
-        <span id="connectionStatus" style="font-size:0.78rem;color:var(--gray-400);">กำลังเชื่อมต่อ...</span>
-        <button class="btn btn-outline btn-sm" onclick="refreshAll()"><i class="bi bi-arrow-clockwise"></i> รีเฟรช</button>
-    </div>
+<!-- Top bar -->
+<div class="top-bar">
+  <i class="bi bi-receipt-cutoff" style="font-size:1.3rem;color:var(--primary);"></i>
+  <h1>BDO Confirm — Slip Matching</h1>
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <span id="statusDot" style="font-size:0.75rem;color:var(--gray-400);">กำลังโหลด...</span>
+    <button class="btn-outline" onclick="loadAll()"><i class="bi bi-arrow-clockwise"></i> รีเฟรช</button>
+  </div>
 </div>
 
-<!-- Customer selector -->
-<div style="background:white;border-bottom:1px solid var(--gray-200);padding:10px 20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-    <label style="font-size:0.85rem;font-weight:600;color:var(--gray-600);">ลูกค้า:</label>
-    <input id="searchLineUserId" type="text" placeholder="LINE User ID (Uxxxxxxxxx)" style="padding:6px 10px;border:1px solid var(--gray-200);border-radius:7px;font-size:0.85rem;width:240px;">
-    <input id="searchPartnerId" type="text" placeholder="Partner ID (Odoo)" style="padding:6px 10px;border:1px solid var(--gray-200);border-radius:7px;font-size:0.85rem;width:160px;">
-    <button class="btn btn-primary btn-sm" onclick="loadWorkspace()"><i class="bi bi-search"></i> โหลด</button>
-    <span id="customerInfo" style="font-size:0.82rem;color:var(--gray-500);"></span>
-</div>
+<div class="page-wrap">
 
-<div class="page-body">
+  <!-- KPI row -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-num" id="kpiPending" style="color:var(--warning);">-</div>
+      <div class="kpi-lbl">สลิป / BDO รอจับคู่</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-num" id="kpiSugg" style="color:var(--primary);">-</div>
+      <div class="kpi-lbl">คู่ที่แนะนำ</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-num" id="kpiSuccess" style="color:var(--success);">-</div>
+      <div class="kpi-lbl">จับคู่สำเร็จวันนี้</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-num" id="kpiProblem" style="color:var(--danger);">-</div>
+      <div class="kpi-lbl">มีปัญหา</div>
+    </div>
+  </div>
 
-    <!-- LEFT: BDO List -->
-    <div>
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title"><i class="bi bi-file-earmark-text"></i> BDO รอชำระ</span>
-                <span id="bdoCount" style="font-size:0.78rem;color:var(--gray-400);"></span>
-            </div>
-            <div class="card-body" style="max-height:calc(100vh - 280px);overflow-y:auto;" id="bdoList">
-                <div class="empty"><i class="bi bi-inbox"></i>ยังไม่ได้โหลดข้อมูล</div>
-            </div>
-        </div>
+  <!-- Filter + search bar -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+    <div class="filter-tabs">
+      <div class="ftab active" id="ftab-pending" onclick="setFilter('pending')">รอจับคู่</div>
+      <div class="ftab" id="ftab-matched" onclick="setFilter('matched')">จับคู่แล้ว</div>
+      <div class="ftab" id="ftab-all" onclick="setFilter('all')">ทั้งหมด</div>
+    </div>
+    <input id="searchInput" type="text" placeholder="ค้นหาชื่อลูกค้า / BDO / ยอด..." style="padding:6px 12px;border:1px solid var(--gray-200);border-radius:8px;font-size:0.83rem;width:240px;font-family:inherit;" oninput="debounceSearch()">
+    <button class="btn-main" id="batchConfirmBtn" onclick="batchConfirmMatches()" disabled>
+      <i class="bi bi-check2-all"></i> ยืนยันทั้งหมด <span id="batchCount"></span>
+    </button>
+  </div>
+
+  <!-- Suggestions (full width) -->
+  <div class="card" style="margin-bottom:14px;" id="suggCard">
+    <div class="card-hd">
+      <span class="card-hd-title"><i class="bi bi-lightning-charge-fill" style="color:var(--warning);"></i> คู่ที่ระบบแนะนำ</span>
+      <span id="suggCount" style="font-size:0.75rem;color:var(--gray-400);">ยังไม่มีคำแนะนำ</span>
+    </div>
+    <div class="card-body scroll-area" id="suggList" style="max-height:280px;">
+      <div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>
+    </div>
+  </div>
+
+  <!-- 3-col: Slips | BDOs | Matched today -->
+  <div class="three-col">
+
+    <!-- Slips -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-hd-title"><i class="bi bi-image"></i> สลิป</span>
+        <span id="slipCount" style="font-size:0.75rem;color:var(--gray-400);"></span>
+      </div>
+      <div class="card-body scroll-area" id="slipList">
+        <div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>
+      </div>
     </div>
 
-    <!-- RIGHT: Slip List + Matching -->
-    <div>
-        <div class="card" style="margin-bottom:16px;">
-            <div class="card-header">
-                <span class="card-title"><i class="bi bi-image"></i> สลิปรอจับคู่</span>
-                <span id="slipCount" style="font-size:0.78rem;color:var(--gray-400);"></span>
-            </div>
-            <div class="tabs" style="padding:0 16px;">
-                <div class="tab active" onclick="setSlipTab('pending')" id="tabPending">รอจับคู่</div>
-                <div class="tab" onclick="setSlipTab('all')" id="tabAll">ทั้งหมด</div>
-            </div>
-            <div class="card-body" style="max-height:280px;overflow-y:auto;" id="slipList">
-                <div class="empty"><i class="bi bi-inbox"></i>ยังไม่ได้โหลดข้อมูล</div>
-            </div>
-        </div>
-
-        <!-- Smart Suggestions -->
-        <div class="card" id="suggestionsCard" style="margin-bottom:16px;display:none;">
-            <div class="card-header">
-                <span class="card-title"><i class="bi bi-lightning-charge-fill" style="color:#f59e0b;"></i> คู่ที่แนะนำ</span>
-                <button class="btn btn-success btn-sm" onclick="batchConfirmSuggestions()" id="batchConfirmBtn">
-                    <i class="bi bi-check2-all"></i> ยืนยันทั้งหมด
-                </button>
-            </div>
-            <div class="card-body" id="suggestionsList"></div>
-        </div>
-
-        <!-- Match Summary Bar -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title"><i class="bi bi-link-45deg"></i> จับคู่ด้วยตนเอง</span>
-                <button class="btn btn-outline btn-sm" onclick="clearMatchSelection()"><i class="bi bi-x"></i> ล้าง</button>
-            </div>
-            <div class="card-body">
-                <div class="match-bar-amounts" style="margin-bottom:10px;">
-                    <div class="match-bar-item">
-                        <div class="match-bar-label">สลิปที่เลือก</div>
-                        <div class="match-bar-value" id="sumSlipAmt">-</div>
-                    </div>
-                    <div style="display:flex;align-items:center;color:var(--gray-400);font-size:1.2rem;">→</div>
-                    <div class="match-bar-item">
-                        <div class="match-bar-label">BDO ที่เลือก</div>
-                        <div class="match-bar-value" id="sumBdoAmt">-</div>
-                    </div>
-                    <div class="match-bar-item">
-                        <div class="match-bar-label">ผลต่าง</div>
-                        <div class="match-bar-value" id="sumDiff">-</div>
-                    </div>
-                </div>
-                <textarea class="note-input" id="matchNote" rows="2" placeholder="หมายเหตุ (ถ้ามี)"></textarea>
-                <div style="margin-top:8px;display:flex;gap:8px;">
-                    <button class="btn btn-success" id="confirmMatchBtn" onclick="confirmManualMatch()" disabled>
-                        <i class="bi bi-check2-circle"></i> ยืนยันจับคู่
-                    </button>
-                </div>
-            </div>
-        </div>
+    <!-- BDOs -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-hd-title"><i class="bi bi-file-earmark-text"></i> BDO</span>
+        <span id="bdoCount" style="font-size:0.75rem;color:var(--gray-400);"></span>
+      </div>
+      <div class="card-body scroll-area" id="bdoList">
+        <div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>
+      </div>
     </div>
 
-</div>
-
-<!-- BDO Detail Modal -->
-<div class="modal-overlay" id="bdoDetailModal">
-    <div class="modal">
-        <div class="modal-header">
-            <span style="font-weight:700;" id="bdoDetailTitle">รายละเอียด BDO</span>
-            <button onclick="closeBdoDetail()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;"><i class="bi bi-x"></i></button>
-        </div>
-        <div class="modal-body" id="bdoDetailBody">
-            <div class="loading"><i class="bi bi-arrow-repeat spin"></i><br>กำลังโหลด...</div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-outline btn-sm" id="bdoDetailPdfBtn" onclick="downloadStatementPdf()" style="display:none;">
-                <i class="bi bi-file-earmark-pdf"></i> Statement PDF
-            </button>
-            <button class="btn btn-outline btn-sm" onclick="closeBdoDetail()">ปิด</button>
-        </div>
+    <!-- Matched today -->
+    <div class="card">
+      <div class="card-hd">
+        <span class="card-hd-title"><i class="bi bi-check2-circle" style="color:var(--success);"></i> จับคู่สำเร็จวันนี้</span>
+        <span id="matchedTodayCount" style="font-size:0.75rem;color:var(--gray-400);"></span>
+      </div>
+      <div class="card-body scroll-area" id="matchedTodayList">
+        <div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>
+      </div>
     </div>
-</div>
 
-<!-- Slip Image Modal -->
-<div class="modal-overlay" id="slipImageModal">
-    <div class="modal" style="max-width:400px;">
-        <div class="modal-header">
-            <span style="font-weight:700;">รูปสลิป</span>
-            <button onclick="closeSlipImage()" style="background:none;border:none;cursor:pointer;font-size:1.2rem;"><i class="bi bi-x"></i></button>
-        </div>
-        <div class="modal-body" style="text-align:center;">
-            <img id="slipImageFull" src="" style="max-width:100%;border-radius:8px;" alt="Slip">
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-danger btn-sm" id="unmatchSlipBtn" onclick="unmatchCurrentSlip()" style="display:none;">
-                <i class="bi bi-x-circle"></i> ยกเลิกจับคู่
-            </button>
-            <button class="btn btn-outline btn-sm" onclick="closeSlipImage()">ปิด</button>
-        </div>
+  </div>
+
+  <!-- Manual match summary bar -->
+  <div class="sum-bar" id="sumBar">
+    <div class="sum-row">
+      <div class="sum-item">
+        <div class="sum-lbl">สลิปที่เลือก</div>
+        <div class="sum-val" id="sumSlipAmt">-</div>
+      </div>
+      <div style="font-size:1.3rem;color:var(--gray-400);">→</div>
+      <div class="sum-item">
+        <div class="sum-lbl">BDO ที่เลือก</div>
+        <div class="sum-val" id="sumBdoAmt">-</div>
+      </div>
+      <div class="sum-item" id="sumDiffWrap"></div>
+      <div style="flex:1;"></div>
+      <textarea class="note-ta" id="matchNote" rows="1" placeholder="หมายเหตุ (ถ้ามี)" style="width:200px;"></textarea>
+      <button class="btn-main" id="confirmMatchBtn" onclick="confirmManualMatch()" disabled>
+        <i class="bi bi-check2-circle"></i> ยืนยันจับคู่
+      </button>
+      <button class="btn-outline" onclick="clearSelection()"><i class="bi bi-x"></i> ล้าง</button>
     </div>
+  </div>
+
+</div><!-- /page-wrap -->
+
+<!-- Slip image modal -->
+<div class="modal-bg" id="slipModal">
+  <div class="modal-box">
+    <div class="modal-hd">
+      <span>รูปสลิป</span>
+      <button onclick="closeModal('slipModal')" style="background:none;border:none;cursor:pointer;font-size:1.2rem;"><i class="bi bi-x"></i></button>
+    </div>
+    <div class="modal-body" style="text-align:center;">
+      <img id="slipModalImg" src="" style="max-width:100%;border-radius:8px;" alt="slip">
+    </div>
+    <div class="modal-ft">
+      <button class="btn-danger" id="unmatchBtn" onclick="unmatchCurrentSlip()" style="display:none;"><i class="bi bi-x-circle"></i> ยกเลิกจับคู่</button>
+      <button class="btn-outline" onclick="closeModal('slipModal')">ปิด</button>
+    </div>
+  </div>
 </div>
 
 <!-- Toast container -->
-<div class="toast-container" id="toastContainer"></div>
+<div class="toast-wrap" id="toastWrap"></div>
 
 <script>
-// ════════════════════════════════════════════════════════════════════════════
-// STATE
-// ════════════════════════════════════════════════════════════════════════════
-const API_BASE = '<?= htmlspecialchars($apiBase) ?>';
-const API_SECRET = '<?= htmlspecialchars($internalSecret) ?>';
+// ═══════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════
+const WH_API  = 'api/odoo-webhooks-dashboard.php';
+const SLIP_API = 'api/slips-list.php';
+const ODOO_BASE = '<?= htmlspecialchars($odooBase) ?>';
 
-let _bdos = [];
-let _slips = [];
-let _suggestions = [];
-let _selectedBdoIds = new Set();
-let _selectedSlipIds = new Set();
-let _slipTab = 'pending';
-let _currentBdoDetailId = null;
+// ═══════════════════════════════════════════════════════════════
+// STATE  (same as odoo-dashboard.js)
+// ═══════════════════════════════════════════════════════════════
+let _slips = [], _bdos = [], _suggestions = [];
+let _selSlips = new Set(), _selBdos = new Set();
+let _filterMode = 'pending';
+let _searchTerm = '';
+let _searchTimer = null;
 let _currentSlipForUnmatch = null;
 
-// ════════════════════════════════════════════════════════════════════════════
-// API HELPER
-// ════════════════════════════════════════════════════════════════════════════
-async function apiCall(action, params = {}) {
-    try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 15000);
-        const res = await fetch(API_BASE + '?secret=' + encodeURIComponent(API_SECRET), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Internal-Secret': API_SECRET },
-            body: JSON.stringify({ action, ...params }),
-            signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        const json = await res.json();
-        return json;
-    } catch (e) {
-        return { success: false, error: e.name === 'AbortError' ? 'หมดเวลาการเชื่อมต่อ' : e.message };
-    }
+// ═══════════════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════════════
+async function whApi(params) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    const r = await fetch(WH_API, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(params),
+      signal: ctrl.signal
+    });
+    clearTimeout(t);
+    return await r.json();
+  } catch(e) {
+    return {success:false, error: e.name==='AbortError'?'หมดเวลา':e.message};
+  }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// LOAD / REFRESH
-// ════════════════════════════════════════════════════════════════════════════
-async function loadWorkspace() {
-    const lineUserId = document.getElementById('searchLineUserId').value.trim();
-    const partnerId  = document.getElementById('searchPartnerId').value.trim();
-
-    if (!lineUserId && !partnerId) {
-        showToast('กรุณาระบุ LINE User ID หรือ Partner ID', 'warning');
-        return;
-    }
-
-    document.getElementById('bdoList').innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><br>กำลังโหลด BDO...</div>';
-    document.getElementById('slipList').innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><br>กำลังโหลดสลิป...</div>';
-    document.getElementById('suggestionsCard').style.display = 'none';
-
-    const [wsRes] = await Promise.all([
-        apiCall('matching_workspace', { line_user_id: lineUserId, partner_id: partnerId }),
-    ]);
-
-    if (!wsRes || !wsRes.success) {
-        showToast('โหลดข้อมูลไม่สำเร็จ: ' + (wsRes?.error || 'Unknown error'), 'error');
-        document.getElementById('bdoList').innerHTML = '<div class="empty"><i class="bi bi-exclamation-triangle"></i>โหลดไม่สำเร็จ</div>';
-        document.getElementById('slipList').innerHTML = '<div class="empty"><i class="bi bi-exclamation-triangle"></i>โหลดไม่สำเร็จ</div>';
-        return;
-    }
-
-    _bdos        = wsRes.data.open_bdos || [];
-    _slips       = wsRes.data.pending_slips || [];
-    _suggestions = wsRes.data.suggestions || [];
-    _selectedBdoIds.clear();
-    _selectedSlipIds.clear();
-
-    document.getElementById('connectionStatus').textContent = 'เชื่อมต่อแล้ว ✓';
-    document.getElementById('connectionStatus').style.color = 'var(--success)';
-
-    renderBdoList();
-    renderSlipList();
-    renderSuggestions();
-    updateMatchSummary();
+async function slipApi(params) {
+  try {
+    const qs = new URLSearchParams(params).toString();
+    const r = await fetch(SLIP_API + '?' + qs);
+    return await r.json();
+  } catch(e) {
+    return {success:false, error: e.message};
+  }
 }
 
-function refreshAll() {
-    loadWorkspace();
+// ═══════════════════════════════════════════════════════════════
+// LOAD ALL  (parallel fetch — same as loadMatchingDashboard)
+// ═══════════════════════════════════════════════════════════════
+async function loadAll() {
+  setStatus('กำลังโหลด...');
+  setLoading('suggList'); setLoading('slipList'); setLoading('bdoList'); setLoading('matchedTodayList');
+  _selSlips.clear(); _selBdos.clear(); updateSumBar();
+
+  const slipStatus = _filterMode === 'matched' ? 'matched' : (_filterMode === 'pending' ? 'pending' : '');
+  const search = _searchTerm;
+
+  const [slipRes, bdoRes] = await Promise.all([
+    slipApi({limit:200, offset:0, ...(slipStatus ? {status:slipStatus} : {}), ...(search ? {search} : {})}),
+    whApi({action:'odoo_bdos', limit:200, offset:0, ...(search ? {search} : {})})
+  ]);
+
+  _slips = (slipRes?.success && slipRes.data?.slips) ? slipRes.data.slips : [];
+  _bdos  = (bdoRes?.success  && bdoRes.data?.bdos)  ? bdoRes.data.bdos   : [];
+
+  _suggestions = computeSmartMatches(_slips, _bdos);
+
+  const today = new Date().toISOString().slice(0,10);
+  const matchedToday = _slips.filter(s => s.status === 'matched' && s.matched_at?.slice(0,10) === today);
+  const pendingSlips = _slips.filter(s => s.status === 'pending' || s.status === 'new');
+  const pendingBdos  = _bdos.filter(b  => (b.payment_status||'pending') === 'pending');
+  const failedSlips  = _slips.filter(s => s.status === 'failed');
+
+  // KPI
+  setEl('kpiPending', pendingSlips.length + ' / ' + pendingBdos.length);
+  setEl('kpiSugg',    _suggestions.length);
+  setEl('kpiSuccess', matchedToday.length);
+  setEl('kpiProblem', failedSlips.length);
+
+  // Batch btn
+  const batchBtn = document.getElementById('batchConfirmBtn');
+  const toConfirm = _suggestions.filter(m => m.confidence !== 'exact_bdo_id');
+  batchBtn.disabled = toConfirm.length === 0;
+  setEl('batchCount', toConfirm.length ? '('+toConfirm.length+')' : '');
+
+  // Auto-confirm exact_bdo_id
+  const autoConf = _suggestions.filter(m => m.confidence === 'exact_bdo_id');
+  if (autoConf.length) autoConfirmExact(autoConf);
+
+  // Separate unmatched
+  const sugSlipIds = new Set(_suggestions.map(m => m.slip.id || m.slip.slip_id));
+  const sugBdoIds  = new Set(_suggestions.map(m => m.bdo.bdo_id || m.bdo.id));
+  const unmatchedSlips = pendingSlips.filter(s => !sugSlipIds.has(s.id || s.slip_id));
+  const unmatchedBdos  = pendingBdos.filter(b  => !sugBdoIds.has(b.bdo_id || b.id));
+
+  // Render
+  renderSuggestions(_filterMode === 'matched' ? [] : _suggestions);
+  renderSlipList(_filterMode === 'matched' ? _slips : unmatchedSlips);
+  renderBdoList(_filterMode === 'matched' ? _bdos : unmatchedBdos);
+  renderMatchedToday(matchedToday);
+
+  setEl('suggCount', _suggestions.length ? _suggestions.length + ' คู่' : 'ยังไม่มีคำแนะนำ');
+  setEl('slipCount', (_filterMode === 'matched' ? _slips.length : unmatchedSlips.length) + ' รายการ');
+  setEl('bdoCount',  (_filterMode === 'matched' ? _bdos.length  : unmatchedBdos.length)  + ' รายการ');
+  setEl('matchedTodayCount', matchedToday.length + ' รายการ');
+
+  setStatus('อัปเดตแล้ว ' + new Date().toLocaleTimeString('th-TH'));
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// BDO LIST RENDER
-// ════════════════════════════════════════════════════════════════════════════
-function renderBdoList() {
-    const el = document.getElementById('bdoList');
-    document.getElementById('bdoCount').textContent = _bdos.length + ' รายการ';
+// ═══════════════════════════════════════════════════════════════
+// SMART MATCH  (identical logic to odoo-dashboard.js)
+// ═══════════════════════════════════════════════════════════════
+function computeSmartMatches(slips, bdos) {
+  const suggestions = [];
+  const usedSlips = new Set(), usedBdos = new Set();
+  const pendingSlips = slips.filter(s => s.status === 'pending' || s.status === 'new');
+  const pendingBdos  = bdos.filter(b  => (b.payment_status||'pending') === 'pending');
 
-    if (!_bdos.length) {
-        el.innerHTML = '<div class="empty"><i class="bi bi-inbox"></i>ไม่มี BDO รอชำระ</div>';
-        return;
-    }
+  // P1: bdo_id direct match
+  pendingSlips.forEach((slip, si) => {
+    if (usedSlips.has(si) || !slip.bdo_id) return;
+    pendingBdos.forEach((bdo, bi) => {
+      if (usedBdos.has(bi)) return;
+      const bdoId = bdo.bdo_id || bdo.id;
+      if (String(slip.bdo_id) === String(bdoId)) {
+        const sa = parseFloat(slip.amount||0), ba = parseFloat(bdo.amount_total||bdo.amount_net_to_pay||0);
+        const isExact = Math.abs(sa-ba) <= 1;
+        suggestions.push({slip, slipIdx:si, bdo, bdoIdx:bi,
+          confidence: isExact ? 'exact_bdo_id' : 'bdo_id_amount_diff',
+          diff: sa-ba, label: isExact ? '✅ bdo_id + ยอดตรง' : '⚠️ bdo_id ตรง แต่ยอดต่าง ฿'+(sa-ba).toLocaleString()});
+        usedSlips.add(si); usedBdos.add(bi);
+      }
+    });
+  });
 
-    el.innerHTML = _bdos.map(bdo => {
-        const sel = _selectedBdoIds.has(bdo.bdo_id);
-        const deliveryBadge = bdo.delivery_type === 'private'
-            ? '<span class="badge badge-private">ขนส่งเอกชน</span>'
-            : bdo.delivery_type === 'company'
-                ? '<span class="badge badge-company">สายส่ง</span>'
-                : '';
-        const stateBadge = `<span class="badge badge-${bdo.state}">${bdo.state === 'waiting' ? 'รอชำระ' : bdo.state}</span>`;
-        const netToPay = bdo.amount_net_to_pay ?? bdo.amount_total ?? 0;
+  // P2: exact amount ±฿1
+  pendingSlips.forEach((slip, si) => {
+    if (usedSlips.has(si)) return;
+    const sa = parseFloat(slip.amount||0); if (sa <= 0) return;
+    pendingBdos.forEach((bdo, bi) => {
+      if (usedBdos.has(bi)) return;
+      const ba = parseFloat(bdo.amount_total||bdo.amount_net_to_pay||0);
+      if (Math.abs(sa-ba) <= 1) {
+        suggestions.push({slip, slipIdx:si, bdo, bdoIdx:bi,
+          confidence:'exact_amount', diff:sa-ba, label:'💰 ยอดตรง ฿'+sa.toLocaleString()});
+        usedSlips.add(si); usedBdos.add(bi);
+      }
+    });
+  });
 
-        return `<div class="bdo-item ${sel ? 'selected' : ''}" id="bdo-item-${bdo.bdo_id}"
-            onclick="toggleBdoSelect(${bdo.bdo_id})"
-            ondblclick="openBdoDetail(${bdo.bdo_id})">
-            <div class="bdo-item-header">
-                <span class="bdo-name">${esc(bdo.bdo_name || 'BDO-' + bdo.bdo_id)}</span>
-                <span class="bdo-amount">฿${fmt(netToPay)}</span>
-            </div>
-            <div class="bdo-meta">
-                ${stateBadge} ${deliveryBadge}
-                ${bdo.order_name ? '<span>' + esc(bdo.order_name) + '</span>' : ''}
-                ${bdo.salesperson_name ? '<span>เซลล์: ' + esc(bdo.salesperson_name) + '</span>' : ''}
-            </div>
-            ${renderFinancialMini(bdo)}
-            <div style="margin-top:6px;display:flex;gap:6px;">
-                <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();openBdoDetail(${bdo.bdo_id})">
-                    <i class="bi bi-eye"></i> รายละเอียด
-                </button>
-                ${bdo.statement_pdf_path ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();downloadStatementPdfById(${bdo.bdo_id})">
-                    <i class="bi bi-file-earmark-pdf"></i> PDF
-                </button>` : ''}
-            </div>
-        </div>`;
-    }).join('');
+  // P3: fuzzy ±5% + same customer
+  pendingSlips.forEach((slip, si) => {
+    if (usedSlips.has(si)) return;
+    const sa = parseFloat(slip.amount||0); if (sa <= 0) return;
+    const slipCust = slip.line_user_id || slip.customer_name || '';
+    pendingBdos.forEach((bdo, bi) => {
+      if (usedBdos.has(bi)) return;
+      const ba = parseFloat(bdo.amount_total||bdo.amount_net_to_pay||0);
+      const tol = Math.max(1, ba*0.05);
+      const diff = sa-ba;
+      if (Math.abs(diff) <= tol) {
+        const bdoCust = bdo.customer_name || bdo.customer_ref || '';
+        const sameCust = slipCust && bdoCust && (slipCust === bdo.line_user_id || (slip.customer_name && slip.customer_name === bdo.customer_name));
+        if (sameCust || Math.abs(diff) <= Math.max(1, ba*0.02)) {
+          suggestions.push({slip, slipIdx:si, bdo, bdoIdx:bi,
+            confidence:'fuzzy', diff, label:'🔍 ยอดใกล้เคียง (ต่าง ฿'+Math.abs(diff).toLocaleString()+')'});
+          usedSlips.add(si); usedBdos.add(bi);
+        }
+      }
+    });
+  });
+
+  return suggestions;
 }
 
-function renderFinancialMini(bdo) {
-    const fin = bdo.financial_summary || {};
-    const hasData = bdo.amount_outstanding_invoice || bdo.amount_credit_note || bdo.amount_deposit || bdo.amount_so_this_round;
-    if (!hasData) return '';
+// ═══════════════════════════════════════════════════════════════
+// RENDER SUGGESTIONS
+// ═══════════════════════════════════════════════════════════════
+const CONF_COLORS = {
+  exact_bdo_id:       {bg:'#dcfce7',clr:'#16a34a',icon:'✅',lbl:'bdo_id + ยอดตรง'},
+  exact_amount:       {bg:'#dbeafe',clr:'#1d4ed8',icon:'💰',lbl:'ยอดตรงเป๊ะ'},
+  bdo_id_amount_diff: {bg:'#fef9c3',clr:'#92400e',icon:'⚠️',lbl:'bdo_id ตรง แต่ยอดต่าง'},
+  fuzzy:              {bg:'#f3e8ff',clr:'#6d28d9',icon:'🔍',lbl:'ยอดใกล้เคียง'}
+};
 
-    return `<div class="bdo-financial">
-        ${bdo.amount_so_this_round ? `<div class="fin-row"><span>ออเดอร์รอบนี้</span><span>฿${fmt(bdo.amount_so_this_round)}</span></div>` : ''}
-        ${bdo.amount_outstanding_invoice ? `<div class="fin-row"><span>ค้างชำระ (${bdo.outstanding_invoice_count || ''} ใบ)</span><span>฿${fmt(bdo.amount_outstanding_invoice)}</span></div>` : ''}
-        ${bdo.amount_credit_note ? `<div class="fin-row" style="color:var(--success);"><span>ใบลดหนี้</span><span>-฿${fmt(bdo.amount_credit_note)}</span></div>` : ''}
-        ${bdo.amount_deposit ? `<div class="fin-row" style="color:var(--success);"><span>เงินมัดจำ</span><span>-฿${fmt(bdo.amount_deposit)}</span></div>` : ''}
-        <div class="fin-row total"><span>ยอดสุทธิ</span><span>฿${fmt(bdo.amount_net_to_pay ?? bdo.amount_total ?? 0)}</span></div>
+function renderSuggestions(suggs) {
+  const el = document.getElementById('suggList');
+  if (!suggs.length) {
+    el.innerHTML = '<div style="text-align:center;padding:1.5rem;color:var(--gray-400);font-size:0.82rem;"><i class="bi bi-inbox" style="font-size:1.5rem;display:block;margin-bottom:4px;"></i>ระบบยังไม่พบคู่ที่แนะนำ — เลือกสลิปและ BDO ด้านล่างเพื่อจับคู่เอง</div>';
+    return;
+  }
+  let html = '<div style="display:flex;flex-direction:column;gap:6px;">';
+  suggs.forEach((m, idx) => {
+    const s = m.slip, b = m.bdo;
+    const sid = s.id || s.slip_id, bid = b.bdo_id || b.id;
+    const conf = CONF_COLORS[m.confidence] || CONF_COLORS.fuzzy;
+    const diffStr = m.diff !== 0 ? ' (ต่าง ฿'+Math.abs(m.diff).toLocaleString()+')' : '';
+    const thumb = s.image_full_url
+      ? `<img src="${esc(s.image_full_url)}" onclick="event.stopPropagation();openSlipImg('${esc(s.image_full_url)}')" style="width:40px;height:50px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;" onerror="this.style.display='none'">`
+      : `<div style="width:40px;height:50px;background:var(--gray-100);border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="bi bi-image" style="color:var(--gray-400);"></i></div>`;
+    const bdoName = b.bdo_name || ('BDO-'+bid);
+    const slipAmt = s.amount != null ? '฿'+parseFloat(s.amount).toLocaleString('th-TH',{minimumFractionDigits:0}) : '-';
+    const bdoAmt  = b.amount_total != null ? '฿'+Number(b.amount_total).toLocaleString() : '-';
+    const slipCust = esc(s.customer_name || s.line_user_id || '-');
+    const bdoCust  = esc(b.customer_name || b.customer_ref || '-');
+
+    html += `<div class="sugg-item conf-${m.confidence}">
+      ${thumb}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:0.88rem;color:#16a34a;">${slipAmt}</div>
+        <div style="font-size:0.72rem;color:var(--gray-500);">${slipCust}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0;padding:0 6px;">
+        <span style="font-size:1rem;color:${conf.clr};">→</span>
+        <span style="background:${conf.bg};color:${conf.clr};font-size:0.62rem;font-weight:700;padding:1px 6px;border-radius:50px;white-space:nowrap;">${conf.icon} ${conf.lbl}${diffStr}</span>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:700;font-size:0.88rem;">${esc(bdoName)}</div>
+        <div style="font-weight:700;font-size:0.92rem;color:#d97706;">${bdoAmt}</div>
+        <div style="font-size:0.72rem;color:var(--gray-500);">${bdoCust}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <button class="btn-confirm" onclick="confirmSuggestion(${sid},${bid},this)"><i class="bi bi-check2-circle"></i> ยืนยัน</button>
+        <button class="btn-dismiss" onclick="dismissSuggestion(${idx},this)"><i class="bi bi-x"></i> ข้าม</button>
+      </div>
     </div>`;
+  });
+  html += '</div>';
+  el.innerHTML = html;
 }
 
-function toggleBdoSelect(bdoId) {
-    if (_selectedBdoIds.has(bdoId)) {
-        _selectedBdoIds.delete(bdoId);
-    } else {
-        _selectedBdoIds.add(bdoId);
-    }
-    renderBdoList();
-    updateMatchSummary();
+// ═══════════════════════════════════════════════════════════════
+// RENDER SLIP LIST
+// ═══════════════════════════════════════════════════════════════
+function renderSlipList(slips) {
+  const el = document.getElementById('slipList');
+  if (!slips.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-check-circle" style="font-size:2rem;display:block;margin-bottom:4px;color:#16a34a;"></i>ไม่มีสลิปรอจับคู่</div>';
+    return;
+  }
+  const groups = new Map();
+  slips.forEach(s => {
+    const key = s.customer_name || s.line_user_id || 'ไม่ระบุชื่อ';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  });
+  let html = '';
+  groups.forEach((gs, cust) => {
+    html += `<div style="margin-bottom:8px;">
+      <div class="group-hd"><i class="bi bi-person-fill" style="color:var(--primary);"></i> ${esc(cust)} <span style="font-weight:400;color:var(--gray-400);">(${gs.length} สลิป)</span></div>`;
+    gs.forEach(s => { html += renderSlipCard(s); });
+    html += '</div>';
+  });
+  el.innerHTML = html;
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SLIP LIST RENDER
-// ════════════════════════════════════════════════════════════════════════════
-function setSlipTab(tab) {
-    _slipTab = tab;
-    document.getElementById('tabPending').classList.toggle('active', tab === 'pending');
-    document.getElementById('tabAll').classList.toggle('active', tab === 'all');
-    renderSlipList();
+function renderSlipCard(s) {
+  const sid = s.id || s.slip_id;
+  const isSel = _selSlips.has(sid);
+  const sugg = _suggestions.find(m => (m.slip.id||m.slip.slip_id) == sid);
+  const border = isSel ? 'var(--primary)' : (sugg ? '#a5b4fc' : 'var(--gray-200)');
+  const bg     = isSel ? 'var(--primary-light)' : (sugg ? '#f5f3ff' : '#fff');
+  const amt = s.amount != null ? '฿'+parseFloat(s.amount).toLocaleString('th-TH',{minimumFractionDigits:0}) : '-';
+  const dt  = fmtDate(s.transfer_date || s.uploaded_at);
+  const thumb = s.image_full_url
+    ? `<img class="slip-thumb" src="${esc(s.image_full_url)}" onclick="event.stopPropagation();openSlipImg('${esc(s.image_full_url)}','${sid}','${esc(s.status||'new')}')" onerror="this.style.display='none'" alt="">`
+    : `<div class="slip-thumb-ph"><i class="bi bi-image" style="color:var(--gray-400);"></i></div>`;
+  const confBadge = s.match_confidence ? `<span class="badge-conf badge-${s.match_confidence}">${esc(s.match_confidence)}</span> ` : '';
+  const dlvBadge  = s.delivery_type ? `<span class="badge-conf ${s.delivery_type==='company'?'badge-company':'badge-private'}">${s.delivery_type==='company'?'สายส่ง':'ขนส่งเอกชน'}</span>` : '';
+  const suggBadge = sugg ? `<div style="font-size:0.68rem;margin-top:2px;"><span style="background:#e0e7ff;color:#4338ca;padding:1px 5px;border-radius:50px;">⭐ ${esc(sugg.label)}</span></div>` : '';
+  return `<div id="sc${sid}" class="match-card${isSel?' selected':''}${sugg&&!isSel?' has-sugg':''}" style="border-color:${border};background:${bg};" onclick="toggleSlip(${sid})">
+    <input type="checkbox" ${isSel?'checked':''} style="accent-color:var(--primary);flex-shrink:0;" onclick="event.stopPropagation();toggleSlip(${sid})">
+    ${thumb}
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:700;font-size:0.9rem;color:#16a34a;">${amt}</div>
+      <div style="font-size:0.7rem;color:var(--gray-400);">${dt} ${confBadge}${dlvBadge}</div>
+      ${suggBadge}
+    </div>
+  </div>`;
 }
 
-function renderSlipList() {
-    const el = document.getElementById('slipList');
-    const slips = _slipTab === 'pending'
-        ? _slips.filter(s => ['new', 'unmatched', 'manual'].includes(s.status || 'new'))
-        : _slips;
-
-    document.getElementById('slipCount').textContent = slips.length + ' รายการ';
-
-    if (!slips.length) {
-        el.innerHTML = '<div class="empty"><i class="bi bi-inbox"></i>ไม่มีสลิปรอจับคู่</div>';
-        return;
-    }
-
-    el.innerHTML = slips.map(slip => {
-        const sel = _selectedSlipIds.has(slip.canonical_slip_id ?? slip.id);
-        const confidenceBadge = renderConfidenceBadge(slip.match_confidence);
-        const statusBadge = `<span class="badge badge-${slip.status || 'new'}">${slipStatusLabel(slip.status)}</span>`;
-
-        return `<div class="slip-item ${sel ? 'selected' : ''}" id="slip-item-${slip.canonical_slip_id ?? slip.id}"
-            onclick="toggleSlipSelect(${slip.canonical_slip_id ?? slip.id}, ${slip.id})">
-            ${slip.image_full_url
-                ? `<img class="slip-thumb" src="${esc(slip.image_full_url)}" onclick="event.stopPropagation();openSlipImage('${esc(slip.image_full_url)}', ${slip.canonical_slip_id ?? slip.id}, '${esc(slip.status || 'new')}')" alt="slip" onerror="this.style.display='none'">`
-                : `<div class="slip-thumb-placeholder"><i class="bi bi-image"></i></div>`}
-            <div class="slip-info">
-                <div class="slip-amount">฿${fmt(slip.amount)}</div>
-                <div class="slip-meta">
-                    ${slip.transfer_date ? esc(slip.transfer_date) : ''}
-                    ${slip.bdo_name ? ' · ' + esc(slip.bdo_name) : ''}
-                </div>
-                <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap;">
-                    ${statusBadge} ${confidenceBadge}
-                </div>
-                ${slip.slip_inbox_id ? `<div style="font-size:0.7rem;color:var(--gray-400);">SLIP-ID: ${slip.slip_inbox_id}</div>` : ''}
-            </div>
-        </div>`;
-    }).join('');
+// ═══════════════════════════════════════════════════════════════
+// RENDER BDO LIST
+// ═══════════════════════════════════════════════════════════════
+function renderBdoList(bdos) {
+  const el = document.getElementById('bdoList');
+  if (!bdos.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-check-circle" style="font-size:2rem;display:block;margin-bottom:4px;color:#16a34a;"></i>ไม่มี BDO รอชำระ</div>';
+    return;
+  }
+  const groups = new Map();
+  bdos.forEach(b => {
+    const key = b.customer_name || b.customer_ref || 'ไม่ระบุชื่อ';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(b);
+  });
+  let html = '';
+  groups.forEach((gb, cust) => {
+    const total = gb.reduce((s,b) => s+parseFloat(b.amount_total||0), 0);
+    html += `<div style="margin-bottom:8px;">
+      <div class="group-hd bdo-group"><i class="bi bi-person-fill" style="color:var(--warning);"></i> ${esc(cust)} <span style="font-weight:400;color:var(--gray-400);">(${gb.length} BDO · ฿${total.toLocaleString()})</span></div>`;
+    gb.forEach(b => { html += renderBdoCard(b); });
+    html += '</div>';
+  });
+  el.innerHTML = html;
 }
 
-function renderConfidenceBadge(confidence) {
-    const map = {
-        exact: ['badge-matched', 'ยอดตรง 100%'],
-        bdo_prepayment: ['badge-matched', 'จ่ายก่อนส่ง'],
-        partial: ['badge-waiting', 'ชำระบางส่วน'],
-        multi: ['badge-matched', 'หลายใบแจ้งหนี้'],
-        manual: ['badge-waiting', 'รอ Manual'],
-        unmatched: ['badge-new', 'ยังไม่จับคู่'],
-    };
-    const [cls, label] = map[confidence] || ['badge-new', confidence || 'ใหม่'];
-    return `<span class="badge ${cls} slip-confidence">${label}</span>`;
+function renderBdoCard(bdo) {
+  const bid = bdo.bdo_id || bdo.id;
+  const isSel = _selBdos.has(bid);
+  const sugg = _suggestions.find(m => (m.bdo.bdo_id||m.bdo.id) == bid);
+  const border = isSel ? 'var(--primary)' : (sugg ? '#a5b4fc' : 'var(--gray-200)');
+  const bg     = isSel ? 'var(--primary-light)' : (sugg ? '#f5f3ff' : '#fff');
+  const bdoName = bdo.bdo_name || ('BDO-'+bid);
+  const amt = bdo.amount_total != null ? '฿'+Number(bdo.amount_total).toLocaleString() : '-';
+  const dt  = fmtDate(bdo.bdo_date || bdo.updated_at || bdo.synced_at);
+  const ps  = bdo.payment_status || 'pending';
+  const psMap = {pending:{bg:'#fef3c7',clr:'#d97706',lbl:'รอชำระ'},slip_uploaded:{bg:'#dbeafe',clr:'#1d4ed8',lbl:'อัพสลิปแล้ว'},matched:{bg:'#dcfce7',clr:'#16a34a',lbl:'จับคู่แล้ว'},paid:{bg:'#dcfce7',clr:'#16a34a',lbl:'ชำระแล้ว'}};
+  const psc = psMap[ps] || psMap.pending;
+  const dlvBadge = bdo.delivery_type ? `<span class="badge-conf ${bdo.delivery_type==='company'?'badge-company':'badge-private'}"><i class="bi bi-truck" style="font-size:0.6rem;"></i> ${bdo.delivery_type==='company'?'สายส่ง':'ขนส่งเอกชน'}</span>` : '';
+  const suggBadge = sugg ? `<div style="font-size:0.68rem;margin-top:2px;"><span style="background:#e0e7ff;color:#4338ca;padding:1px 5px;border-radius:50px;">⭐ แนะนำจับคู่</span></div>` : '';
+  const odooLink = ODOO_BASE+'/web#id='+bid+'&model=cny.bill.invoice.before.delivery&view_type=form';
+  return `<div id="bc${bid}" class="match-card${isSel?' selected':''}${sugg&&!isSel?' has-sugg':''}" style="border-color:${border};background:${bg};align-items:flex-start;" onclick="toggleBdo(${bid})">
+    <input type="checkbox" ${isSel?'checked':''} style="accent-color:var(--primary);flex-shrink:0;margin-top:3px;" onclick="event.stopPropagation();toggleBdo(${bid})">
+    <div style="flex:1;min-width:0;">
+      <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+        <span style="font-weight:700;font-size:0.88rem;">${esc(bdoName)}</span>
+        <span style="background:${psc.bg};color:${psc.clr};padding:1px 6px;border-radius:50px;font-size:0.65rem;">${psc.lbl}</span>
+        ${dlvBadge}
+      </div>
+      <div style="font-weight:700;font-size:0.95rem;margin-top:2px;">${amt}</div>
+      <div style="font-size:0.7rem;color:var(--gray-400);">${esc(bdo.order_name||'-')} · ${dt}</div>
+      ${suggBadge}
+    </div>
+    <a href="${esc(odooLink)}" target="_blank" onclick="event.stopPropagation()" title="เปิดใน Odoo" style="color:var(--gray-400);font-size:0.8rem;flex-shrink:0;"><i class="bi bi-box-arrow-up-right"></i></a>
+  </div>`;
 }
 
-function slipStatusLabel(status) {
-    const m = { new: 'ใหม่', matched: 'จับคู่แล้ว', payment_created: 'สร้าง Payment', posted: 'Posted', done: 'เสร็จสิ้น' };
-    return m[status] || status || 'ใหม่';
+// ═══════════════════════════════════════════════════════════════
+// RENDER MATCHED TODAY
+// ═══════════════════════════════════════════════════════════════
+function renderMatchedToday(slips) {
+  const el = document.getElementById('matchedTodayList');
+  if (!slips.length) {
+    el.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-inbox" style="font-size:2rem;display:block;margin-bottom:4px;"></i>ยังไม่มีรายการจับคู่สำเร็จ</div>';
+    return;
+  }
+  let html = '<div style="overflow-x:auto;"><table class="matched-table"><thead><tr><th>สลิป</th><th>ยอด</th><th>ลูกค้า</th><th>จับคู่กับ</th><th>Confidence</th><th>เวลา</th></tr></thead><tbody>';
+  slips.slice(0,30).forEach(s => {
+    const amt = s.amount != null ? '฿'+parseFloat(s.amount).toLocaleString('th-TH',{minimumFractionDigits:0}) : '-';
+    const cust = esc(s.customer_name || s.line_user_id || '-');
+    const ref  = s.bdo_id ? 'BDO #'+s.bdo_id : (s.order_id ? 'SO-'+s.order_id : (s.invoice_id ? 'INV-'+s.invoice_id : '-'));
+    const conf = esc(s.match_confidence || '-');
+    const ts   = s.matched_at ? new Date(s.matched_at).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+    const thumb = s.image_full_url ? `<img src="${esc(s.image_full_url)}" style="width:26px;height:32px;object-fit:cover;border-radius:4px;vertical-align:middle;" onerror="this.style.display='none'">` : '';
+    html += `<tr style="background:#f0fdf4;">
+      <td>${thumb}</td>
+      <td style="font-weight:700;color:#16a34a;">${amt}</td>
+      <td style="font-size:0.78rem;">${cust}</td>
+      <td style="font-weight:600;color:var(--primary);">${esc(ref)}</td>
+      <td><span style="background:#dcfce7;color:#16a34a;padding:1px 5px;border-radius:50px;font-size:0.68rem;">${conf}</span></td>
+      <td style="font-size:0.72rem;color:var(--gray-500);">${ts}</td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
 }
 
-function toggleSlipSelect(canonicalId, localId) {
-    const id = canonicalId ?? localId;
-    if (_selectedSlipIds.has(id)) {
-        _selectedSlipIds.delete(id);
-    } else {
-        _selectedSlipIds.add(id);
-    }
-    renderSlipList();
-    updateMatchSummary();
+// ═══════════════════════════════════════════════════════════════
+// SELECTION & SUMMARY BAR
+// ═══════════════════════════════════════════════════════════════
+function toggleSlip(sid) {
+  _selSlips.has(sid) ? _selSlips.delete(sid) : _selSlips.add(sid);
+  const card = document.getElementById('sc'+sid);
+  if (card) {
+    const isSel = _selSlips.has(sid);
+    const sugg = _suggestions.find(m => (m.slip.id||m.slip.slip_id) == sid);
+    card.style.borderColor = isSel ? 'var(--primary)' : (sugg ? '#a5b4fc' : 'var(--gray-200)');
+    card.style.background  = isSel ? 'var(--primary-light)' : (sugg ? '#f5f3ff' : '#fff');
+    const cb = card.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = isSel;
+  }
+  updateSumBar();
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// SUGGESTIONS
-// ════════════════════════════════════════════════════════════════════════════
-function renderSuggestions() {
-    const card = document.getElementById('suggestionsCard');
-    const list = document.getElementById('suggestionsList');
-
-    if (!_suggestions.length) {
-        card.style.display = 'none';
-        return;
-    }
-
-    card.style.display = '';
-    list.innerHTML = _suggestions.map((s, i) => {
-        const isExact = s.confidence === 'exact_bdo_id' || s.confidence === 'exact_amount';
-        const cls = s.confidence === 'exact_bdo_id' ? 'suggestion-bdo-id' : isExact ? 'suggestion-exact' : 'suggestion-mismatch';
-        const icon = isExact ? '✅' : '⚠️';
-        const slipName = s.slip?.slip_inbox_name || ('SLIP-' + s.slip_id);
-        const bdoName  = s.bdo?.bdo_name || ('BDO-' + s.bdo_id);
-        const diff     = s.amount_diff ?? 0;
-
-        return `<div class="suggestion-item ${cls}">
-            <span style="font-size:1.1rem;">${icon}</span>
-            <div style="flex:1;min-width:0;">
-                <div style="font-weight:600;font-size:0.85rem;">${esc(slipName)} → ${esc(bdoName)}</div>
-                <div style="font-size:0.75rem;color:var(--gray-600);">
-                    ฿${fmt(s.slip?.amount)} → ฿${fmt(s.bdo?.amount_total ?? s.bdo?.amount_net_to_pay)}
-                    ${diff > 0 ? ` <span class="diff-over">(ต่าง ฿${fmt(diff)})</span>` : ''}
-                </div>
-            </div>
-            <button class="btn btn-success btn-sm" onclick="confirmSuggestion(${i})">
-                <i class="bi bi-check"></i> ยืนยัน
-            </button>
-        </div>`;
-    }).join('');
+function toggleBdo(bid) {
+  _selBdos.has(bid) ? _selBdos.delete(bid) : _selBdos.add(bid);
+  const card = document.getElementById('bc'+bid);
+  if (card) {
+    const isSel = _selBdos.has(bid);
+    const sugg = _suggestions.find(m => (m.bdo.bdo_id||m.bdo.id) == bid);
+    card.style.borderColor = isSel ? 'var(--primary)' : (sugg ? '#a5b4fc' : 'var(--gray-200)');
+    card.style.background  = isSel ? 'var(--primary-light)' : (sugg ? '#f5f3ff' : '#fff');
+    const cb = card.querySelector('input[type="checkbox"]');
+    if (cb) cb.checked = isSel;
+  }
+  updateSumBar();
 }
 
-async function confirmSuggestion(idx) {
-    const s = _suggestions[idx];
-    if (!s) return;
+function updateSumBar() {
+  const bar = document.getElementById('sumBar');
+  const hasAny = _selSlips.size > 0 || _selBdos.size > 0;
+  const hasBoth = _selSlips.size > 0 && _selBdos.size > 0;
+  bar.classList.toggle('show', hasAny);
 
-    const slipInboxId = s.slip?.canonical_slip_id ?? s.slip?.slip_inbox_id ?? s.slip_id;
-    const lineUserId  = s.slip?.line_user_id || document.getElementById('searchLineUserId').value.trim();
-    const amount      = parseFloat(s.bdo?.amount_total ?? s.bdo?.amount_net_to_pay ?? 0);
+  let sa = 0; _selSlips.forEach(id => { const s = _slips.find(x=>(x.id||x.slip_id)==id); if(s) sa+=parseFloat(s.amount||0); });
+  let ba = 0; _selBdos.forEach(id => { const b = _bdos.find(x=>(x.bdo_id||x.id)==id); if(b) ba+=parseFloat(b.amount_total||b.amount_net_to_pay||0); });
 
-    const res = await apiCall('slip_match_bdo', {
-        slip_inbox_id: slipInboxId,
-        line_user_id:  lineUserId,
-        matches:       [{ bdo_id: s.bdo_id, amount }],
-        note:          'Auto-confirm: ' + s.confidence,
-        slip_amount:   parseFloat(s.slip?.amount ?? 0),
-    });
+  setEl('sumSlipAmt', _selSlips.size > 0 ? '฿'+sa.toLocaleString() : '-');
+  setEl('sumBdoAmt',  _selBdos.size  > 0 ? '฿'+ba.toLocaleString() : '-');
 
-    if (res?.success) {
-        showToast('✅ จับคู่สำเร็จ', 'success');
-        loadWorkspace();
-    } else {
-        showToast('❌ ' + (res?.data?.error || res?.error || 'เกิดข้อผิดพลาด'), 'error');
-    }
+  const diffEl = document.getElementById('sumDiffWrap');
+  if (hasBoth) {
+    const diff = sa - ba;
+    if (Math.abs(diff) <= 1)  diffEl.innerHTML = '<div class="sum-lbl">ผลต่าง</div><div class="sum-val" style="color:#16a34a;">✅ ยอดตรง</div>';
+    else if (diff > 0)        diffEl.innerHTML = '<div class="sum-lbl">ผลต่าง</div><div class="sum-val" style="color:#d97706;">เกิน ฿'+Math.abs(diff).toLocaleString()+'</div>';
+    else                      diffEl.innerHTML = '<div class="sum-lbl">ผลต่าง</div><div class="sum-val" style="color:#dc2626;">ขาด ฿'+Math.abs(diff).toLocaleString()+'</div>';
+  } else { diffEl.innerHTML = ''; }
+
+  document.getElementById('confirmMatchBtn').disabled = !hasBoth;
 }
 
-async function batchConfirmSuggestions() {
-    const toConfirm = _suggestions.filter(s => s.confidence === 'exact_bdo_id' || s.confidence === 'exact_amount');
-    if (!toConfirm.length) {
-        showToast('ไม่มีคู่ที่สามารถยืนยันอัตโนมัติได้', 'warning');
-        return;
-    }
-
-    if (!confirm(`ยืนยันจับคู่ทั้งหมด ${toConfirm.length} คู่?`)) return;
-
-    const btn = document.getElementById('batchConfirmBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังบันทึก...';
-
-    let ok = 0, fail = 0;
-    const lineUserId = document.getElementById('searchLineUserId').value.trim();
-
-    for (const s of toConfirm) {
-        const slipInboxId = s.slip?.canonical_slip_id ?? s.slip?.slip_inbox_id ?? s.slip_id;
-        const amount = parseFloat(s.bdo?.amount_total ?? s.bdo?.amount_net_to_pay ?? 0);
-        const res = await apiCall('slip_match_bdo', {
-            slip_inbox_id: slipInboxId,
-            line_user_id:  lineUserId,
-            matches:       [{ bdo_id: s.bdo_id, amount }],
-            note:          'Batch confirm: ' + s.confidence,
-            slip_amount:   parseFloat(s.slip?.amount ?? 0),
-        });
-        if (res?.success) ok++; else fail++;
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-check2-all"></i> ยืนยันทั้งหมด';
-
-    showToast(`✅ สำเร็จ ${ok} รายการ${fail ? ` ❌ ล้มเหลว ${fail} รายการ` : ''}`, ok > 0 ? 'success' : 'error');
-    if (ok > 0) loadWorkspace();
+function clearSelection() {
+  _selSlips.clear(); _selBdos.clear();
+  loadAll();
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// MANUAL MATCH
-// ════════════════════════════════════════════════════════════════════════════
-function updateMatchSummary() {
-    let slipTotal = 0, bdoTotal = 0;
-
-    _selectedSlipIds.forEach(id => {
-        const s = _slips.find(x => (x.canonical_slip_id ?? x.id) == id);
-        if (s) slipTotal += parseFloat(s.amount || 0);
-    });
-    _selectedBdoIds.forEach(id => {
-        const b = _bdos.find(x => x.bdo_id == id);
-        if (b) bdoTotal += parseFloat(b.amount_net_to_pay ?? b.amount_total ?? 0);
-    });
-
-    const hasSelection = _selectedSlipIds.size > 0 && _selectedBdoIds.size > 0;
-
-    document.getElementById('sumSlipAmt').textContent = _selectedSlipIds.size > 0 ? '฿' + fmt(slipTotal) : '-';
-    document.getElementById('sumBdoAmt').textContent  = _selectedBdoIds.size  > 0 ? '฿' + fmt(bdoTotal)  : '-';
-
-    const diffEl = document.getElementById('sumDiff');
-    if (hasSelection) {
-        const diff = slipTotal - bdoTotal;
-        if (Math.abs(diff) <= 1) {
-            diffEl.innerHTML = '<span class="diff-ok">✅ ยอดตรง</span>';
-        } else if (diff > 0) {
-            diffEl.innerHTML = `<span class="diff-over">เกิน ฿${fmt(Math.abs(diff))}</span>`;
-        } else {
-            diffEl.innerHTML = `<span class="diff-under">ขาด ฿${fmt(Math.abs(diff))}</span>`;
-        }
-    } else {
-        diffEl.textContent = '-';
-    }
-
-    document.getElementById('confirmMatchBtn').disabled = !hasSelection;
+// ═══════════════════════════════════════════════════════════════
+// CONFIRM SUGGESTION (single)
+// ═══════════════════════════════════════════════════════════════
+async function confirmSuggestion(slipId, bdoId, btn) {
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i>'; }
+  const result = await whApi({action:'slip_match_bdo', slip_id:slipId, bdo_id:bdoId, note:''});
+  if (result?.success) {
+    const card = btn?.closest('.sugg-item');
+    if (card) { card.style.background='#f0fdf4'; card.style.borderColor='#86efac'; card.innerHTML='<div style="padding:6px;color:#16a34a;font-size:0.83rem;"><i class="bi bi-check-circle-fill"></i> จับคู่สำเร็จแล้ว</div>'; }
+    toast('✅ จับคู่สำเร็จ', 'ok');
+    loadAll();
+  } else {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check2-circle"></i> ยืนยัน'; }
+    toast('❌ ' + (result?.error || 'เกิดข้อผิดพลาด'), 'err');
+  }
 }
 
-function clearMatchSelection() {
-    _selectedBdoIds.clear();
-    _selectedSlipIds.clear();
-    renderBdoList();
-    renderSlipList();
-    updateMatchSummary();
+function dismissSuggestion(idx, btn) {
+  const card = btn?.closest('.sugg-item');
+  if (card) { card.style.opacity='0.3'; card.style.pointerEvents='none'; }
+  _suggestions.splice(idx, 1);
+  setEl('suggCount', _suggestions.length ? _suggestions.length+' คู่' : 'ยังไม่มีคำแนะนำ');
 }
 
+// ═══════════════════════════════════════════════════════════════
+// BATCH CONFIRM
+// ═══════════════════════════════════════════════════════════════
+async function batchConfirmMatches() {
+  const toConfirm = _suggestions.filter(m => m.confidence !== 'exact_bdo_id');
+  if (!toConfirm.length) { toast('ไม่มีรายการที่รอยืนยัน', 'warn'); return; }
+  if (!confirm('ยืนยันจับคู่ทั้งหมด '+toConfirm.length+' คู่?')) return;
+
+  const btn = document.getElementById('batchConfirmBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังบันทึก...';
+
+  let ok = 0, fail = 0;
+  for (const m of toConfirm) {
+    const sid = m.slip.id || m.slip.slip_id, bid = m.bdo.bdo_id || m.bdo.id;
+    const r = await whApi({action:'slip_match_bdo', slip_id:sid, bdo_id:bid, note:'Batch match: '+m.confidence});
+    if (r?.success) ok++; else fail++;
+  }
+  btn.disabled = false; btn.innerHTML = '<i class="bi bi-check2-all"></i> ยืนยันทั้งหมด';
+  toast(`✅ สำเร็จ ${ok}${fail?' ❌ ล้มเหลว '+fail:''}`, ok>0?'ok':'err');
+  if (ok > 0) loadAll();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTO CONFIRM EXACT
+// ═══════════════════════════════════════════════════════════════
+async function autoConfirmExact(list) {
+  for (const m of list) {
+    const sid = m.slip.id || m.slip.slip_id, bid = m.bdo.bdo_id || m.bdo.id;
+    await whApi({action:'slip_match_bdo', slip_id:sid, bdo_id:bid, note:'Auto-confirm exact_bdo_id'});
+  }
+  if (list.length) { toast('✅ Auto-confirm '+list.length+' คู่ exact', 'ok'); loadAll(); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MANUAL MATCH CONFIRM
+// ═══════════════════════════════════════════════════════════════
 async function confirmManualMatch() {
-    if (_selectedSlipIds.size === 0 || _selectedBdoIds.size === 0) {
-        showToast('กรุณาเลือกสลิปและ BDO อย่างน้อยอย่างละ 1 รายการ', 'warning');
-        return;
-    }
+  if (_selSlips.size === 0 || _selBdos.size === 0) { toast('กรุณาเลือกสลิปและ BDO อย่างน้อยอย่างละ 1 รายการ', 'warn'); return; }
+  const note = document.getElementById('matchNote')?.value || '';
+  const btn = document.getElementById('confirmMatchBtn');
+  btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังบันทึก...';
 
-    const note        = document.getElementById('matchNote').value.trim();
-    const lineUserId  = document.getElementById('searchLineUserId').value.trim();
-    const btn         = document.getElementById('confirmMatchBtn');
+  const selSlips = [..._selSlips].map(id => _slips.find(s=>(s.id||s.slip_id)==id)).filter(Boolean);
+  const selBdos  = [..._selBdos].map(id => _bdos.find(b=>(b.bdo_id||b.id)==id)).filter(Boolean);
 
-    btn.disabled = true;
-    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> กำลังบันทึก...';
+  let ok = 0, fail = 0;
+  for (const slip of selSlips) {
+    const matches = selBdos.map(b => ({bdo_id: b.bdo_id||b.id, amount: parseFloat(b.amount_total||b.amount_net_to_pay||0)}));
+    const r = await whApi({
+      action: 'slip_match_bdo',
+      slip_inbox_id: slip.odoo_slip_id || slip.id,
+      line_user_id: slip.line_user_id || '',
+      matches, note
+    });
+    if (r?.success) ok++; else { fail++; toast('❌ '+(r?.error||'เกิดข้อผิดพลาด'), 'err'); }
+  }
 
-    const selectedSlips = [..._selectedSlipIds].map(id => _slips.find(s => (s.canonical_slip_id ?? s.id) == id)).filter(Boolean);
-    const selectedBdos  = [..._selectedBdoIds].map(id => _bdos.find(b => b.bdo_id == id)).filter(Boolean);
-
-    let ok = 0, fail = 0;
-
-    for (const slip of selectedSlips) {
-        const slipInboxId = slip.canonical_slip_id ?? slip.slip_inbox_id ?? slip.id;
-        const matches = selectedBdos.map(bdo => ({
-            bdo_id: bdo.bdo_id,
-            amount: parseFloat(bdo.amount_net_to_pay ?? bdo.amount_total ?? 0),
-        }));
-
-        const res = await apiCall('slip_match_bdo', {
-            slip_inbox_id: slipInboxId,
-            line_user_id:  lineUserId,
-            matches,
-            note:          note || 'Manual match via BDO Confirm',
-            slip_amount:   parseFloat(slip.amount ?? 0),
-        });
-
-        if (res?.success) ok++; else {
-            fail++;
-            showToast('❌ ' + (res?.data?.error || res?.error || 'เกิดข้อผิดพลาด'), 'error');
-        }
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-check2-circle"></i> ยืนยันจับคู่';
-    document.getElementById('matchNote').value = '';
-
-    if (ok > 0) {
-        showToast(`✅ จับคู่สำเร็จ ${ok} รายการ`, 'success');
-        loadWorkspace();
-    }
+  btn.disabled = false; btn.innerHTML = '<i class="bi bi-check2-circle"></i> ยืนยันจับคู่';
+  document.getElementById('matchNote').value = '';
+  if (ok > 0) { toast('✅ จับคู่สำเร็จ '+ok+' รายการ'+(fail?' ❌ ล้มเหลว '+fail:''), 'ok'); loadAll(); }
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// BDO DETAIL MODAL
-// ════════════════════════════════════════════════════════════════════════════
-async function openBdoDetail(bdoId) {
-    _currentBdoDetailId = bdoId;
-    document.getElementById('bdoDetailModal').classList.add('active');
-    document.getElementById('bdoDetailTitle').textContent = 'กำลังโหลด...';
-    document.getElementById('bdoDetailBody').innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><br>กำลังโหลด...</div>';
-    document.getElementById('bdoDetailPdfBtn').style.display = 'none';
-
-    const lineUserId = document.getElementById('searchLineUserId').value.trim();
-    const res = await apiCall('bdo_detail', { bdo_id: bdoId, line_user_id: lineUserId });
-
-    if (!res?.success) {
-        document.getElementById('bdoDetailBody').innerHTML = `<div class="empty"><i class="bi bi-exclamation-triangle"></i>โหลดไม่สำเร็จ: ${esc(res?.error || 'Unknown')}</div>`;
-        return;
-    }
-
-    const bdo = res.data?.bdo || {};
-    document.getElementById('bdoDetailTitle').textContent = bdo.bdo_name || ('BDO-' + bdoId);
-
-    if (res.data?.source === 'local_cache') {
-        document.getElementById('bdoDetailTitle').textContent += ' ⚠️ (ข้อมูล Cache)';
-    }
-
-    const invoices = bdo.selected_invoices || [];
-    const cns      = bdo.selected_credit_notes || [];
-    const slips    = bdo.matched_slips || [];
-
-    document.getElementById('bdoDetailBody').innerHTML = `
-        <div class="detail-panel">
-            <div class="detail-row"><span class="detail-label">สถานะ</span><span class="detail-value">${esc(bdo.state || '-')}</span></div>
-            <div class="detail-row"><span class="detail-label">ประเภทขนส่ง</span><span class="detail-value">${bdo.delivery_type === 'private' ? '🚚 ขนส่งเอกชน (จ่ายก่อนส่ง)' : bdo.delivery_type === 'company' ? '🏢 สายส่ง (จ่ายทีหลัง)' : '-'}</span></div>
-            <div class="detail-row"><span class="detail-label">ลูกค้า</span><span class="detail-value">${esc(bdo.partner_name || '-')}</span></div>
-            <div class="detail-row"><span class="detail-label">เซลล์</span><span class="detail-value">${esc(bdo.salesperson_name || '-')}</span></div>
-        </div>
-
-        <div style="margin-top:12px;">
-            <div style="font-weight:700;font-size:0.85rem;margin-bottom:6px;">สรุปยอดการเงิน</div>
-            <div class="bdo-financial" style="background:white;border:1px solid var(--gray-200);">
-                ${bdo.amount_so_this_round ? `<div class="fin-row"><span>ออเดอร์รอบนี้</span><span>฿${fmt(bdo.amount_so_this_round)}</span></div>` : ''}
-                ${bdo.amount_outstanding_invoice ? `<div class="fin-row"><span>ค้างชำระ (${bdo.outstanding_invoice_count || ''} ใบ)</span><span>฿${fmt(bdo.amount_outstanding_invoice)}</span></div>` : ''}
-                ${bdo.amount_credit_note ? `<div class="fin-row" style="color:var(--success);"><span>ใบลดหนี้ (${bdo.credit_note_count || ''} ใบ)</span><span>-฿${fmt(bdo.amount_credit_note)}</span></div>` : ''}
-                ${bdo.amount_deposit ? `<div class="fin-row" style="color:var(--success);"><span>เงินมัดจำ</span><span>-฿${fmt(bdo.amount_deposit)}</span></div>` : ''}
-                <div class="fin-row total"><span>ยอดสุทธิที่ต้องชำระ</span><span style="color:var(--primary);">฿${fmt(bdo.amount_net_to_pay ?? bdo.amount_total ?? 0)}</span></div>
-            </div>
-        </div>
-
-        ${invoices.length ? `
-        <div style="margin-top:12px;">
-            <div style="font-weight:700;font-size:0.85rem;margin-bottom:6px;">ใบแจ้งหนี้ที่เลือก (${invoices.length} ใบ)</div>
-            ${invoices.map(inv => `
-                <div style="display:flex;justify-content:space-between;padding:4px 8px;background:var(--gray-50);border-radius:6px;margin-bottom:4px;font-size:0.82rem;">
-                    <span>${esc(inv.number || '-')}</span>
-                    <span>฿${fmt(inv.residual ?? inv.amount_total ?? 0)}</span>
-                </div>`).join('')}
-        </div>` : ''}
-
-        ${slips.length ? `
-        <div style="margin-top:12px;">
-            <div style="font-weight:700;font-size:0.85rem;margin-bottom:6px;">สลิปที่จับคู่แล้ว (${slips.length} ใบ)</div>
-            ${slips.map(s => `
-                <div style="display:flex;justify-content:space-between;padding:4px 8px;background:var(--success-light);border-radius:6px;margin-bottom:4px;font-size:0.82rem;">
-                    <span>${esc(s.slip_inbox_name || s.name || '-')}</span>
-                    <span>฿${fmt(s.amount ?? 0)}</span>
-                </div>`).join('')}
-        </div>` : ''}
-    `;
-
-    if (bdo.statement_pdf_url || bdo.statement_pdf_path) {
-        document.getElementById('bdoDetailPdfBtn').style.display = '';
-    }
-}
-
-function closeBdoDetail() {
-    document.getElementById('bdoDetailModal').classList.remove('active');
-    _currentBdoDetailId = null;
-}
-
-async function downloadStatementPdf() {
-    if (!_currentBdoDetailId) return;
-    downloadStatementPdfById(_currentBdoDetailId);
-}
-
-async function downloadStatementPdfById(bdoId) {
-    const lineUserId = document.getElementById('searchLineUserId').value.trim();
-    const res = await apiCall('statement_pdf_url', { bdo_id: bdoId, line_user_id: lineUserId });
-    if (res?.success && res.data?.url) {
-        window.open(res.data.url, '_blank');
-    } else {
-        showToast('ไม่สามารถดาวน์โหลด PDF ได้', 'error');
-    }
-}
-
-// ════════════════════════════════════════════════════════════════════════════
-// SLIP IMAGE MODAL + UNMATCH
-// ════════════════════════════════════════════════════════════════════════════
-function openSlipImage(url, canonicalSlipId, status) {
-    _currentSlipForUnmatch = { canonicalSlipId, status };
-    document.getElementById('slipImageFull').src = url;
-    document.getElementById('slipImageModal').classList.add('active');
-
-    const unmatchBtn = document.getElementById('unmatchSlipBtn');
-    const canUnmatch = status === 'matched' || status === 'new';
-    unmatchBtn.style.display = canUnmatch ? '' : 'none';
-}
-
-function closeSlipImage() {
-    document.getElementById('slipImageModal').classList.remove('active');
-    _currentSlipForUnmatch = null;
+// ═══════════════════════════════════════════════════════════════
+// SLIP IMAGE + UNMATCH
+// ═══════════════════════════════════════════════════════════════
+function openSlipImg(url, slipId, status) {
+  _currentSlipForUnmatch = {slipId, status};
+  document.getElementById('slipModalImg').src = url;
+  const unmatchBtn = document.getElementById('unmatchBtn');
+  unmatchBtn.style.display = (status === 'matched') ? '' : 'none';
+  openModal('slipModal');
 }
 
 async function unmatchCurrentSlip() {
-    if (!_currentSlipForUnmatch) return;
-
-    const { canonicalSlipId, status } = _currentSlipForUnmatch;
-
-    if (['posted', 'done'].includes(status)) {
-        showToast('ไม่สามารถยกเลิกได้ สลิปอยู่ในสถานะ ' + status, 'error');
-        return;
-    }
-
-    if (!confirm('ยืนยันการยกเลิกการจับคู่สลิปนี้?')) return;
-
-    const lineUserId = document.getElementById('searchLineUserId').value.trim();
-    const res = await apiCall('slip_unmatch', {
-        slip_inbox_id: canonicalSlipId,
-        line_user_id:  lineUserId,
-        reason:        'ยกเลิกจาก BDO Confirm',
-    });
-
-    if (res?.success) {
-        showToast('✅ ยกเลิกการจับคู่เรียบร้อยแล้ว', 'success');
-        closeSlipImage();
-        loadWorkspace();
-    } else {
-        showToast('❌ ' + (res?.data?.error || res?.error || 'เกิดข้อผิดพลาด'), 'error');
-    }
+  if (!_currentSlipForUnmatch) return;
+  const {slipId, status} = _currentSlipForUnmatch;
+  if (['posted','done'].includes(status)) { toast('ไม่สามารถยกเลิกได้ สถานะ: '+status, 'err'); return; }
+  if (!confirm('ยืนยันการยกเลิกการจับคู่สลิปนี้?')) return;
+  const r = await whApi({action:'unmatch_slip', slip_id: slipId, reason:'ยกเลิกจาก BDO Confirm'});
+  if (r?.success) { toast('✅ ยกเลิกการจับคู่เรียบร้อยแล้ว', 'ok'); closeModal('slipModal'); loadAll(); }
+  else toast('❌ '+(r?.error||'เกิดข้อผิดพลาด'), 'err');
 }
 
-// ════════════════════════════════════════════════════════════════════════════
-// UTILITIES
-// ════════════════════════════════════════════════════════════════════════════
-function fmt(n) {
-    const num = parseFloat(n);
-    if (isNaN(num)) return '-';
-    return num.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+// ═══════════════════════════════════════════════════════════════
+// FILTER & SEARCH
+// ═══════════════════════════════════════════════════════════════
+function setFilter(mode) {
+  _filterMode = mode;
+  ['pending','matched','all'].forEach(m => {
+    document.getElementById('ftab-'+m)?.classList.toggle('active', m === mode);
+  });
+  loadAll();
+}
+
+function debounceSearch() {
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => { _searchTerm = document.getElementById('searchInput').value; loadAll(); }, 400);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════════
+function fmtDate(d) {
+  if (!d) return '-';
+  try { return new Date(d).toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}); } catch(e) { return d; }
 }
 
 function esc(s) {
-    if (s == null) return '';
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function showToast(msg, type = 'success') {
-    const container = document.getElementById('toastContainer');
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-' + type;
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+function setEl(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
+
+function setLoading(id) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>';
 }
 
-// Close modals on overlay click
-document.getElementById('bdoDetailModal').addEventListener('click', function(e) {
-    if (e.target === this) closeBdoDetail();
-});
-document.getElementById('slipImageModal').addEventListener('click', function(e) {
-    if (e.target === this) closeSlipImage();
+function setStatus(msg) { setEl('statusDot', msg); }
+
+function toast(msg, type='ok') {
+  const w = document.getElementById('toastWrap');
+  const t = document.createElement('div');
+  t.className = 'toast toast-'+type;
+  t.textContent = msg;
+  w.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function openModal(id)  { document.getElementById(id)?.classList.add('open'); }
+function closeModal(id) { document.getElementById(id)?.classList.remove('open'); }
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-bg').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
 });
 
-// Auto-load if URL params present
-(function() {
-    const params = new URLSearchParams(window.location.search);
-    const uid = params.get('line_user_id') || params.get('user');
-    const pid = params.get('partner_id');
-    if (uid) document.getElementById('searchLineUserId').value = uid;
-    if (pid) document.getElementById('searchPartnerId').value = pid;
-    if (uid || pid) loadWorkspace();
-})();
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+loadAll();
+// Auto-refresh every 60s
+setInterval(loadAll, 60000);
 </script>
 </body>
 </html>
