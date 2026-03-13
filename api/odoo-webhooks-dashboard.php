@@ -3635,6 +3635,13 @@ function unmatchSlipAction($db, $input)
  * Matches a slip with one or more BDOs via Odoo's staging/production endpoint.
  * Falls back to local DB update if Odoo is unreachable.
  */
+/**
+ * Proxy: POST /reya/slip/match-bdo to Odoo
+ *
+ * IMPORTANT: Local DB is updated ONLY after Odoo confirms success.
+ * There is NO local-only fallback — if Odoo rejects, we return an error.
+ * This prevents state divergence between Re-Ya and Odoo.
+ */
 function slipMatchBdoProxy($db, $input)
 {
     $slipInboxId = (int) ($input['slip_inbox_id'] ?? 0);
@@ -3643,34 +3650,45 @@ function slipMatchBdoProxy($db, $input)
     $note        = trim((string) ($input['note'] ?? ''));
 
     if (!$slipInboxId || empty($matches)) {
-        return ['error' => 'Missing slip_inbox_id or matches'];
+        return ['success' => false, 'error' => 'Missing slip_inbox_id or matches'];
     }
 
-    // Try Odoo API first
+    // Validate matches array
+    foreach ($matches as $i => $m) {
+        if (empty($m['bdo_id']) || !isset($m['amount']) || (float)$m['amount'] <= 0) {
+            return ['success' => false, 'error' => "matches[{$i}] ต้องมี bdo_id และ amount > 0"];
+        }
+    }
+
     $odooResult = _callOdooApi('/reya/slip/match-bdo', [
-        'line_user_id' => $lineUserId,
+        'line_user_id'  => $lineUserId,
         'slip_inbox_id' => $slipInboxId,
-        'matches' => $matches,
-        'note' => $note,
+        'matches'       => $matches,
+        'note'          => $note,
     ]);
 
-    if ($odooResult && isset($odooResult['result']['success']) && $odooResult['result']['success']) {
-        // Update local DB to reflect the match
-        _updateLocalSlipMatch($db, $slipInboxId, $matches, $note);
-        return $odooResult['result']['data'] ?? ['matched' => true, 'source' => 'odoo'];
+    $odooError = _extractOdooError($odooResult);
+
+    if ($odooError !== null) {
+        // Odoo rejected — do NOT update local DB
+        error_log("[slipMatchBdoProxy] Odoo rejected: slip_inbox_id={$slipInboxId}, error={$odooError}");
+        return ['success' => false, 'error' => $odooError, 'error_type' => 'odoo_rejected'];
     }
 
-    // Fallback: update local DB only
-    $localResult = _updateLocalSlipMatch($db, $slipInboxId, $matches, $note);
-    if ($localResult) {
-        return ['matched' => true, 'source' => 'local', 'odoo_error' => $odooResult['error'] ?? 'unreachable'];
-    }
+    // Odoo confirmed — now update local cache
+    _updateLocalSlipMatch($db, $slipInboxId, $matches, $note);
 
-    return ['error' => 'Match failed: ' . ($odooResult['error'] ?? 'unknown')];
+    return array_merge(
+        ['success' => true, 'source' => 'odoo'],
+        $odooResult['result']['data'] ?? []
+    );
 }
 
 /**
  * Proxy: POST /reya/slip/unmatch to Odoo
+ *
+ * IMPORTANT: Local DB is updated ONLY after Odoo confirms success.
+ * If Odoo rejects (e.g. slip is posted), we return an error and do NOT reset local state.
  */
 function slipUnmatchProxy($db, $input)
 {
@@ -3679,25 +3697,38 @@ function slipUnmatchProxy($db, $input)
     $reason      = trim((string) ($input['reason'] ?? ''));
 
     if (!$slipInboxId) {
-        return ['error' => 'Missing slip_inbox_id'];
+        return ['success' => false, 'error' => 'Missing slip_inbox_id'];
     }
 
     $odooResult = _callOdooApi('/reya/slip/unmatch', [
-        'line_user_id' => $lineUserId,
+        'line_user_id'  => $lineUserId,
         'slip_inbox_id' => $slipInboxId,
-        'reason' => $reason,
+        'reason'        => $reason,
     ]);
 
-    // Also update local regardless
-    try {
-        $db->prepare("UPDATE odoo_slip_uploads SET status = 'pending', bdo_id = NULL, match_reason = NULL WHERE id = ? OR odoo_slip_id = ?")->execute([$slipInboxId, $slipInboxId]);
-    } catch (Exception $e) { /* ignore */ }
+    $odooError = _extractOdooError($odooResult);
 
-    if ($odooResult && isset($odooResult['result']['success']) && $odooResult['result']['success']) {
-        return $odooResult['result']['data'] ?? ['unmatched' => true, 'source' => 'odoo'];
+    if ($odooError !== null) {
+        error_log("[slipUnmatchProxy] Odoo rejected: slip_inbox_id={$slipInboxId}, error={$odooError}");
+        return ['success' => false, 'error' => $odooError, 'error_type' => 'odoo_rejected'];
     }
 
-    return ['unmatched' => true, 'source' => 'local', 'odoo_error' => $odooResult['error'] ?? 'unreachable'];
+    // Odoo confirmed — reset local cache
+    try {
+        $db->prepare("
+            UPDATE odoo_slip_uploads
+            SET status = 'new', bdo_id = NULL, match_reason = NULL,
+                match_confidence = NULL, matched_at = NULL
+            WHERE slip_inbox_id = ? OR odoo_slip_id = ? OR id = ?
+        ")->execute([$slipInboxId, $slipInboxId, $slipInboxId]);
+    } catch (Exception $e) {
+        error_log("[slipUnmatchProxy] local reset failed: " . $e->getMessage());
+    }
+
+    return array_merge(
+        ['success' => true, 'source' => 'odoo'],
+        $odooResult['result']['data'] ?? []
+    );
 }
 
 /**
@@ -3733,6 +3764,28 @@ function bdoDetailProxy($db, $input)
     } catch (Exception $e) { /* ignore */ }
 
     return ['error' => 'BDO not found: ' . ($odooResult['error'] ?? 'local fallback also failed')];
+}
+
+/**
+ * Internal: Extract error code from Odoo JSON-RPC response.
+ * Returns null if the response indicates success, or an error string otherwise.
+ */
+function _extractOdooError(?array $odooResponse): ?string
+{
+    if ($odooResponse === null) {
+        return 'NETWORK_ERROR';
+    }
+    if (isset($odooResponse['error'])) {
+        return $odooResponse['error']['message'] ?? 'JSONRPC_ERROR';
+    }
+    $result = $odooResponse['result'] ?? null;
+    if ($result === null) {
+        return 'EMPTY_RESULT';
+    }
+    if (!empty($result['success'])) {
+        return null;
+    }
+    return $result['error']['code'] ?? $result['error']['message'] ?? 'UNKNOWN_ERROR';
 }
 
 /**

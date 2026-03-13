@@ -33,25 +33,31 @@ try {
     $limit = min((int) ($_GET['limit'] ?? 50), 100);
     $offset = max((int) ($_GET['offset'] ?? 0), 0);
 
-    // Fetch slips for this customer
+    // Fetch slips for this customer — includes all fields needed by inboxreya BDO Confirm UI
     $stmt = $db->prepare("
         SELECT 
             id,
             line_account_id,
             line_user_id,
             odoo_slip_id,
+            slip_inbox_id,
+            slip_inbox_name,
             odoo_partner_id,
             bdo_id,
+            bdo_name,
             invoice_id,
             order_id,
             amount,
+            bdo_amount,
             transfer_date,
             image_path,
             image_url,
             uploaded_by,
             message_id,
             status,
+            match_confidence,
             match_reason,
+            delivery_type,
             uploaded_at,
             matched_at
         FROM odoo_slip_uploads
@@ -67,15 +73,21 @@ try {
     $countStmt->execute([$lineUserId]);
     $total = (int) $countStmt->fetchColumn();
 
-    // Build full image URLs
-    $baseUrl = rtrim(defined('SITE_URL') ? SITE_URL : 'https://cny.re-ya.com', '/');
+    // Build full image URLs and normalize types
+    $baseUrl = rtrim(defined('SITE_URL') ? SITE_URL : (defined('BASE_URL') ? BASE_URL : 'https://cny.re-ya.com'), '/');
     foreach ($slips as &$slip) {
-        $slip['id'] = (int) $slip['id'];
-        $slip['amount'] = $slip['amount'] !== null ? (float) $slip['amount'] : null;
+        $slip['id']            = (int) $slip['id'];
+        $slip['slip_inbox_id'] = $slip['slip_inbox_id'] !== null ? (int) $slip['slip_inbox_id'] : null;
+        $slip['odoo_slip_id']  = $slip['odoo_slip_id']  !== null ? (int) $slip['odoo_slip_id']  : null;
+        $slip['bdo_id']        = $slip['bdo_id']        !== null ? (int) $slip['bdo_id']        : null;
+        $slip['amount']        = $slip['amount']        !== null ? (float) $slip['amount']      : null;
+        $slip['bdo_amount']    = $slip['bdo_amount']    !== null ? (float) $slip['bdo_amount']  : null;
+        // Canonical slip ID for Odoo operations (prefer slip_inbox_id over odoo_slip_id over local id)
+        $slip['canonical_slip_id'] = $slip['slip_inbox_id'] ?? $slip['odoo_slip_id'] ?? $slip['id'];
         if ($slip['image_path']) {
-            $slip['image_full_url'] = $baseUrl . '/' . $slip['image_path'];
+            $slip['image_full_url'] = $baseUrl . '/' . ltrim($slip['image_path'], '/');
         } else {
-            $slip['image_full_url'] = $slip['image_url'];
+            $slip['image_full_url'] = $slip['image_url'] ?: null;
         }
     }
     unset($slip);

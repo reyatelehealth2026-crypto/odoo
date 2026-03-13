@@ -1931,8 +1931,10 @@ class OdooWebhookHandler
     public function handleBdoConfirmed($data, $notify, $template)
     {
         try {
-            // ---- Phase 3: Save BDO context for auto-populate slip upload ----
-            $this->saveBdoContext($data);
+            // ── Save BDO context (multi-BDO-safe, stores statement PDF + invoices/CN) ──
+            require_once __DIR__ . '/BdoContextManager.php';
+            $ctxMgr = new BdoContextManager($this->db);
+            $ctxMgr->openContext($data, $this->currentDeliveryId ?? '');
 
             // 12.1.1 Extract QR Payment data
             $emvcoPayload = $data['payment']['promptpay']['qr_data']['raw_payload'] ?? null;
@@ -2151,29 +2153,35 @@ class OdooWebhookHandler
     }
 
     /**
-     * Handle BDO done event
+     * Handle BDO done event — closes BDO context so stale context is not reused.
      */
     public function handleBdoDone($data, $notify, $template)
     {
+        require_once __DIR__ . '/BdoContextManager.php';
+        (new BdoContextManager($this->db))->closeContext($data, 'done');
+
+        $bdoRef = $data['bdo_name'] ?? $data['bdo_ref'] ?? ('BDO-' . ($data['bdo_id'] ?? ''));
         $message = "✅ BDO เสร็จสิ้นแล้ว\n\n";
-        $message .= "BDO: {$data['bdo_ref']}\n";
-        $message .= "ออเดอร์: {$data['order_ref']}\n";
-        $message .= "จำนวนเงิน: ฿" . number_format($data['amount'], 2) . "\n";
-        $message .= "วันที่: {$data['completion_date']}\n";
+        $message .= "BDO: {$bdoRef}\n";
+        if (!empty($data['order_ref'])) $message .= "ออเดอร์: {$data['order_ref']}\n";
+        if (isset($data['amount_total'])) $message .= "จำนวนเงิน: ฿" . number_format((float) $data['amount_total'], 2) . "\n";
+        if (!empty($data['completion_date'])) $message .= "วันที่: {$data['completion_date']}\n";
         return $this->sendNotifications($data, $notify, $message);
     }
 
     /**
-     * Handle BDO cancelled event
+     * Handle BDO cancelled event — closes BDO context.
      */
     public function handleBdoCancelled($data, $notify, $template)
     {
+        require_once __DIR__ . '/BdoContextManager.php';
+        (new BdoContextManager($this->db))->closeContext($data, 'cancel');
+
+        $bdoRef = $data['bdo_name'] ?? $data['bdo_ref'] ?? ('BDO-' . ($data['bdo_id'] ?? ''));
         $message = "❌ BDO ถูกยกเลิก\n\n";
-        $message .= "BDO: {$data['bdo_ref']}\n";
-        $message .= "ออเดอร์: {$data['order_ref']}\n";
-        if (!empty($data['cancel_reason'])) {
-            $message .= "เหตุผล: {$data['cancel_reason']}\n";
-        }
+        $message .= "BDO: {$bdoRef}\n";
+        if (!empty($data['order_ref'])) $message .= "ออเดอร์: {$data['order_ref']}\n";
+        if (!empty($data['cancel_reason'])) $message .= "เหตุผล: {$data['cancel_reason']}\n";
         $message .= "\nกรุณาติดต่อเจ้าหน้าที่หากมีข้อสงสัย";
         return $this->sendNotifications($data, $notify, $message);
     }
