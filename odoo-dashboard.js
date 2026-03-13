@@ -1,12 +1,6 @@
 const WH_API_CANDIDATES=[
-    'api/odoo-dashboard-api.php',
     '/api/odoo-dashboard-api.php',
-    '../api/odoo-dashboard-api.php',
-    '../../api/odoo-dashboard-api.php',
-    'api/odoo-webhooks-dashboard.php',
-    '/api/odoo-webhooks-dashboard.php',
-    '../api/odoo-webhooks-dashboard.php',
-    '../../api/odoo-webhooks-dashboard.php'
+    '/api/odoo-webhooks-dashboard.php'
 ];
 let WH_API_ACTIVE=WH_API_CANDIDATES[0];
 
@@ -146,7 +140,7 @@ async function whApiCall(data){
         'activity_log_list',
         'customer_360'
     ]);
-    const timeoutMs=heavyActions.has(action)?20000:8000;
+    const timeoutMs=heavyActions.has(action)?12000:6000;
     for(const apiUrl of endpoints){
         try{
             const ctrl=new AbortController();
@@ -2761,9 +2755,9 @@ async function loadMatchingCustomerGrid(forceRefresh){
     if(gridEl) gridEl.innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>';
 
     const [custRes, slipRes, bdoRes] = await Promise.all([
-        whApiCall({action:'customer_list', limit:300, offset:0}),
-        fetch('api/slips-list.php?status=pending&limit=500&offset=0').then(r=>r.json()).catch(()=>({success:false})),
-        whApiCall({action:'odoo_bdo_list_api', limit:300, offset:0})
+        whApiCall({action:'customer_list', limit:80, offset:0}),
+        fetch('api/slips-list.php?status=pending&limit=60&offset=0').then(r=>r.json()).catch(()=>({success:false})),
+        whApiCall({action:'odoo_bdo_list_api', limit:80, offset:0})
     ]);
 
     _matchAllCustomers = (custRes && custRes.success && custRes.data && custRes.data.customers) ? custRes.data.customers : [];

@@ -46,6 +46,22 @@ try {
         $action = 'health';
     }
 
+    $cacheTtls = [
+        'stats' => 20,
+        'order_grouped_today' => 20,
+        'customer_list' => 20,
+        'salesperson_list' => 180,
+    ];
+    $cacheKey = null;
+    if (isset($cacheTtls[$action])) {
+        $cacheKey = dashboardApiBuildCacheKey($action, $input);
+        $cachedResult = dashboardApiCacheGet($cacheKey, (int) $cacheTtls[$action]);
+        if ($cachedResult !== null) {
+            echo json_encode(['success' => true, 'data' => $cachedResult], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+
     switch ($action) {
         case 'health':
             $result = [
@@ -175,6 +191,10 @@ try {
             exit; // PDF streams directly, no JSON wrapper
         default:
             throw new Exception('Unknown action: ' . $action);
+    }
+
+    if ($cacheKey !== null && dashboardApiShouldCache($action, $input, $result)) {
+        dashboardApiCacheSet($cacheKey, $result);
     }
 
     echo json_encode(['success' => true, 'data' => $result], JSON_UNESCAPED_UNICODE);
@@ -2426,6 +2446,107 @@ function tableExists($db, $table)
     }
 
     return $cache[$table];
+}
+
+function dashboardApiShouldCache($action, $input, $result)
+{
+    if (!is_array($result)) {
+        return false;
+    }
+
+    if (!empty($result['error'])) {
+        return false;
+    }
+
+    if ($action === 'customer_list' && trim((string) ($input['search'] ?? '')) !== '') {
+        return false;
+    }
+
+    return true;
+}
+
+function dashboardApiBuildCacheKey($action, $input)
+{
+    if (is_array($input)) {
+        unset($input['_t']);
+        dashboardApiNormalizeCacheInput($input);
+    }
+
+    return $action . '_' . sha1(json_encode($input, JSON_UNESCAPED_UNICODE));
+}
+
+function dashboardApiNormalizeCacheInput(&$value)
+{
+    if (!is_array($value)) {
+        return;
+    }
+
+    ksort($value);
+    foreach ($value as &$item) {
+        if (is_array($item)) {
+            dashboardApiNormalizeCacheInput($item);
+        }
+    }
+    unset($item);
+}
+
+function dashboardApiCacheDir()
+{
+    static $dir = null;
+    if ($dir !== null) {
+        return $dir;
+    }
+
+    $dir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'cny_odoo_dashboard_cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+
+    return $dir;
+}
+
+function dashboardApiCachePath($key)
+{
+    return dashboardApiCacheDir() . DIRECTORY_SEPARATOR . preg_replace('/[^a-zA-Z0-9_-]/', '_', $key) . '.json';
+}
+
+function dashboardApiCacheGet($key, $ttl)
+{
+    $path = dashboardApiCachePath($key);
+    if (!is_file($path)) {
+        return null;
+    }
+
+    $raw = @file_get_contents($path);
+    if ($raw === false || $raw === '') {
+        return null;
+    }
+
+    $payload = json_decode($raw, true);
+    if (!is_array($payload) || !isset($payload['t'])) {
+        @unlink($path);
+        return null;
+    }
+
+    if ((time() - (int) $payload['t']) > $ttl) {
+        @unlink($path);
+        return null;
+    }
+
+    return $payload['d'] ?? null;
+}
+
+function dashboardApiCacheSet($key, $data)
+{
+    $path = dashboardApiCachePath($key);
+    $payload = json_encode([
+        't' => time(),
+        'd' => $data,
+    ], JSON_UNESCAPED_UNICODE);
+
+    if ($payload !== false) {
+        @file_put_contents($path, $payload, LOCK_EX);
+    }
 }
 
 // =====================================================================
