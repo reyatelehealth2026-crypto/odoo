@@ -3706,14 +3706,20 @@ async function unmatchBdoSlip(slipId, slipInboxId){
 document.addEventListener('DOMContentLoaded',()=>{
     restoreAdminMode();
     if(typeof testConnection==='function')testConnection();
+    const params = new URLSearchParams(window.location.search);
+    const initialTab = (params.get('tab') || '').trim();
     // Pre-set date filter to today for flat list view
     const dfEl=document.getElementById('whFilterDateFrom');
     if(dfEl&&!dfEl.value)dfEl.value=new Date().toISOString().slice(0,10);
     // Pre-set grouped view date to today
     const gdEl=document.getElementById('grpDateInput');
     if(gdEl&&!gdEl.value)gdEl.value=new Date().toISOString().slice(0,10);
-    // Load overview as default page
-    loadTodayOverview();
+    if(initialTab){
+        showSection(initialTab);
+    }else{
+        // Load overview as default page
+        loadTodayOverview();
+    }
     if(document.getElementById('autoSendSettingsContent'))loadAutoSendSettings();
     loadSalespersonDropdown();
 });
