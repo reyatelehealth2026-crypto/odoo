@@ -50,6 +50,7 @@ try {
         'stats' => 20,
         'order_grouped_today' => 20,
         'customer_list' => 20,
+        'notification_log' => 20,
         'salesperson_list' => 180,
     ];
     $cacheKey = null;
@@ -77,99 +78,148 @@ try {
             $result = getWebhookList($db, $input);
             break;
         case 'detail':
-            $result = getWebhookDetail($db, $input);
-            break;
-        case 'order_timeline':
-            $result = getOrderTimeline($db, $input);
-            break;
-        case 'customer_lookup':
-            $result = getCustomerLookup($db, $input);
-            break;
-        case 'invoice_lookup':
-            $result = getInvoiceLookup($db, $input);
-            break;
-        case 'customer_list':
-            $result = getCustomerList($db, $input);
-            break;
-        case 'invoice_list':
-            $result = getInvoiceList($db, $input);
-            break;
-        case 'order_list':
-            $result = getOrderList($db, $input);
-            break;
-        case 'odoo_orders':
-            $result = getOdooOrders($db, $input);
-            break;
-        case 'odoo_invoices':
-            $result = getOdooInvoices($db, $input);
-            break;
-        case 'odoo_slips':
-            $result = getOdooSlips($db, $input);
-            break;
-        case 'odoo_bdos':
-            $result = getOdooBdos($db, $input);
-            break;
-        case 'pending_bdo_orders':
-            $result = getPendingBdoOrdersApi($db, $input);
-            break;
-        case 'debug_invoices':
-            $pid = trim((string)($input['partner_id'] ?? ''));
-            $pidExpr = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.partner_id')), '')";
-            $cidExpr = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.id')), '')";
-            $rows = $db->query("SELECT event_type, COUNT(*) as cnt FROM odoo_webhooks_log GROUP BY event_type ORDER BY cnt DESC LIMIT 30")->fetchAll(PDO::FETCH_ASSOC);
-            $pidRows = [];
-            if ($pid !== '') {
-                $stmt = $db->prepare("SELECT event_type, COUNT(*) as cnt FROM odoo_webhooks_log WHERE ({$pidExpr} = ? OR {$cidExpr} = ?) GROUP BY event_type ORDER BY cnt DESC");
-                $stmt->execute([$pid, $pid]);
-                $pidRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                $sample = $db->prepare("SELECT id, event_type, LEFT(payload,500) as payload_preview FROM odoo_webhooks_log WHERE ({$pidExpr} = ? OR {$cidExpr} = ?) LIMIT 3");
-                $sample->execute([$pid, $pid]);
-                $sampleRows = $sample->fetchAll(PDO::FETCH_ASSOC);
-            }
-            $result = ['all_event_types' => $rows, 'partner_event_types' => $pidRows, 'sample' => $sampleRows ?? []];
-            break;
-            
-        case 'daily_summary_preview':
-            $result = getDailySummaryPreview($db);
-            break;
-            
-        case 'send_daily_summary':
-            if (isset($input['user_ids']) && is_array($input['user_ids'])) {
-                $result = sendDailySummary($db, $input['user_ids']);
-            } else {
-                $result = ['error' => 'Missing or invalid user_ids'];
-            }
-            break;
-            
-        case 'notification_log':
-            $result = getNotificationLog($db, $input);
-            break;
-        case 'order_grouped_today':
-            $result = getOrderGroupedToday($db, $input);
-            break;
-        case 'customer_detail':
-            $result = getCustomerDetail($db, $input);
-            break;
-        case 'order_status_override':
-            $result = orderStatusOverride($db, $input);
-            break;
-        case 'order_note_add':
-            $result = orderNoteAdd($db, $input);
-            break;
-        case 'order_notes_list':
-            $result = orderNotesList($db, $input);
-            break;
-        case 'activity_log_list':
-            $result = activityLogList($db, $input);
-            break;
-        case 'salesperson_list':
-            $result = getSalespersonList($db);
-            break;
+            function getNotificationLog($db, $input)
+            {
+                $limit = min((int) ($input['limit'] ?? 30), 200);
+                $offset = max((int) ($input['offset'] ?? 0), 0);
+                $filterStatus = trim((string) ($input['status'] ?? ''));
+                $filterEvent = trim((string) ($input['event_type'] ?? ''));
+                $dateFrom = trim((string) ($input['date_from'] ?? ''));
+                $dateTo = trim((string) ($input['date_to'] ?? ''));
+                $todayStart = date('Y-m-d 00:00:00');
+                $tomorrowStart = date('Y-m-d 00:00:00', strtotime('+1 day'));
 
-        // ================================================================ //
-        // BDO Matching Actions (staging-ready Odoo endpoints)              //
-        // ================================================================ //
-        case 'bdo_list_live':
+                if (!tableExists($db, 'odoo_notification_log')) {
+                    return [
+                        'available' => false,
+                        'stats' => [],
+                        'records' => [],
+                        'total' => 0,
+                        'limit' => $limit,
+                        'offset' => $offset
+                    ];
+                }
+
+                $stats = [];
+                try {
+                    $statsStmt = $db->prepare("\n            SELECT\n                status,\n                COUNT(*) as count,\n                SUM(CASE WHEN sent_at >= ? AND sent_at < ? THEN 1 ELSE 0 END) as today_count,\n                COUNT(DISTINCT CASE WHEN status = 'sent' THEN line_user_id END) as unique_users_sent,\n                COUNT(DISTINCT CASE WHEN status = 'sent' AND sent_at >= ? AND sent_at < ? THEN line_user_id END) as unique_users_sent_today\n            FROM odoo_notification_log\n            GROUP BY status\n        ");
+                    $statsStmt->execute([$todayStart, $tomorrowStart, $todayStart, $tomorrowStart]);
+                    $statsRows = $statsStmt->fetchAll(PDO::FETCH_ASSOC);
+                    $stats['today_sent'] = 0;
+                    $stats['today_failed'] = 0;
+                    $stats['today_total'] = 0;
+                    $stats['unique_users'] = 0;
+                    $stats['unique_users_today'] = 0;
+                    foreach ($statsRows as $row) {
+                        $status = (string) ($row['status'] ?? 'unknown');
+                        $stats[$status] = (int) ($row['count'] ?? 0);
+                        $todayCount = (int) ($row['today_count'] ?? 0);
+                        $stats['today_total'] += $todayCount;
+                        if ($status === 'sent') {
+                            $stats['today_sent'] = $todayCount;
+                            $stats['unique_users'] = (int) ($row['unique_users_sent'] ?? 0);
+                            $stats['unique_users_today'] = (int) ($row['unique_users_sent_today'] ?? 0);
+                        }
+                        if ($status === 'failed') {
+                            $stats['today_failed'] = $todayCount;
+                        }
+                    }
+
+                    $statusTotals = $stats;
+                    unset($statusTotals['today_sent'], $statusTotals['today_failed'], $statusTotals['today_total'], $statusTotals['unique_users'], $statusTotals['unique_users_today']);
+                    $stats['total'] = array_sum($statusTotals);
+
+                    $eventRowsStmt = $db->prepare("\n            SELECT event_type, COUNT(*) as count\n            FROM odoo_notification_log\n            WHERE status = 'sent'\n              AND sent_at >= ?\n              AND sent_at < ?\n            GROUP BY event_type\n            ORDER BY count DESC\n        ");
+                    $eventRowsStmt->execute([$todayStart, $tomorrowStart]);
+                    $stats['events_today'] = $eventRowsStmt->fetchAll(PDO::FETCH_ASSOC);
+                } catch (Exception $e) {
+                    $stats['error'] = $e->getMessage();
+                }
+
+                $where = [];
+                $params = [];
+
+                if ($filterStatus !== '') {
+                    $where[] = 'status = ?';
+                    $params[] = $filterStatus;
+                }
+
+                if ($filterEvent !== '') {
+                    $where[] = 'event_type = ?';
+                    $params[] = $filterEvent;
+                }
+
+                if ($dateFrom !== '') {
+                    $where[] = 'sent_at >= ?';
+                    $params[] = $dateFrom . ' 00:00:00';
+                }
+
+                if ($dateTo !== '') {
+                    $where[] = 'sent_at <= ?';
+                    $params[] = $dateTo . ' 23:59:59';
+                }
+
+                $whereClause = count($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+
+                $countStmt = $db->prepare("SELECT COUNT(*) FROM odoo_notification_log {$whereClause}");
+                $countStmt->execute($params);
+                $total = (int) $countStmt->fetchColumn();
+
+                $stmt = $db->prepare("\n        SELECT\n            n.id,\n            n.delivery_id,\n            n.event_type,\n            n.recipient_type,\n            n.line_user_id,\n            n.notification_method,\n            n.status,\n            n.line_api_status,\n            n.error_message,\n            n.skip_reason,\n            n.sent_at,\n            n.latency_ms,\n            u.display_name as user_name,\n            u.picture_url as user_avatar\n        FROM odoo_notification_log n\n        LEFT JOIN users u ON u.line_user_id = n.line_user_id\n        {$whereClause}\n        ORDER BY n.sent_at DESC\n        LIMIT {$limit} OFFSET {$offset}\n    ");
+                $stmt->execute($params);
+                $records = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($records as &$record) {
+                    $record['order_name'] = null;
+                    $record['order_id'] = null;
+                }
+                unset($record);
+
+                if (tableExists($db, 'odoo_webhooks_log') && !empty($records)) {
+                    $deliveryIds = array_values(array_filter(array_unique(array_map(static function ($row) {
+                        $value = $row['delivery_id'] ?? null;
+                        return ($value === null || $value === '') ? null : (string) $value;
+                    }, $records))));
+
+                    if (!empty($deliveryIds)) {
+                        $placeholders = implode(',', array_fill(0, count($deliveryIds), '?'));
+                        $whStmt = $db->prepare("\n                SELECT\n                    delivery_id,\n                    MAX(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.order_name'))) as order_name,\n                    MAX(order_id) as order_id\n                FROM odoo_webhooks_log\n                WHERE delivery_id IN ({$placeholders})\n                GROUP BY delivery_id\n            ");
+                        $whStmt->execute($deliveryIds);
+                        $whMap = [];
+                        foreach ($whStmt->fetchAll(PDO::FETCH_ASSOC) as $whRow) {
+                            $deliveryId = (string) ($whRow['delivery_id'] ?? '');
+                            if ($deliveryId === '') {
+                                continue;
+                            }
+                            $whMap[$deliveryId] = [
+                                'order_name' => $whRow['order_name'] ?? null,
+                                'order_id' => $whRow['order_id'] ?? null,
+                            ];
+                        }
+
+                        foreach ($records as &$record) {
+                            $deliveryId = (string) ($record['delivery_id'] ?? '');
+                            if ($deliveryId !== '' && isset($whMap[$deliveryId])) {
+                                $record['order_name'] = $whMap[$deliveryId]['order_name'];
+                                $record['order_id'] = $whMap[$deliveryId]['order_id'];
+                            }
+                        }
+                        unset($record);
+                    }
+                }
+
+                $eventTypes = $db->query("\n        SELECT DISTINCT event_type FROM odoo_notification_log\n        WHERE event_type IS NOT NULL AND event_type <> ''\n        ORDER BY event_type\n    ")->fetchAll(PDO::FETCH_COLUMN);
+
+                return [
+                    'available' => true,
+                    'stats' => $stats,
+                    'records' => $records,
+                    'total' => $total,
+                    'limit' => $limit,
+                    'offset' => $offset,
+                    'event_types' => $eventTypes
+                ];
+            }
         case 'odoo_bdo_list_api':
             $result = getBdoListLive($db, $input);
             break;
