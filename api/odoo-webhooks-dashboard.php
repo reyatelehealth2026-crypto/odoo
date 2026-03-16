@@ -173,6 +173,9 @@ try {
         case 'pending_bdo_orders':
             $result = getPendingBdoOrdersApi($db, $input);
             break;
+        case 'overview_fast':
+            $result = getOverviewFast($db);
+            break;
         case 'activity_log_list':
             $result = activityLogList($db, $input);
             break;

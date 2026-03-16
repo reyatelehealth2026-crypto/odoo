@@ -2678,7 +2678,61 @@ async function loadTodayOverview(){
         if(recent) _renderSectionCacheNote(recent, cached.cachedAt, '_cacheClear(\'dash:overview\');loadTodayOverview()');
         return;
     }
-    const res = await whApiCall({ action: 'overview_today' });
+
+    // Strategy: try overview_fast first (uses indexed sync tables, <500ms),
+    // then fall back to overview_today (heavier, may timeout on large tables).
+    let res = null;
+
+    // 1st: Try ultra-fast overview (avoids slow webhooks_log table)
+    try {
+        const fastRes = await whApiCall({ action: 'overview_fast' });
+        if (fastRes && fastRes.success && fastRes.data) {
+            const f = fastRes.data;
+            res = {
+                success: true,
+                data: {
+                    stats: {
+                        unique_orders_today: f.orders_today || 0,
+                        notified_today: f.webhook_total_today || 0,
+                        total: f.webhook_total_today || 0,
+                        success: Math.round((f.webhook_success_rate || 0) * (f.webhook_total_today || 0) / 100),
+                        dead_letter: 0,
+                        last_webhook: f.last_webhook
+                    },
+                    orders: f.orders || [],
+                    orders_total: f.orders_today || 0,
+                    overdue_customers: [],
+                    overdue_total: f.overdue_customers || 0,
+                    pending_bdo: {
+                        orders: [],
+                        bdos: Array(f.bdos_pending || 0).fill({ amount_net_to_pay: f.bdos_pending_amount / Math.max(1, f.bdos_pending) }),
+                        total: f.bdos_pending || 0
+                    },
+                    slips_pending: [],
+                    slips_pending_total: f.slips_pending || 0,
+                    slips_matched_today_sum: f.payments_today || 0,
+                    _source: 'overview_fast'
+                }
+            };
+        }
+    } catch (_e) { /* fall through */ }
+
+    // 2nd: If fast overview failed or returned nothing, try the full overview_today
+    if (!res) {
+        try {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 12000);
+            const r = await fetch(WH_API_ACTIVE + '?_t=' + Date.now(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'overview_today' }),
+                signal: ctrl.signal
+            });
+            clearTimeout(timer);
+            const parsed = await r.json();
+            if (parsed && parsed.success) res = parsed;
+        } catch (_e2) { /* fall through */ }
+    }
     const kpiOrders=document.getElementById('kpiOrdersToday');
     const kpiSales=document.getElementById('kpiSalesToday');
     const kpiSlips=document.getElementById('kpiSlipsPending');
@@ -3829,6 +3883,10 @@ async function unmatchBdoSlip(slipId, slipInboxId){
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded',()=>{
     restoreAdminMode();
+
+    // Test API connectivity immediately (uses fast 'health' action, no DB query)
+    testConnection();
+
     const params = new URLSearchParams(window.location.search);
     const initialTab = (params.get('tab') || '').trim();
     // Pre-set date filter to today for flat list view
@@ -3840,8 +3898,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(initialTab){
         showSection(initialTab);
     }else{
-        // Delay initial overview load slightly so opening the dashboard stays responsive.
         setTimeout(function(){ if(_isSectionActive('overview')) loadTodayOverview(); }, 250);
     }
     if(document.getElementById('autoSendSettingsContent'))loadAutoSendSettings();
+
+    // Re-check connection every 60s
+    setInterval(testConnection, 60000);
 });
