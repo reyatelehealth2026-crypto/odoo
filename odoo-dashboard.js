@@ -144,11 +144,11 @@ async function whApiCall(data){
     const action=String(data&&data.action||'').trim();
     const heavyActions=new Set([
         'stats','list','customer_list','notification_log','daily_summary_preview',
-        'order_grouped_today','overview_today','overview_combined','customer_detail',
+        'order_grouped_today','overview_today','overview_fast','overview_combined','customer_detail',
         'customer_full_detail','odoo_orders','odoo_invoices','odoo_slips','odoo_bdos',
         'odoo_bdo_list_api','pending_bdo_orders','activity_log_list','customer_360'
     ]);
-    const timeoutMs=heavyActions.has(action)?15000:8000;
+    const timeoutMs=heavyActions.has(action)?30000:8000;
 
     // Try fast endpoint first for supported actions (file is tiny, <100 lines)
     if(WH_FAST_ACTIONS.has(action)){
