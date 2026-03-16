@@ -231,34 +231,70 @@ try {
     $slipVerifyData = isset($input['slip_verify_data']) ? json_encode($input['slip_verify_data'], JSON_UNESCAPED_UNICODE) : null;
     $slipVerifiedAt = $slipVerified !== null ? date('Y-m-d H:i:s') : null;
 
-    $stmt = $db->prepare("
-        INSERT INTO odoo_slip_uploads 
-        (line_account_id, line_user_id, odoo_partner_id, bdo_id, invoice_id, order_id, 
-         amount, transfer_date, image_path, image_url, uploaded_by, message_id,
-         slip_verified, slip_verify_ref, slip_verify_amount, slip_verify_data, slip_verified_at,
-         status, match_reason, uploaded_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW())
-    ");
-    $stmt->execute([
-        $lineAccountId,
-        $lineUserId,
-        $odooPartnerId,
-        $bdoId ?? null,
-        $invoiceId,
-        $orderId ?? null,
-        $amount,
-        $transferDate,
-        $relativeImagePath,
-        $imageUrl,
-        $uploadedBy,
-        $inputMessageId,
-        $slipVerified,
-        $slipVerifyRef,
-        $slipVerifyAmount !== null ? (float) $slipVerifyAmount : null,
-        $slipVerifyData,
-        $slipVerifiedAt,
-        $status,
-    ]);
+    // Check if slip verification columns exist (backward compatibility)
+    $hasVerificationColumns = false;
+    try {
+        $colCheck = $db->query("SHOW COLUMNS FROM odoo_slip_uploads LIKE 'slip_verified'");
+        $hasVerificationColumns = $colCheck->rowCount() > 0;
+    } catch (Exception $e) {
+        error_log('[odoo-slip-upload] Column check failed: ' . $e->getMessage());
+    }
+
+    if ($hasVerificationColumns) {
+        // New schema with verification columns
+        $stmt = $db->prepare("
+            INSERT INTO odoo_slip_uploads 
+            (line_account_id, line_user_id, odoo_partner_id, bdo_id, invoice_id, order_id, 
+             amount, transfer_date, image_path, image_url, uploaded_by, message_id,
+             slip_verified, slip_verify_ref, slip_verify_amount, slip_verify_data, slip_verified_at,
+             status, match_reason, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW())
+        ");
+        $stmt->execute([
+            $lineAccountId,
+            $lineUserId,
+            $odooPartnerId,
+            $bdoId ?? null,
+            $invoiceId,
+            $orderId ?? null,
+            $amount,
+            $transferDate,
+            $relativeImagePath,
+            $imageUrl,
+            $uploadedBy,
+            $inputMessageId,
+            $slipVerified,
+            $slipVerifyRef,
+            $slipVerifyAmount !== null ? (float) $slipVerifyAmount : null,
+            $slipVerifyData,
+            $slipVerifiedAt,
+            $status,
+        ]);
+    } else {
+        // Old schema without verification columns (fallback)
+        $stmt = $db->prepare("
+            INSERT INTO odoo_slip_uploads 
+            (line_account_id, line_user_id, odoo_partner_id, bdo_id, invoice_id, order_id, 
+             amount, transfer_date, image_path, image_url, uploaded_by, message_id,
+             status, match_reason, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW())
+        ");
+        $stmt->execute([
+            $lineAccountId,
+            $lineUserId,
+            $odooPartnerId,
+            $bdoId ?? null,
+            $invoiceId,
+            $orderId ?? null,
+            $amount,
+            $transferDate,
+            $relativeImagePath,
+            $imageUrl,
+            $uploadedBy,
+            $inputMessageId,
+            $status,
+        ]);
+    }
     $slipDbId = $db->lastInsertId();
 
     // ========================================================================

@@ -131,6 +131,7 @@ async function whApiCall(data){
         'notification_log',
         'daily_summary_preview',
         'order_grouped_today',
+        'overview_today',
         'customer_detail',
         'odoo_orders',
         'odoo_invoices',
@@ -2615,12 +2616,7 @@ async function loadTodayOverview(){
         if(recent) _renderSectionCacheNote(recent, cached.cachedAt, '_cacheClear(\'dash:overview\');loadTodayOverview()');
         return;
     }
-    const [statsRes, ordersRes, slipsRes] = await Promise.all([
-        whApiCall({action:'stats'}),
-        whApiCall({action:'order_grouped_today', limit:5, offset:0}),
-        fetch('api/slips-list.php?status=pending&limit=5&offset=0').then(r=>r.json()).catch(()=>({success:false}))
-    ]);
-
+    const res = await whApiCall({ action: 'overview_today' });
     const kpiOrders=document.getElementById('kpiOrdersToday');
     const kpiSales=document.getElementById('kpiSalesToday');
     const kpiSlips=document.getElementById('kpiSlipsPending');
@@ -2628,102 +2624,143 @@ async function loadTodayOverview(){
     const kpiBdo=document.getElementById('kpiBdosPending');
     const kpiPaid=document.getElementById('kpiPaymentsToday');
 
-    if(statsRes&&statsRes.success){
-        const s=statsRes.data;
-        if(kpiOrders)kpiOrders.textContent=Number(s.unique_orders_today||0).toLocaleString();
-        if(kpiSlips&&slipsRes&&slipsRes.success)kpiSlips.textContent=Number(slipsRes.data?.total||0).toLocaleString();
-        const notifEl=document.getElementById('overviewLineNotifs');
-        if(notifEl){
-            const sent=Number(s.notified_today||0);
-            const rate=s.total>0?((s.success/s.total)*100).toFixed(0):'0';
-            notifEl.innerHTML='<div style="display:flex;gap:0.6rem;flex-wrap:wrap;">'
-                +'<div style="background:#dcfce7;border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:#16a34a;">LINE แจ้งเตือนวันนี้</div><div style="font-size:1.2rem;font-weight:700;color:#16a34a;">'+sent+'</div></div>'
-                +'<div style="background:#dbeafe;border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:#1d4ed8;">Webhook สำเร็จ</div><div style="font-size:1.2rem;font-weight:700;color:#1d4ed8;">'+rate+'%</div></div>'
-                +'<div style="background:'+(s.dead_letter>0?'#fee2e2':'#f0fdf4')+';border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:'+(s.dead_letter>0?'#dc2626':'#16a34a')+';">สถานะระบบ</div><div style="font-size:1.2rem;font-weight:700;color:'+(s.dead_letter>0?'#dc2626':'#16a34a')+';">'+(s.dead_letter>0?'มีปัญหา '+s.dead_letter:'ปกติ')+'</div></div>'
-                +'</div>';
+    if(!res||!res.success){
+        if(kpiOrders)kpiOrders.textContent='-';
+        if(kpiSales)kpiSales.textContent='-';
+        if(kpiSlips)kpiSlips.textContent='-';
+        if(kpiOverdue)kpiOverdue.textContent='-';
+        if(kpiBdo)kpiBdo.textContent='-';
+        if(kpiPaid)kpiPaid.textContent='-';
+        ['overviewLineNotifs','overviewRecentOrders','overviewPendingSlips','overviewOverdueCustomers'].forEach(function(id){
+            const el=document.getElementById(id);
+            if(el)el.innerHTML='<div style="text-align:center;padding:1rem;color:var(--gray-500);">'+(res&&res.error?escapeHtml(res.error):'โหลดไม่สำเร็จ')+'</div>';
+        });
+        _cacheOverviewState(cacheKey);
+        return;
+    }
+    const d=res.data;
+    const s=d.stats||{};
+    const orders=d.orders||[];
+    const ordersTotal=d.orders_total||0;
+    const overdueCustomers=d.overdue_customers||[];
+    const overdueTotal=d.overdue_total||0;
+    const pendingBdoData=d.pending_bdo||{};
+    const bdos=pendingBdoData.orders||pendingBdoData.bdos||[];
+    const slipsPending=d.slips_pending||[];
+    const slipsPendingTotal=d.slips_pending_total||0;
+    const matchedTodaySum=d.slips_matched_today_sum||0;
+
+    if(kpiOrders)kpiOrders.textContent=Number(s.unique_orders_today||0).toLocaleString();
+    if(kpiSlips)kpiSlips.textContent=Number(slipsPendingTotal).toLocaleString();
+    if(kpiOverdue)kpiOverdue.textContent=Number(overdueTotal).toLocaleString();
+    if(kpiBdo){
+        kpiBdo.textContent=Number(bdos.length||0).toLocaleString();
+        const pendingTotal=bdos.reduce(function(sm,b){return sm+parseFloat(b.amount_total||b.amount_net_to_pay||0);},0);
+        const sub=kpiBdo.parentElement&&kpiBdo.parentElement.querySelector('.kpi-sub');
+        if(sub)sub.textContent=pendingTotal>0?'฿'+pendingTotal.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0}):'ยอดรอจับคู่';
+    }
+    if(kpiPaid)kpiPaid.textContent=matchedTodaySum>0?'฿'+matchedTodaySum.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0}):'-';
+
+    const notifEl=document.getElementById('overviewLineNotifs');
+    if(notifEl){
+        const sent=Number(s.notified_today||0);
+        const rate=s.total>0?((s.success/s.total)*100).toFixed(0):'0';
+        notifEl.innerHTML='<div style="display:flex;gap:0.6rem;flex-wrap:wrap;">'
+            +'<div style="background:#dcfce7;border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:#16a34a;">LINE แจ้งเตือนวันนี้</div><div style="font-size:1.2rem;font-weight:700;color:#16a34a;">'+sent+'</div></div>'
+            +'<div style="background:#dbeafe;border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:#1d4ed8;">Webhook สำเร็จ</div><div style="font-size:1.2rem;font-weight:700;color:#1d4ed8;">'+rate+'%</div></div>'
+            +'<div style="background:'+(s.dead_letter>0?'#fee2e2':'#f0fdf4')+';border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:'+(s.dead_letter>0?'#dc2626':'#16a34a')+';">สถานะระบบ</div><div style="font-size:1.2rem;font-weight:700;color:'+(s.dead_letter>0?'#dc2626':'#16a34a')+';">'+(s.dead_letter>0?'มีปัญหา '+s.dead_letter:'ปกติ')+'</div></div>'
+            +'</div>';
+    }
+    let totalSales=0;
+    orders.forEach(function(o){ totalSales+=parseFloat(o.amount_total||0); });
+    if(kpiSales){
+        kpiSales.textContent=totalSales>0?'฿'+totalSales.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0}):'-';
+        const kpiSalesSub=kpiSales.parentElement&&kpiSales.parentElement.querySelector('.kpi-sub');
+        if(kpiSalesSub&&ordersTotal)kpiSalesSub.textContent=ordersTotal+' ออเดอร์ทั้งหมด';
+    }
+    const recentEl=document.getElementById('overviewRecentOrders');
+    if(recentEl){
+        if(!orders.length){
+            recentEl.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--gray-400);"><i class="bi bi-inbox" style="font-size:1.5rem;display:block;margin-bottom:0.3rem;"></i>ยังไม่มีออเดอร์วันนี้</div>';
+        }else{
+            let html='';
+            orders.forEach(function(o){
+                const nm=escapeHtml(o.order_name||'-');
+                const cust=escapeHtml(o.customer_name||'-');
+                const amt=o.amount_total?'฿'+Number(o.amount_total).toLocaleString():'';
+                const stateLabel=o.latest_state_display&&o.latest_state_display!=='null'?o.latest_state_display:(EVENT_LABELS[o.latest_event_type]||'-');
+                const hasLine=!!(o.customer_line_user_id);
+                const lineBadge=hasLine?'<span style="background:#06c755;color:white;padding:1px 5px;border-radius:50px;font-size:0.65rem;">LINE</span>':'';
+                const eOI=encodeURIComponent(o.order_id||''),eON=encodeURIComponent(o.order_name||'');
+                const pct=Math.max(0,Math.min(100,o.progress||0));
+                const pClr=pct>=100?'#16a34a':pct>=65?'#0284c7':pct>=25?'#d97706':'#6b7280';
+                html+='<div style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0;border-bottom:1px solid var(--gray-100);">'
+                    +'<div style="flex:1;min-width:0;">'
+                    +'<div style="display:flex;align-items:center;gap:0.35rem;">'
+                    +'<a href="javascript:void(0)" onclick="showOrderTimeline(decodeURIComponent(\''+eOI+'\'),decodeURIComponent(\''+eON+'\'))" style="color:var(--primary);text-decoration:none;font-weight:600;font-size:0.85rem;">'+nm+'</a> '+lineBadge
+                    +'</div>'
+                    +'<div style="font-size:0.75rem;color:var(--gray-500);margin-top:1px;">'+cust+' · '+escapeHtml(stateLabel)+'</div>'
+                    +'</div>'
+                    +'<div style="text-align:right;white-space:nowrap;">'
+                    +'<div style="font-weight:600;font-size:0.85rem;">'+amt+'</div>'
+                    +'<div style="width:60px;height:5px;background:var(--gray-200);border-radius:3px;margin-top:3px;"><div style="width:'+pct+'%;height:100%;background:'+pClr+';border-radius:3px;"></div></div>'
+                    +'</div></div>';
+            });
+            recentEl.innerHTML=html;
         }
     }
-    if(ordersRes&&ordersRes.success){
-        const orders=ordersRes.data.orders||[];
-        let totalSales=0;
-        orders.forEach(o=>{totalSales+=parseFloat(o.amount_total||0);});
-        if(kpiSales){
-            const salesStr=totalSales>0?'฿'+totalSales.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0}):'-';
-            kpiSales.textContent=salesStr;
-            const kpiSalesSub=kpiSales.parentElement?.querySelector('.kpi-sub');
-            if(kpiSalesSub&&ordersRes.data.total)kpiSalesSub.textContent=ordersRes.data.total+' ออเดอร์ทั้งหมด';
-        }
-        const el=document.getElementById('overviewRecentOrders');
-        if(el){
-            if(!orders.length){
-                el.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--gray-400);"><i class="bi bi-inbox" style="font-size:1.5rem;display:block;margin-bottom:0.3rem;"></i>ยังไม่มีออเดอร์วันนี้</div>';
-            }else{
-                let html='';
-                orders.forEach(o=>{
-                    const nm=escapeHtml(o.order_name||'-');
-                    const cust=escapeHtml(o.customer_name||'-');
-                    const amt=o.amount_total?'฿'+Number(o.amount_total).toLocaleString():'';
-                    const stateLabel=o.latest_state_display&&o.latest_state_display!=='null'?o.latest_state_display:(EVENT_LABELS[o.latest_event_type]||'-');
-                    const hasLine=!!(o.customer_line_user_id);
-                    const lineBadge=hasLine?'<span style="background:#06c755;color:white;padding:1px 5px;border-radius:50px;font-size:0.65rem;">LINE</span>':'';
-                    const eOI=encodeURIComponent(o.order_id||''),eON=encodeURIComponent(o.order_name||'');
-                    const pct=Math.max(0,Math.min(100,o.progress||0));
-                    const pClr=pct>=100?'#16a34a':pct>=65?'#0284c7':pct>=25?'#d97706':'#6b7280';
-                    html+='<div style="display:flex;align-items:center;gap:0.6rem;padding:0.5rem 0;border-bottom:1px solid var(--gray-100);">'
-                        +'<div style="flex:1;min-width:0;">'
-                        +'<div style="display:flex;align-items:center;gap:0.35rem;">'
-                        +'<a href="javascript:void(0)" onclick="showOrderTimeline(decodeURIComponent(\''+eOI+'\'),decodeURIComponent(\''+eON+'\'))" style="color:var(--primary);text-decoration:none;font-weight:600;font-size:0.85rem;">'+nm+'</a> '+lineBadge
-                        +'</div>'
-                        +'<div style="font-size:0.75rem;color:var(--gray-500);margin-top:1px;">'+cust+' · '+escapeHtml(stateLabel)+'</div>'
-                        +'</div>'
-                        +'<div style="text-align:right;white-space:nowrap;">'
-                        +'<div style="font-weight:600;font-size:0.85rem;">'+amt+'</div>'
-                        +'<div style="width:60px;height:5px;background:var(--gray-200);border-radius:3px;margin-top:3px;"><div style="width:'+pct+'%;height:100%;background:'+pClr+';border-radius:3px;"></div></div>'
-                        +'</div></div>';
-                });
-                el.innerHTML=html;
-            }
+    const slipsEl=document.getElementById('overviewPendingSlips');
+    if(slipsEl){
+        if(!slipsPending.length){
+            slipsEl.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--gray-400);"><i class="bi bi-check-circle" style="font-size:1.5rem;display:block;margin-bottom:0.3rem;color:#16a34a;"></i>ไม่มีสลิปรอตรวจสอบ</div>';
+        }else{
+            let html='';
+            slipsPending.forEach(function(s){
+                const amt=s.amount!=null?'฿'+parseFloat(s.amount).toLocaleString('th-TH',{minimumFractionDigits:0}):'?';
+                const custName=escapeHtml(s.customer_name||s.line_user_id||'-');
+                const dt=s.uploaded_at?new Date(s.uploaded_at).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'-';
+                const thumb=s.image_full_url?'<img src="'+escapeHtml(s.image_full_url)+'" style="width:32px;height:40px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'">':'<div style="width:32px;height:40px;background:var(--gray-100);border-radius:4px;display:flex;align-items:center;justify-content:center;"><i class="bi bi-image" style="color:var(--gray-400);"></i></div>';
+                html+='<div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0;border-bottom:1px solid var(--gray-100);">'
+                    +thumb
+                    +'<div style="flex:1;min-width:0;">'
+                    +'<div style="font-size:0.82rem;font-weight:500;">'+custName+'</div>'
+                    +'<div style="font-size:0.7rem;color:var(--gray-400);">'+dt+'</div>'
+                    +'</div>'
+                    +'<div style="font-weight:600;color:#d97706;font-size:0.85rem;">'+amt+'</div>'
+                    +'</div>';
+            });
+            slipsEl.innerHTML=html;
         }
     }
-    if(slipsRes&&slipsRes.success){
-        const slips=slipsRes.data?.slips||[];
-        const total=slipsRes.data?.total||0;
-        if(kpiSlips)kpiSlips.textContent=Number(total).toLocaleString();
-        const el=document.getElementById('overviewPendingSlips');
-        if(el){
-            if(!slips.length){
-                el.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--gray-400);"><i class="bi bi-check-circle" style="font-size:1.5rem;display:block;margin-bottom:0.3rem;color:#16a34a;"></i>ไม่มีสลิปรอตรวจสอบ</div>';
-            }else{
-                let html='';
-                slips.forEach(s=>{
-                    const amt=s.amount!=null?'฿'+parseFloat(s.amount).toLocaleString('th-TH',{minimumFractionDigits:0}):'?';
-                    const custName=escapeHtml(s.customer_name||s.line_user_id||'-');
-                    const dt=s.uploaded_at?new Date(s.uploaded_at).toLocaleString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'-';
-                    const thumb=s.image_full_url?'<img src="'+escapeHtml(s.image_full_url)+'" style="width:32px;height:40px;object-fit:cover;border-radius:4px;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'">':'<div style="width:32px;height:40px;background:var(--gray-100);border-radius:4px;display:flex;align-items:center;justify-content:center;"><i class="bi bi-image" style="color:var(--gray-400);"></i></div>';
-                    html+='<div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0;border-bottom:1px solid var(--gray-100);">'
-                        +thumb
-                        +'<div style="flex:1;min-width:0;">'
-                        +'<div style="font-size:0.82rem;font-weight:500;">'+custName+'</div>'
-                        +'<div style="font-size:0.7rem;color:var(--gray-400);">'+dt+'</div>'
-                        +'</div>'
-                        +'<div style="font-weight:600;color:#d97706;font-size:0.85rem;">'+amt+'</div>'
-                        +'</div>';
-                });
-                el.innerHTML=html;
-            }
-        }
-    }else{
-        const el=document.getElementById('overviewPendingSlips');
-        if(el)el.innerHTML='<div style="text-align:center;padding:1rem;color:var(--gray-400);font-size:0.82rem;">ไม่สามารถโหลดข้อมูลสลิปได้</div>';
-    }
-    if(kpiOverdue && !kpiOverdue.textContent)kpiOverdue.textContent='...';
-    if(kpiBdo && !kpiBdo.textContent)kpiBdo.textContent='...';
-    if(kpiPaid && !kpiPaid.textContent)kpiPaid.textContent='...';
     const overdueEl=document.getElementById('overviewOverdueCustomers');
-    if(overdueEl && !overdueEl.innerHTML.trim())overdueEl.innerHTML='<div style="text-align:center;padding:1rem;color:var(--gray-400);font-size:0.82rem;">กำลังโหลดข้อมูลเพิ่มเติม...</div>';
+    if(overdueEl){
+        if(!overdueCustomers.length){
+            overdueEl.innerHTML='<div style="text-align:center;padding:1.5rem;color:var(--gray-400);"><i class="bi bi-check-circle" style="font-size:1.5rem;display:block;margin-bottom:0.3rem;color:#16a34a;"></i>ไม่มีลูกค้าค้างชำระ</div>';
+        }else{
+            let html='';
+            overdueCustomers.forEach(function(cu){
+                const nm=escapeHtml(cu.customer_name||cu.name||'-');
+                const ref=escapeHtml(cu.customer_ref||cu.ref||'');
+                const pid=String(cu.partner_id||cu.customer_id||cu.odoo_id||'');
+                const rawDue=cu.total_due||cu.overdue_amount||0;
+                const due=rawDue>0?'฿'+Number(rawDue).toLocaleString():'';
+                const hasLine=!!(cu.line_user_id);
+                const lineDot=hasLine?'<span style="color:#06c755;font-size:0.6rem;" title="LINE เชื่อมแล้ว">●</span>':'';
+                const encRef=encodeURIComponent(cu.customer_ref||cu.ref||'');
+                const encId=encodeURIComponent(pid);
+                const encNm=encodeURIComponent(cu.customer_name||cu.name||'');
+                html+='<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--gray-100);cursor:pointer;" onclick="showCustomerDetail(decodeURIComponent(\''+encRef+'\'),decodeURIComponent(\''+encId+'\'),decodeURIComponent(\''+encNm+'\'))">'
+                    +'<div style="flex:1;min-width:0;">'
+                    +'<div style="font-size:0.82rem;font-weight:500;">'+nm+' '+lineDot+'</div>'
+                    +'<div style="font-size:0.7rem;color:var(--gray-400);">'+ref+(ref?' · ':'')+escapeHtml(pid)+'</div>'
+                    +'</div>'
+                    +'<div style="font-weight:600;color:#dc2626;font-size:0.85rem;">'+due+'</div>'
+                    +'</div>';
+            });
+            overdueEl.innerHTML=html;
+        }
+    }
     _cacheOverviewState(cacheKey);
-    if(_overviewSecondaryTimer)clearTimeout(_overviewSecondaryTimer);
-    _overviewSecondaryTimer=setTimeout(function(){ _loadTodayOverviewSecondary(cacheKey).catch(function(){}); }, 400);
 }
 
 // ===== MATCHING DASHBOARD (Slip BDO) =====

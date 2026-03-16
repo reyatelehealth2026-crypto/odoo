@@ -52,6 +52,7 @@ try {
         'customer_list' => 20,
         'notification_log' => 20,
         'salesperson_list' => 180,
+        'overview_today' => 45,
     ];
     $cacheKey = null;
     if (isset($cacheTtls[$action])) {
@@ -121,6 +122,9 @@ try {
             break;
         case 'customer_360':
             $result = getCustomer360($db, $input);
+            break;
+        case 'overview_today':
+            $result = getOverviewToday($db);
             break;
         case 'pending_bdo_orders':
             $result = getPendingBdoOrdersApi($db, $input);
@@ -2171,6 +2175,86 @@ function getOrderGroupedToday($db, $input)
         'limit' => $limit,
         'offset' => $offset,
     ];
+}
+
+/**
+ * Single batch endpoint for dashboard overview: stats, orders, overdue, pending BDO, slips.
+ */
+function getOverviewToday($db)
+{
+    $stats = getStats($db);
+    $ordersData = getOrderGroupedToday($db, ['limit' => 5, 'offset' => 0]);
+    $overdueData = getCustomerList($db, [
+        'invoice_filter' => 'overdue',
+        'limit' => 5,
+        'offset' => 0,
+        'sort_by' => 'due_desc',
+    ]);
+    $pendingBdo = getOdooBdos($db, ['limit' => 20, 'offset' => 0]);
+    $slips = getOverviewSlipsSummary($db);
+
+    return [
+        'stats' => $stats,
+        'orders' => $ordersData['orders'] ?? [],
+        'orders_total' => $ordersData['total'] ?? 0,
+        'orders_date' => $ordersData['date'] ?? date('Y-m-d'),
+        'overdue_customers' => $overdueData['customers'] ?? [],
+        'overdue_total' => $overdueData['total'] ?? 0,
+        'pending_bdo' => $pendingBdo,
+        'slips_pending_total' => $slips['pending_total'],
+        'slips_pending' => $slips['pending_slips'],
+        'slips_matched_today_count' => $slips['matched_today_count'],
+        'slips_matched_today_sum' => $slips['matched_today_sum'],
+    ];
+}
+
+function getOverviewSlipsSummary($db)
+{
+    $out = [
+        'pending_total' => 0,
+        'pending_slips' => [],
+        'matched_today_count' => 0,
+        'matched_today_sum' => 0.0,
+    ];
+    if (!tableExists($db, 'odoo_slip_uploads')) {
+        return $out;
+    }
+    try {
+        $countStmt = $db->prepare("SELECT COUNT(*) FROM odoo_slip_uploads WHERE status = 'pending'");
+        $countStmt->execute();
+        $out['pending_total'] = (int) $countStmt->fetchColumn();
+        $baseUrl = rtrim(defined('SITE_URL') ? SITE_URL : 'https://cny.re-ya.com', '/');
+        $stmt = $db->prepare("
+            SELECT s.id, s.line_user_id, s.amount, s.transfer_date, s.image_path, s.image_url, s.uploaded_at, s.status,
+                   u.display_name AS customer_name
+            FROM odoo_slip_uploads s
+            LEFT JOIN users u ON u.line_user_id = s.line_user_id
+            WHERE s.status = 'pending'
+            ORDER BY s.uploaded_at DESC
+            LIMIT 5
+        ");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $row) {
+            $row['id'] = (int) $row['id'];
+            $row['amount'] = $row['amount'] !== null ? (float) $row['amount'] : null;
+            $row['image_full_url'] = !empty($row['image_path']) ? $baseUrl . '/' . ltrim($row['image_path'], '/') : ($row['image_url'] ?? null);
+            unset($row['image_path'], $row['image_url']);
+            $out['pending_slips'][] = $row;
+        }
+        $matchedStmt = $db->prepare("
+            SELECT COUNT(*) as cnt, COALESCE(SUM(amount), 0) as total
+            FROM odoo_slip_uploads
+            WHERE status = 'matched' AND DATE(COALESCE(matched_at, uploaded_at)) = CURDATE()
+        ");
+        $matchedStmt->execute();
+        $matchedRow = $matchedStmt->fetch(PDO::FETCH_ASSOC);
+        $out['matched_today_count'] = (int) ($matchedRow['cnt'] ?? 0);
+        $out['matched_today_sum'] = (float) ($matchedRow['total'] ?? 0);
+    } catch (Exception $e) {
+        // leave defaults
+    }
+    return $out;
 }
 
 /**
