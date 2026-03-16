@@ -2678,7 +2678,55 @@ async function loadTodayOverview(){
         if(recent) _renderSectionCacheNote(recent, cached.cachedAt, '_cacheClear(\'dash:overview\');loadTodayOverview()');
         return;
     }
-    const res = await whApiCall({ action: 'overview_today' });
+
+    // Try the combined overview_today first; if it fails/times out,
+    // fall back to loading each section independently in parallel.
+    let res = null;
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 10000);
+        const r = await fetch(WH_API_ACTIVE + '?_t=' + Date.now(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'overview_today' }),
+            signal: ctrl.signal
+        });
+        clearTimeout(timer);
+        res = await r.json();
+        if (!res || !res.success) res = null;
+    } catch (_e) {
+        res = null;
+    }
+
+    // Fallback: load parts in parallel (each is lighter and faster)
+    if (!res) {
+        try {
+            const [statsRes, ordersRes, overdueRes] = await Promise.all([
+                whApiCall({ action: 'webhook_stats_mini' }).catch(() => null),
+                whApiCall({ action: 'order_grouped_today', limit: 5, offset: 0 }).catch(() => null),
+                whApiCall({ action: 'customer_list', invoice_filter: 'overdue', limit: 5, offset: 0, sort_by: 'due_desc' }).catch(() => null)
+            ]);
+            const s = (statsRes && statsRes.success) ? statsRes.data : {};
+            const ordData = (ordersRes && ordersRes.success) ? ordersRes.data : {};
+            const ovData = (overdueRes && overdueRes.success) ? overdueRes.data : {};
+            res = {
+                success: true,
+                data: {
+                    stats: s,
+                    orders: ordData.orders || [],
+                    orders_total: ordData.total || 0,
+                    overdue_customers: ovData.customers || [],
+                    overdue_total: ovData.total || 0,
+                    pending_bdo: { orders: [], bdos: [], total: 0 },
+                    slips_pending: [],
+                    slips_pending_total: 0,
+                    slips_matched_today_sum: 0
+                }
+            };
+        } catch (_e2) {
+            res = null;
+        }
+    }
     const kpiOrders=document.getElementById('kpiOrdersToday');
     const kpiSales=document.getElementById('kpiSalesToday');
     const kpiSlips=document.getElementById('kpiSlipsPending');
@@ -3829,6 +3877,10 @@ async function unmatchBdoSlip(slipId, slipInboxId){
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded',()=>{
     restoreAdminMode();
+
+    // Test API connectivity immediately (uses fast 'health' action, no DB query)
+    testConnection();
+
     const params = new URLSearchParams(window.location.search);
     const initialTab = (params.get('tab') || '').trim();
     // Pre-set date filter to today for flat list view
@@ -3840,8 +3892,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(initialTab){
         showSection(initialTab);
     }else{
-        // Delay initial overview load slightly so opening the dashboard stays responsive.
         setTimeout(function(){ if(_isSectionActive('overview')) loadTodayOverview(); }, 250);
     }
     if(document.getElementById('autoSendSettingsContent'))loadAutoSendSettings();
+
+    // Re-check connection every 60s
+    setInterval(testConnection, 60000);
 });
