@@ -2267,22 +2267,103 @@ function getStatsMini($db)
 
 function getOverviewToday($db)
 {
+    // ── 1. Stats from webhook log (lightweight) ──
     $stats = getStatsMini($db);
-    $ordersData = getOrderGroupedToday($db, ['limit' => 5, 'offset' => 0]);
+
+    // ── 2. Today's orders — use odoo_orders sync table (no JSON_EXTRACT) ──
+    $orders = [];
+    $ordersTotal = 0;
+    $ordersDate  = date('Y-m-d');
+    try {
+        if (tableExists($db, 'odoo_orders')) {
+            $countStmt = $db->query("SELECT COUNT(*) FROM odoo_orders WHERE DATE(date_order) = CURDATE() OR DATE(updated_at) = CURDATE()");
+            $ordersTotal = (int) $countStmt->fetchColumn();
+
+            $stmt = $db->query("
+                SELECT
+                    order_id, order_name, customer_ref, line_user_id,
+                    salesperson_id, salesperson_name, state, state_display,
+                    amount_total, date_order, updated_at,
+                    COALESCE(state_display, state, '') as latest_state_display,
+                    latest_event as latest_event_type,
+                    NULL as customer_line_user_id,
+                    COALESCE(
+                        (SELECT display_name FROM users u WHERE u.line_user_id = o.line_user_id LIMIT 1),
+                        customer_ref
+                    ) as customer_name,
+                    ROUND(
+                        CASE
+                            WHEN state IN ('done','sale') THEN 100
+                            WHEN state = 'cancel' THEN 0
+                            ELSE 50
+                        END
+                    ) as progress
+                FROM odoo_orders o
+                WHERE DATE(date_order) = CURDATE() OR DATE(updated_at) = CURDATE()
+                ORDER BY updated_at DESC
+                LIMIT 5
+            ");
+            $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($orders as &$o) {
+                $o['order_id']    = (int) ($o['order_id'] ?? 0);
+                $o['amount_total'] = (float) ($o['amount_total'] ?? 0);
+                $o['progress']     = (int) ($o['progress'] ?? 50);
+            }
+            unset($o);
+        } else {
+            // Fallback: webhook log (original logic)
+            $fallback = getOrderGroupedToday($db, ['limit' => 5, 'offset' => 0]);
+            $orders = $fallback['orders'] ?? [];
+            $ordersTotal = $fallback['total'] ?? 0;
+            $ordersDate  = $fallback['date'] ?? $ordersDate;
+        }
+    } catch (Exception $e) {
+        $orders = [];
+    }
+
+    // ── 3. Overdue customers — use odoo_customer_projection (already fast) ──
     $overdueData = getCustomerList($db, [
         'invoice_filter' => 'overdue',
         'limit' => 5,
         'offset' => 0,
         'sort_by' => 'due_desc',
     ]);
-    $pendingBdo = getOdooBdos($db, ['limit' => 20, 'offset' => 0]);
+
+    // ── 4. Pending BDOs — use odoo_bdos sync table (no JSON_EXTRACT) ──
+    $pendingBdo = ['orders' => [], 'bdos' => [], 'total' => 0];
+    try {
+        if (tableExists($db, 'odoo_bdos')) {
+            $stmt = $db->query("
+                SELECT id, bdo_id, bdo_name, partner_id, customer_ref,
+                       amount_net_to_pay, payment_state, state, due_date, updated_at
+                FROM odoo_bdos
+                WHERE payment_state NOT IN ('paid','reversed','in_payment')
+                  AND state != 'cancel'
+                ORDER BY due_date ASC, updated_at DESC
+                LIMIT 20
+            ");
+            $bdos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($bdos as &$b) {
+                $b['amount_net_to_pay'] = (float) ($b['amount_net_to_pay'] ?? 0);
+            }
+            unset($b);
+            $pendingBdo = ['orders' => $bdos, 'bdos' => $bdos, 'total' => count($bdos)];
+        } else {
+            // Fallback: existing function
+            $pendingBdo = getOdooBdos($db, ['limit' => 20, 'offset' => 0]);
+        }
+    } catch (Exception $e) {
+        $pendingBdo = getOdooBdos($db, ['limit' => 20, 'offset' => 0]);
+    }
+
+    // ── 5. Slips summary ──
     $slips = getOverviewSlipsSummary($db);
 
     return [
         'stats' => $stats,
-        'orders' => $ordersData['orders'] ?? [],
-        'orders_total' => $ordersData['total'] ?? 0,
-        'orders_date' => $ordersData['date'] ?? date('Y-m-d'),
+        'orders' => $orders,
+        'orders_total' => $ordersTotal,
+        'orders_date' => $ordersDate,
         'overdue_customers' => $overdueData['customers'] ?? [],
         'overdue_total' => $overdueData['total'] ?? 0,
         'pending_bdo' => $pendingBdo,
