@@ -3,7 +3,13 @@
  * CNY Odoo ERP API Client
  * สำหรับเชื่อมต่อกับ CNY Odoo 11 ERP API (erp.cnyrxapp.com)
  * Module: ineco_pps_sale_order_api
+ *
+ * @version 2.0.0
+ * @updated 2026-03-16 — Added retry with exponential backoff, circuit breaker,
+ *          connection reuse, connect timeout, and optional logging.
  */
+
+require_once __DIR__ . '/OdooCircuitBreaker.php';
 
 class CnyOdooAPI
 {
@@ -11,14 +17,39 @@ class CnyOdooAPI
     private $apiUser;
     private $userToken;
     private $timeout = 30;
+    private $connectTimeout = 5;
     private $db;
+
+    /** @var OdooCircuitBreaker */
+    private $circuitBreaker;
+
+    /** Reusable cURL handle */
+    private $curlHandle = null;
+
+    private const MAX_RETRIES = 2;
+    private const RETRY_BASE_DELAY_MS = 250;
 
     public function __construct($db = null)
     {
         $this->db = $db;
-        $this->baseUrl = rtrim(defined('ODOO_API_BASE_URL') ? ODOO_API_BASE_URL : 'https://erp.cnyrxapp.com', '/');
-        $this->apiUser = defined('CNY_ODOO_API_USER') ? CNY_ODOO_API_USER : 'webapi_user2@cny.co';
-        $this->userToken = defined('CNY_ODOO_USER_TOKEN') ? CNY_ODOO_USER_TOKEN : '@ewNI*4X*/4t9vgMds2Gzs3j=VG%q%ERYM-1A/utT0#CUZ&UR&$pwvuxj!MNUcruJ@RZ/p7$uN*fdqE6xktQdGxGov%?L0@@CekhyzeROSv2/qmj&%G-vlHq$4V8&AHC/XkxI$Tgkbq3p/6faPvf8wjIP#hfZM7GimVkXbvpvsrfZKOCGk?ldTpL9=5qI-eCVs29xIyr0';
+        $this->baseUrl = rtrim(defined('ODOO_API_BASE_URL') ? ODOO_API_BASE_URL : '', '/');
+        $this->apiUser = defined('CNY_ODOO_API_USER') ? CNY_ODOO_API_USER : '';
+        $this->userToken = defined('CNY_ODOO_USER_TOKEN') ? CNY_ODOO_USER_TOKEN : '';
+
+        $this->circuitBreaker = new OdooCircuitBreaker(
+            'odoo_cny',
+            5,   // open after 5 failures
+            45,  // probe again after 45s
+            2
+        );
+    }
+
+    public function __destruct()
+    {
+        if ($this->curlHandle !== null) {
+            curl_close($this->curlHandle);
+            $this->curlHandle = null;
+        }
     }
 
     /**
@@ -33,24 +64,80 @@ class CnyOdooAPI
     }
 
     /**
-     * Make API request
+     * Make API request with retry, circuit breaker, and connection reuse.
      */
     private function request($method, $endpoint, $data = null)
     {
+        if (!$this->circuitBreaker->isAvailable()) {
+            return [
+                'success' => false,
+                'error' => 'ระบบ Odoo CNY ไม่พร้อมใช้งานชั่วคราว กรุณาลองใหม่ในอีกสักครู่',
+                'circuit_breaker' => 'open'
+            ];
+        }
+
+        $lastResult = null;
+
+        for ($attempt = 0; $attempt <= self::MAX_RETRIES; $attempt++) {
+            if ($attempt > 0) {
+                $this->sleepWithBackoff($attempt);
+            }
+
+            $startTime = microtime(true);
+            $result = $this->doRequest($method, $endpoint, $data);
+            $duration = round((microtime(true) - $startTime) * 1000);
+
+            // Log the API call
+            $this->logApiCall($endpoint, $data, $result, $duration);
+
+            if ($result['success'] ?? false) {
+                $this->circuitBreaker->recordSuccess();
+                return $result;
+            }
+
+            $lastResult = $result;
+
+            // Determine if the error is retriable
+            $httpCode = $result['http_code'] ?? 0;
+            $errorMsg = $result['error'] ?? '';
+
+            if (!$this->isRetriable($httpCode, $errorMsg)) {
+                break;
+            }
+
+            if ($attempt === self::MAX_RETRIES) {
+                $this->circuitBreaker->recordFailure($errorMsg);
+            }
+        }
+
+        return $lastResult ?? ['success' => false, 'error' => 'Unknown error'];
+    }
+
+    /**
+     * Execute a single HTTP request.
+     */
+    private function doRequest($method, $endpoint, $data = null)
+    {
         $url = $this->baseUrl . $endpoint;
 
-        $ch = curl_init();
+        $ch = $this->getCurlHandle();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => $this->timeout,
+            CURLOPT_CONNECTTIMEOUT => $this->connectTimeout,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_HTTPHEADER => [
                 'Content-Type: application/json',
                 'Accept: application/json',
                 'Api-User: ' . $this->apiUser,
-                'User-Token: ' . $this->userToken
-            ]
+                'User-Token: ' . $this->userToken,
+                'Connection: keep-alive',
+            ],
+            CURLOPT_ENCODING => '', // Accept gzip/deflate
+            CURLOPT_TCP_KEEPALIVE => 1,
+            CURLOPT_TCP_KEEPIDLE => 30,
+            CURLOPT_TCP_KEEPINTVL => 15,
         ]);
 
         if ($method === 'POST') {
@@ -58,15 +145,16 @@ class CnyOdooAPI
             if ($data) {
                 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data, JSON_UNESCAPED_UNICODE));
             }
+        } else {
+            curl_setopt($ch, CURLOPT_HTTPGET, true);
         }
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $error = curl_error($ch);
-        curl_close($ch);
 
         if ($error) {
-            return ['success' => false, 'error' => 'cURL Error: ' . $error];
+            return ['success' => false, 'error' => 'cURL Error: ' . $error, 'http_code' => 0];
         }
 
         $decoded = json_decode($response, true);
@@ -75,12 +163,12 @@ class CnyOdooAPI
             return [
                 'success' => false,
                 'error' => 'Invalid JSON response: ' . json_last_error_msg(),
+                'http_code' => $httpCode,
                 'raw_response' => substr($response, 0, 500)
             ];
         }
 
         // Handle Odoo JSON-RPC format
-        // Response format: {"jsonrpc": "2.0", "id": null, "result": {...}}
         if (isset($decoded['jsonrpc']) && isset($decoded['result'])) {
             return [
                 'success' => true,
@@ -106,6 +194,78 @@ class CnyOdooAPI
         ];
     }
 
+    private function getCurlHandle()
+    {
+        if ($this->curlHandle === null) {
+            $this->curlHandle = curl_init();
+        }
+        curl_reset($this->curlHandle);
+        return $this->curlHandle;
+    }
+
+    private function isRetriable(int $httpCode, string $errorMsg): bool
+    {
+        if ($httpCode >= 500 || $httpCode === 429 || $httpCode === 0) {
+            return true;
+        }
+
+        $retriablePatterns = ['timeout', 'timed out', 'connection reset', 'connection refused', 'curl error'];
+        $lowerError = strtolower($errorMsg);
+        foreach ($retriablePatterns as $pattern) {
+            if (str_contains($lowerError, $pattern)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function sleepWithBackoff(int $attempt): void
+    {
+        $baseMs = self::RETRY_BASE_DELAY_MS * pow(2, $attempt - 1);
+        $jitterMs = mt_rand(0, (int) ($baseMs * 0.3));
+        $sleepMs = min($baseMs + $jitterMs, 3000);
+        usleep($sleepMs * 1000);
+    }
+
+    private function logApiCall($endpoint, $data, $result, $duration)
+    {
+        if ($this->db === null) {
+            return;
+        }
+
+        try {
+            static $tableChecked = null;
+            if ($tableChecked === null) {
+                $stmt = $this->db->query("SHOW TABLES LIKE 'odoo_api_logs'");
+                $tableChecked = $stmt->rowCount() > 0;
+            }
+            if (!$tableChecked) {
+                return;
+            }
+
+            $stmt = $this->db->prepare("
+                INSERT INTO odoo_api_logs 
+                (line_account_id, endpoint, method, request_params, response_data, 
+                 status_code, error_message, duration_ms, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+
+            $stmt->execute([
+                null,
+                $endpoint,
+                'POST',
+                json_encode($data ?? []),
+                json_encode(array_intersect_key($result, array_flip(['success', 'http_code', 'error']))),
+                $result['http_code'] ?? 0,
+                ($result['success'] ?? false) ? null : ($result['error'] ?? null),
+                $duration
+            ]);
+        } catch (Exception $e) {
+            // Don't let logging failures affect main flow
+        }
+    }
+
     /**
      * Test API connection
      */
@@ -116,15 +276,21 @@ class CnyOdooAPI
             'success' => $result['success'] ?? false,
             'message' => $result['success'] ? 'เชื่อมต่อสำเร็จ' : ($result['error'] ?? 'ไม่สามารถเชื่อมต่อได้'),
             'base_url' => $this->baseUrl,
-            'api_user' => $this->apiUser
+            'api_user' => $this->apiUser,
+            'circuit_breaker' => $this->circuitBreaker->getStatus(),
         ];
+    }
+
+    /**
+     * Get circuit breaker status for monitoring
+     */
+    public function getCircuitBreakerStatus(): array
+    {
+        return $this->circuitBreaker->getStatus();
     }
 
     // ==================== PRODUCT APIs ====================
 
-    /**
-     * 1. Get Product by product code
-     */
     public function getProduct($productCode)
     {
         return $this->request('POST', '/ineco_gc/get_product', [
@@ -132,9 +298,6 @@ class CnyOdooAPI
         ]);
     }
 
-    /**
-     * 2. Get SKU information by product code
-     */
     public function getSku($productCode)
     {
         return $this->request('POST', '/ineco_gc/get_sku', [
@@ -144,9 +307,6 @@ class CnyOdooAPI
 
     // ==================== PARTNER APIs ====================
 
-    /**
-     * 3. Get Partner by partner code
-     */
     public function getPartner($partnerCode)
     {
         return $this->request('POST', '/ineco_gc/get_partner', [
@@ -154,9 +314,6 @@ class CnyOdooAPI
         ]);
     }
 
-    /**
-     * 4. Get Partner Details by partner ID
-     */
     public function getPartnerDetails($partnerId)
     {
         return $this->request('POST', '/ineco_gc/get_partner_details', [
@@ -166,12 +323,8 @@ class CnyOdooAPI
 
     // ==================== SALE ORDER APIs ====================
 
-    /**
-     * 5. Create Sale Order
-     */
     public function createSaleOrder($orderData)
     {
-        // Validate required fields
         $required = ['order_ref', 'marketplace', 'customer_order', 'order_line'];
         foreach ($required as $field) {
             if (empty($orderData[$field])) {
@@ -179,7 +332,6 @@ class CnyOdooAPI
             }
         }
 
-        // Build order structure
         $order = [
             'order_ref' => $orderData['order_ref'],
             'marketplace' => $orderData['marketplace'] ?? 'WEBSITE',
@@ -194,12 +346,8 @@ class CnyOdooAPI
         return $this->request('POST', '/ineco_gc/create_sale_order', $order);
     }
 
-    /**
-     * Helper: Create simple sale order
-     */
     public function createSimpleSaleOrder($orderRef, $partnerId, $partnerCode, $items, $options = [])
     {
-        // Calculate totals
         $sumSubtotal = 0;
         $orderLines = [];
 
@@ -219,7 +367,6 @@ class CnyOdooAPI
             $sumSubtotal += $subtotalAfterDiscount;
         }
 
-        // Calculate tax (7% VAT)
         $discountAmount = $options['discount_amount'] ?? 0;
         $amountAfterDiscount = $sumSubtotal - $discountAmount;
         $amountUntax = round($amountAfterDiscount / 1.07, 2);
@@ -254,9 +401,6 @@ class CnyOdooAPI
         return $this->createSaleOrder($orderData);
     }
 
-    /**
-     * 6. Get Sale Order by order reference
-     */
     public function getSaleOrder($orderRef)
     {
         return $this->request('POST', '/ineco_gc/get_sale_order', [
@@ -266,9 +410,6 @@ class CnyOdooAPI
 
     // ==================== INVOICE APIs ====================
 
-    /**
-     * 7. Get Sale Invoice by invoice number
-     */
     public function getSaleInvoice($invoiceNumber)
     {
         return $this->request('POST', '/ineco_gc/get_sale_invoice', [
@@ -278,9 +419,6 @@ class CnyOdooAPI
 
     // ==================== DELIVERY APIs ====================
 
-    /**
-     * 8. Update Delivery Fee for an order
-     */
     public function updateDeliveryFee($orderId, $deliveryFee)
     {
         return $this->request('POST', '/ineco_gc/update_delivery_fee', [
@@ -289,9 +427,6 @@ class CnyOdooAPI
         ]);
     }
 
-    /**
-     * 9. Calculate Delivery Fee based on province and weight
-     */
     public function calculateDeliveryFee($province, $weight)
     {
         return $this->request('POST', '/ineco_gc/calculate_delivery_fee', [
@@ -302,16 +437,14 @@ class CnyOdooAPI
 
     // ==================== UTILITY METHODS ====================
 
-    /**
-     * Get API info
-     */
     public function getApiInfo()
     {
         return [
             'name' => 'CNY Odoo ERP API',
-            'version' => '1.0',
+            'version' => '2.0',
             'base_url' => $this->baseUrl,
             'api_user' => $this->apiUser,
+            'circuit_breaker' => $this->circuitBreaker->getStatus(),
             'endpoints' => [
                 ['name' => 'Get Product', 'path' => '/ineco_gc/get_product', 'method' => 'POST'],
                 ['name' => 'Get SKU', 'path' => '/ineco_gc/get_sku', 'method' => 'POST'],
