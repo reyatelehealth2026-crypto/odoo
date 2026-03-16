@@ -181,9 +181,14 @@ async function whApiCall(data){
             let parsed=null;
             try{parsed=JSON.parse(raw);}catch(_e){parsed=null;}
             if(parsed&&typeof parsed==='object'&&Object.prototype.hasOwnProperty.call(parsed,'success')){
-                WH_API_ACTIVE=apiUrl;
-                if(parsed._meta&&parsed._meta.duration_ms!=null) _lastApiDurationMs=parsed._meta.duration_ms;
-                return parsed;
+                if(parsed.success){
+                    WH_API_ACTIVE=apiUrl;
+                    if(parsed._meta&&parsed._meta.duration_ms!=null) _lastApiDurationMs=parsed._meta.duration_ms;
+                    return parsed;
+                }
+                // success: false (e.g. Unknown action) — try next endpoint instead of sticking to this one
+                tried.push(apiUrl+' ('+(parsed.error||r.status)+')');
+                continue;
             }
             tried.push(apiUrl+' (non-json:'+r.status+')');
         }catch(e){
@@ -2726,21 +2731,10 @@ async function loadTodayOverview(){
         }
     } catch (_e) { /* fall through */ }
 
-    // 2nd: If fast overview failed or returned nothing, try the full overview_today
+    // 2nd: If fast overview failed or returned nothing, try the full overview_today (whApiCall tries all endpoints so dashboard-api handles it if webhooks doesn't)
     if (!res) {
-        try {
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 12000);
-            const r = await fetch(WH_API_ACTIVE + '?_t=' + Date.now(), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'overview_today' }),
-                signal: ctrl.signal
-            });
-            clearTimeout(timer);
-            const parsed = await r.json();
-            if (parsed && parsed.success) res = parsed;
-        } catch (_e2) { /* fall through */ }
+        const overviewRes = await whApiCall({ action: 'overview_today' });
+        if (overviewRes && overviewRes.success) res = overviewRes;
     }
     const kpiOrders=document.getElementById('kpiOrdersToday');
     const kpiSales=document.getElementById('kpiSalesToday');
