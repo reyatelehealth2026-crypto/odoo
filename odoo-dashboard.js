@@ -1,4 +1,3 @@
-const WH_API_FAST='/api/odoo-dashboard-fast.php';
 const WH_API_CANDIDATES=[
     '/api/odoo-dashboard-api.php',
     '/api/odoo-webhooks-dashboard.php'
@@ -103,6 +102,8 @@ function normalizeBdoPaymentStatus(bdo){
 const _sectionLoadedAt = {};    // sectionId → timestamp
 const _SECTION_STALE_MS = 300000; // 5 minutes before re-fetching
 const _whInFlight = new Map();
+const _whFailureState = new Map();
+const _WH_API_COOLDOWN_BASE_MS = 15000;
 function _sectionNeedsLoad(id){
     const loadedAt = _sectionLoadedAt[id];
     if(!loadedAt) return true;
@@ -128,6 +129,189 @@ function _whCanDeduplicate(action){
     ]).has(String(action||''));
 }
 
+function _whApiResponseCacheTtl(action){
+    const ttlMap={
+        stats:120000,
+        list:60000,
+        customer_list:300000,
+        salesperson_list:300000,
+        overview_today:180000,
+        daily_summary_preview:180000,
+        order_grouped_today:120000,
+        order_timeline:300000,
+        odoo_slips:120000,
+        customer_detail:300000,
+        customer_full_detail:300000,
+        notification_log:120000,
+        activity_log_list:120000,
+        odoo_bdo_list_api:120000,
+        webhook_stats_mini:60000,
+        dlq_stats:60000
+    };
+    return ttlMap[String(action||'')] || 0;
+}
+
+function _whApiResponseCacheKey(data){
+    return _dashCacheKey('whapi', _whBuildInFlightKey(data));
+}
+
+function _whGetCachedResponse(action, data){
+    const ttlMs=_whApiResponseCacheTtl(action);
+    if(!ttlMs) return null;
+    return _cacheGet(_whApiResponseCacheKey(data));
+}
+
+function _whSetCachedResponse(action, data, response){
+    const ttlMs=_whApiResponseCacheTtl(action);
+    if(!ttlMs || !response || !response.success) return;
+    _cacheSet(_whApiResponseCacheKey(data), response, ttlMs);
+}
+
+function _whWrapCachedResponse(response, meta){
+    return Object.assign({}, response, {
+        meta: Object.assign({}, response&&response.meta||{}, meta||{})
+    });
+}
+
+function _whGetCooldownRemaining(action){
+    const state=_whFailureState.get(String(action||''));
+    if(!state) return 0;
+    const remaining=(state.until||0)-Date.now();
+    if(remaining<=0){
+        _whFailureState.delete(String(action||''));
+        return 0;
+    }
+    return remaining;
+}
+
+function _whRecordFailure(action, errorMessage){
+    const key=String(action||'');
+    const prev=_whFailureState.get(key)||{count:0, until:0, lastError:''};
+    const count=prev.count+1;
+    const cooldown=Math.min(120000, _WH_API_COOLDOWN_BASE_MS * Math.max(1, count));
+    _whFailureState.set(key,{
+        count,
+        until:Date.now()+cooldown,
+        lastError:String(errorMessage||'')
+    });
+}
+
+function _whRecordSuccess(action){
+    _whFailureState.delete(String(action||''));
+}
+
+async function _whTryLocalFallback(action, data){
+    if(!(window.LocalApi && typeof window.LocalApi.call==='function')) return null;
+    try{
+        if(action==='customer_list'){
+            const r=await window.LocalApi.call('customers_list',{
+                limit:data.limit||30,
+                offset:data.offset||0,
+                search:data.search||'',
+                invoice_filter:data.invoice_filter||'',
+                sort_by:data.sort_by||'',
+                salesperson_id:data.salesperson_id||''
+            });
+            return r&&r.success?{success:true,data:r.data,meta:{source:'local-fallback'}}:null;
+        }
+        if(action==='salesperson_list'){
+            const r=await window.LocalApi.call('customers_list',{limit:100,offset:0});
+            const customers=r&&r.success&&r.data&&Array.isArray(r.data.customers)?r.data.customers:[];
+            const seen=new Set(),salespersons=[];
+            customers.forEach(function(c){
+                const sid=String(c.salesperson_id||'').trim();
+                const nm=String(c.salesperson_name||'').trim();
+                if(sid && nm && !seen.has(sid)){
+                    seen.add(sid);
+                    salespersons.push({id:sid,name:nm});
+                }
+            });
+            return salespersons.length?{success:true,data:{salespersons},meta:{source:'local-fallback'}}:null;
+        }
+        if(action==='order_timeline'){
+            const r=await window.LocalApi.call('order_timeline',{
+                order_id:data.order_id||'',
+                order_key:data.order_name||data.order_key||''
+            });
+            if(r&&r.success){
+                const payload=r.data||{};
+                return {
+                    success:true,
+                    data:{
+                        events:payload.events||[],
+                        order_name:payload.order_name||payload.order_key||data.order_name||data.order_id||'-'
+                    },
+                    meta:{source:'local-fallback'}
+                };
+            }
+            return null;
+        }
+        if(action==='customer_detail'){
+            const r=await window.LocalApi.call('customer_detail',{
+                customer_ref:data.customer_ref||'',
+                partner_id:data.partner_id||''
+            });
+            return r&&r.success?{success:true,data:r.data,meta:{source:'local-fallback'}}:null;
+        }
+        if(action==='odoo_slips'){
+            const r=await window.LocalApi.call('slips_list',{
+                limit:data.limit||30,
+                offset:data.offset||0,
+                search:data.search||'',
+                status:data.status||'',
+                date:data.date||''
+            });
+            return r&&r.success?{success:true,data:r.data,meta:{source:'local-fallback'}}:null;
+        }
+        if(action==='overview_today'){
+            const [kpiRes, ordersRes, slipsRes, overdueRes] = await Promise.all([
+                window.LocalApi.call('overview_kpi'),
+                window.LocalApi.call('orders_today'),
+                window.LocalApi.call('slips_pending'),
+                window.LocalApi.call('invoices_overdue')
+            ]);
+            if(!(kpiRes&&kpiRes.success&&ordersRes&&ordersRes.success&&slipsRes&&slipsRes.success&&overdueRes&&overdueRes.success)){
+                return null;
+            }
+            const kpi=kpiRes.data||{}, orders=ordersRes.data||{}, slips=slipsRes.data||{}, overdue=overdueRes.data||{};
+            const overdueCustomers=(overdue.invoices||[]).map(function(inv){
+                return {
+                    customer_name: inv.customer_name || '-',
+                    customer_ref: inv.customer_ref || '',
+                    partner_id: inv.partner_id || inv.customer_id || '',
+                    total_due: inv.amount_residual || 0,
+                    overdue_amount: inv.amount_residual || 0,
+                    line_user_id: inv.line_user_id || null
+                };
+            });
+            return {
+                success:true,
+                data:{
+                    stats:{
+                        unique_orders_today:Number(kpi.orders&&kpi.orders.today||0),
+                        notified_today:0,
+                        total:0,
+                        success:0,
+                        dead_letter:0
+                    },
+                    orders:orders.orders||[],
+                    orders_total:Number(orders.count||0),
+                    overdue_customers:overdueCustomers,
+                    overdue_total:Number(overdue.count||0),
+                    pending_bdo:{orders:[]},
+                    slips_pending:slips.slips||[],
+                    slips_pending_total:Number(slips.count||0),
+                    slips_matched_today_sum:Number(kpi.slips&&kpi.slips.matched_today||0)
+                },
+                meta:{source:'local-fallback'}
+            };
+        }
+    }catch(_e){
+        return null;
+    }
+    return null;
+}
+
 function showSection(id){
     // 'webhooks-raw' maps to the same webhooks section but forces list mode
     let sectionId = id;
@@ -139,7 +323,7 @@ function showSection(id){
     const t=document.getElementById('section-'+sectionId);if(t)t.classList.add('active');
     const m=document.querySelector(`.menu-card[onclick="showSection('${id}')"]`);if(m)m.classList.add('active');
 
-    if(id==='overview'){if(typeof loadTodayOverview==='function')loadTodayOverview();}
+    if(id==='overview'){if((!_overviewLoaded||_sectionNeedsLoad('overview'))&&typeof loadTodayOverview==='function'){loadTodayOverview();_sectionMarkLoaded('overview');}}
     else if(id==='webhooks'){if(_sectionNeedsLoad('webhooks')){loadWebhookStats();_sectionMarkLoaded('webhooks');}if(whViewMode==='grouped'){if(!document.getElementById('webhookList').querySelector('div[style*="border-radius:10px"]'))loadOrdersGrouped();}else{if(!document.getElementById('webhookList').querySelector('table'))loadWebhooks();}}
     else if(id==='webhooks-raw'){if(_sectionNeedsLoad('webhooks')){loadWebhookStats();_sectionMarkLoaded('webhooks');}if(forceListMode){setWhViewMode('list');}else{if(!document.getElementById('webhookList').querySelector('table'))loadWebhooks();}}
     else if(id==='customers'){loadSalespersonDropdown();if(_sectionNeedsLoad('customers')||!document.getElementById('customerList').querySelector('table')){loadCustomers();_sectionMarkLoaded('customers');}}
@@ -147,69 +331,33 @@ function showSection(id){
     else if(id==='daily-summary'){if(dailySummaryData.length===0)loadDailySummary();}
     else if(id==='health'){loadSystemHealth();}
     else if(id==='slips'){if(_sectionNeedsLoad('slips')||!document.getElementById('slipList').querySelector('table')){loadSlips();_sectionMarkLoaded('slips');}}
-    else if(id==='matching'){loadSalespersonDropdown();if(_sectionNeedsLoad('matching')){loadMatchingCustomerGrid();_sectionMarkLoaded('matching');}else{loadMatchingCustomerGrid();}}
+    else if(id==='matching'){loadSalespersonDropdown();if(_sectionNeedsLoad('matching')||!document.getElementById('matchCustomerGrid')?.children.length){loadMatchingCustomerGrid();_sectionMarkLoaded('matching');}}
 }
 
-// Last API response timing (for performance monitoring)
-let _lastApiDurationMs = null;
-
-// Actions supported by the lightweight fast endpoint
-const WH_FAST_ACTIONS=new Set(['health','overview_fast','circuit_breaker_status','circuit_breaker_reset']);
-
 async function whApiCall(data){
-<<<<<<< Current (Your changes)
-    const tried=[];
     const action=String(data&&data.action||'').trim();
-    const heavyActions=new Set([
-        'stats','list','customer_list','notification_log','daily_summary_preview',
-        'order_grouped_today','overview_today','overview_fast','overview_combined','customer_detail',
-        'customer_full_detail','odoo_orders','odoo_invoices','odoo_slips','odoo_bdos',
-        'odoo_bdo_list_api','pending_bdo_orders','activity_log_list','customer_360'
-    ]);
-    // Heavy actions (overview_today, stats, etc.) need longer timeout on slow/shared hosting
-    const timeoutMs=heavyActions.has(action)?45000:8000;
-
-    // Try fast endpoint first for supported actions (file is tiny, <100 lines)
-    if(WH_FAST_ACTIONS.has(action)){
-        try{
-            const ctrl=new AbortController();
-            const timer=setTimeout(()=>ctrl.abort(),5000);
-            const r=await fetch(WH_API_FAST+'?_t='+Date.now(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:ctrl.signal});
-            clearTimeout(timer);
-            const parsed=await r.json();
-            if(parsed&&parsed.success){
-                if(parsed._meta&&parsed._meta.duration_ms!=null) _lastApiDurationMs=parsed._meta.duration_ms;
-                return parsed;
-            }
-            if(parsed&&parsed.fallback){/* not supported by fast, try heavy */}
-            else tried.push(WH_API_FAST+' (err:'+(parsed&&parsed.error||r.status)+')');
-        }catch(e){
-            tried.push(WH_API_FAST+' ('+(e.name==='AbortError'?'timeout':e.message)+')');
+    const cachedResponse=_whGetCachedResponse(action, data);
+    const cooldownRemaining=_whGetCooldownRemaining(action);
+    if(cooldownRemaining>0){
+        const localFallback=await _whTryLocalFallback(action, data);
+        if(localFallback&&localFallback.success){
+            return _whWrapCachedResponse(localFallback,{
+                cache:'local-fallback',
+                cooldown_ms:cooldownRemaining
+            });
         }
+        if(cachedResponse&&cachedResponse.success){
+            return _whWrapCachedResponse(cachedResponse,{
+                cache:'session',
+                stale:true,
+                cooldown_ms:cooldownRemaining
+            });
+        }
+        return {
+            success:false,
+            error:'API cooling down for '+Math.ceil(cooldownRemaining/1000)+'s'
+        };
     }
-
-    // Try heavy endpoints (large file, slower to parse)
-    const endpoints=[WH_API_ACTIVE,...WH_API_CANDIDATES.filter(u=>u!==WH_API_ACTIVE)];
-    for(const apiUrl of endpoints){
-        try{
-            const ctrl=new AbortController();
-            const timer=setTimeout(()=>ctrl.abort(),timeoutMs);
-            const r=await fetch(apiUrl+'?_t='+Date.now(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal:ctrl.signal});
-            clearTimeout(timer);
-            const raw=await r.text();
-            let parsed=null;
-            try{parsed=JSON.parse(raw);}catch(_e){parsed=null;}
-            if(parsed&&typeof parsed==='object'&&Object.prototype.hasOwnProperty.call(parsed,'success')){
-                if(parsed.success){
-                    WH_API_ACTIVE=apiUrl;
-                    if(parsed._meta&&parsed._meta.duration_ms!=null) _lastApiDurationMs=parsed._meta.duration_ms;
-                    return parsed;
-                }
-                // success: false (e.g. Unknown action) — try next endpoint instead of sticking to this one
-                tried.push(apiUrl+' ('+(parsed.error||r.status)+')');
-                continue;
-=======
-    const action=String(data&&data.action||'').trim();
     const runRequest=async ()=>{
         const tried=[];
         const endpoints=[WH_API_ACTIVE,...WH_API_CANDIDATES.filter(u=>u!==WH_API_ACTIVE)];
@@ -264,7 +412,6 @@ async function whApiCall(data){
                 tried.push(apiUrl+' (non-json:'+r.status+')');
             }catch(e){
                 tried.push(apiUrl+' ('+(e.name==='AbortError'?'timeout '+Math.round(timeoutMs/1000)+'s':e.message)+')');
->>>>>>> Incoming (Background Agent changes)
             }
         }
         return{success:false,error:'API unreachable: '+tried.join(' | ')};
@@ -279,30 +426,40 @@ async function whApiCall(data){
         return _whInFlight.get(requestKey);
     }
 
-    const requestPromise=runRequest().finally(()=>_whInFlight.delete(requestKey));
+    const requestPromise=(async function(){
+        const response=await runRequest();
+        if(response&&response.success){
+            _whRecordSuccess(action);
+            _whSetCachedResponse(action, data, response);
+            return response;
+        }
+
+        _whRecordFailure(action, response&&response.error);
+
+        const localFallback=await _whTryLocalFallback(action, data);
+        if(localFallback&&localFallback.success){
+            _whSetCachedResponse(action, data, localFallback);
+            return _whWrapCachedResponse(localFallback,{
+                cache:'local-fallback',
+                warning:(response&&response.error)||''
+            });
+        }
+
+        if(cachedResponse&&cachedResponse.success){
+            return _whWrapCachedResponse(cachedResponse,{
+                cache:'session',
+                stale:true,
+                warning:(response&&response.error)||''
+            });
+        }
+
+        return response;
+    })().finally(()=>_whInFlight.delete(requestKey));
     _whInFlight.set(requestKey, requestPromise);
     return requestPromise;
 }
 
-async function testConnection(){
-    const el=document.getElementById('connectionStatus');
-    try{
-        const r=await whApiCall({action:'health'});
-        if(r&&r.success){
-            el.className='status-badge online';
-            const ms=_lastApiDurationMs!=null?' · '+_lastApiDurationMs+'ms':'';
-            el.innerHTML='<span class="status-dot"></span><span>เชื่อมต่อแล้ว'+ms+'</span>';
-        }else{
-            el.className='status-badge offline';
-            const errMsg=(r&&r.error)?r.error:'ไม่สามารถเชื่อมต่อได้';
-            const isCircuitOpen=errMsg.indexOf('CIRCUIT_OPEN')!==-1;
-            el.innerHTML='<span class="status-dot"></span><span>'+(isCircuitOpen?'Odoo ไม่พร้อม (Circuit Open)':escapeHtml(errMsg).substring(0,40))+'</span>';
-        }
-    }catch(e){
-        el.className='status-badge offline';
-        el.innerHTML='<span class="status-dot"></span><span>Error</span>';
-    }
-}
+async function testConnection(){const el=document.getElementById('connectionStatus');try{const r=await whApiCall({action:'stats'});if(r&&r.success){el.className='status-badge online';el.innerHTML='<span class="status-dot"></span><span>เชื่อมต่อแล้ว</span>';}else{el.className='status-badge offline';el.innerHTML='<span class="status-dot"></span><span>ไม่สามารถเชื่อมต่อได้</span>';}}catch(e){el.className='status-badge offline';el.innerHTML='<span class="status-dot"></span><span>Error</span>';}}
 
 // ===== WEBHOOKS =====
 let whCurrentOffset=0;const whPageSize=30;
@@ -1667,39 +1824,6 @@ async function loadSystemHealth(){
         html+=scoreBar('LINE Messaging','chat-dots',d.line.score,d.line.status,d.line.details);
         html+=scoreBar('Odoo Webhooks','box-seam',d.odoo.score,d.odoo.status,d.odoo.details);
         html+=scoreBar('Scheduler & Broadcasts','clock-history',d.scheduler.score,d.scheduler.status,d.scheduler.details);
-
-        // Circuit Breaker Status (from new API)
-        try{
-            const cbRes=await whApiCall({action:'circuit_breaker_status'});
-            if(cbRes&&cbRes.success&&cbRes.data){
-                const cbData=cbRes.data;
-                html+='<div style="background:white;border:1px solid var(--gray-200);border-radius:10px;padding:1rem;margin-bottom:0.75rem;">';
-                html+='<div style="font-weight:600;font-size:0.95rem;margin-bottom:10px;"><i class="bi bi-shield-check"></i> Circuit Breakers</div>';
-                html+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">';
-                Object.entries(cbData).forEach(function([svc,cb]){
-                    const st=cb.status||'closed';
-                    const stColor=st==='closed'?'#16a34a':st==='open'?'#dc2626':'#d97706';
-                    const stLabel=st==='closed'?'ปกติ':st==='open'?'เปิด (ตัดวงจร)':'กำลังทดสอบ';
-                    const stIcon=st==='closed'?'🟢':st==='open'?'🔴':'🟡';
-                    html+='<div style="background:var(--gray-50);border-radius:8px;padding:10px 12px;">';
-                    html+='<div style="font-weight:600;font-size:0.85rem;">'+stIcon+' '+escapeHtml(svc)+'</div>';
-                    html+='<div style="font-size:0.78rem;color:'+stColor+';font-weight:500;margin-top:2px;">'+escapeHtml(stLabel)+'</div>';
-                    if(cb.consecutive_failures>0){
-                        html+='<div style="font-size:0.72rem;color:var(--gray-500);margin-top:2px;">ล้มเหลวติดต่อกัน: '+cb.consecutive_failures+'/'+cb.failure_threshold+'</div>';
-                    }
-                    if(cb.last_error){
-                        html+='<div style="font-size:0.72rem;color:#dc2626;margin-top:2px;">'+escapeHtml(cb.last_error.substring(0,80))+'</div>';
-                    }
-                    if(st==='open'&&cb.time_until_probe!=null){
-                        html+='<div style="font-size:0.72rem;color:var(--gray-500);margin-top:2px;">ทดสอบใหม่ใน: '+cb.time_until_probe+'วิ</div>';
-                        html+='<button onclick="resetCircuitBreaker(\''+escapeHtml(svc)+'\')" style="margin-top:6px;background:#dc2626;color:white;border:none;border-radius:6px;padding:3px 10px;font-size:0.72rem;cursor:pointer;">Reset</button>';
-                    }
-                    html+='</div>';
-                });
-                html+='</div></div>';
-            }
-        }catch(_cbErr){}
-
         html+='<div style="font-size:0.75rem;color:var(--gray-400);text-align:right;margin-top:0.5rem;">อัปเดต: '+new Date(d.timestamp).toLocaleString('th-TH')+'</div>';
         c.innerHTML=html;
         // Update header badge with overall score
@@ -1717,17 +1841,6 @@ async function loadSystemHealth(){
             else{clearInterval(healthRefreshTimer);healthRefreshTimer=null;}
         },60000);
     }catch(e){c.innerHTML='<p style="color:var(--gray-500);">Error: '+escapeHtml(e.message)+'</p>';}
-}
-
-async function resetCircuitBreaker(service){
-    if(!confirm('รีเซ็ต Circuit Breaker สำหรับ '+service+' ?'))return;
-    const res=await whApiCall({action:'circuit_breaker_reset',service:service});
-    if(res&&res.success){
-        alert('รีเซ็ตสำเร็จ');
-        loadSystemHealth();
-    }else{
-        alert('เกิดข้อผิดพลาด: '+(res&&res.error?res.error:'Unknown'));
-    }
 }
 
 // ===== ORDER GROUPED VIEW =====
@@ -2778,50 +2891,7 @@ async function loadTodayOverview(){
         if(recent) _renderSectionCacheNote(recent, cached.cachedAt, '_cacheClear(\'dash:overview\');loadTodayOverview()');
         return;
     }
-
-    // Strategy: try overview_fast first (uses indexed sync tables, <500ms),
-    // then fall back to overview_today (heavier, may timeout on large tables).
-    let res = null;
-
-    // 1st: Try ultra-fast overview (avoids slow webhooks_log table)
-    try {
-        const fastRes = await whApiCall({ action: 'overview_fast' });
-        if (fastRes && fastRes.success && fastRes.data) {
-            const f = fastRes.data;
-            res = {
-                success: true,
-                data: {
-                    stats: {
-                        unique_orders_today: f.orders_today || 0,
-                        notified_today: f.webhook_total_today || 0,
-                        total: f.webhook_total_today || 0,
-                        success: Math.round((f.webhook_success_rate || 0) * (f.webhook_total_today || 0) / 100),
-                        dead_letter: 0,
-                        last_webhook: f.last_webhook
-                    },
-                    orders: f.orders || [],
-                    orders_total: f.orders_today || 0,
-                    overdue_customers: [],
-                    overdue_total: f.overdue_customers || 0,
-                    pending_bdo: {
-                        orders: [],
-                        bdos: Array(f.bdos_pending || 0).fill({ amount_net_to_pay: f.bdos_pending_amount / Math.max(1, f.bdos_pending) }),
-                        total: f.bdos_pending || 0
-                    },
-                    slips_pending: [],
-                    slips_pending_total: f.slips_pending || 0,
-                    slips_matched_today_sum: f.payments_today || 0,
-                    _source: 'overview_fast'
-                }
-            };
-        }
-    } catch (_e) { /* fall through */ }
-
-    // 2nd: If fast overview failed or returned nothing, try the full overview_today (whApiCall tries all endpoints so dashboard-api handles it if webhooks doesn't)
-    if (!res) {
-        const overviewRes = await whApiCall({ action: 'overview_today' });
-        if (overviewRes && overviewRes.success) res = overviewRes;
-    }
+    const res = await whApiCall({ action: 'overview_today' });
     const kpiOrders=document.getElementById('kpiOrdersToday');
     const kpiSales=document.getElementById('kpiSalesToday');
     const kpiSlips=document.getElementById('kpiSlipsPending');
@@ -3972,10 +4042,6 @@ async function unmatchBdoSlip(slipId, slipInboxId){
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded',()=>{
     restoreAdminMode();
-
-    // Test API connectivity immediately (uses fast 'health' action, no DB query)
-    testConnection();
-
     const params = new URLSearchParams(window.location.search);
     const initialTab = (params.get('tab') || '').trim();
     // Pre-set date filter to today for flat list view
@@ -3987,10 +4053,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     if(initialTab){
         showSection(initialTab);
     }else{
+        // Delay initial overview load slightly so opening the dashboard stays responsive.
         setTimeout(function(){ if(_isSectionActive('overview')) loadTodayOverview(); }, 250);
     }
     if(document.getElementById('autoSendSettingsContent'))loadAutoSendSettings();
-
-    // Re-check connection every 60s
-    setInterval(testConnection, 60000);
 });

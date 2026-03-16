@@ -469,6 +469,7 @@ function getCustomersList($db, $input, $lineAccountId = null) {
     // Data
     $sql = "SELECT 
         customer_id, partner_id, customer_name, customer_ref,
+        salesperson_id,
         phone, email, city, state,
         line_user_id, line_display_name,
         salesperson_name,
