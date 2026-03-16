@@ -12,6 +12,8 @@ class CnyPharmacyAPI
     private $db;
     private $lineAccountId;
     private $timeout = 120;
+    private $pushStateTable = 'cny_product_push_state';
+    private $pushLogTable = 'cny_product_push_log';
     
     public function __construct($db = null, $lineAccountId = null)
     {
@@ -306,6 +308,168 @@ class CnyPharmacyAPI
             'sku' => $sku,
             'description' => $description
         ]);
+    }
+
+    // ==================== OUTBOUND PRODUCT PUSH ====================
+
+    /**
+     * Push single product by ID to CNY API
+     */
+    public function pushProductUpdateById($productId)
+    {
+        if (!$this->db) {
+            throw new Exception('Database connection required');
+        }
+
+        $product = $this->fetchLocalProductById($productId);
+        if (!$product) {
+            throw new Exception('Product not found');
+        }
+
+        return $this->pushProductUpdateFromRow($product);
+    }
+
+    /**
+     * Push single product by SKU to CNY API
+     */
+    public function pushProductUpdateBySku($sku)
+    {
+        if (!$this->db) {
+            throw new Exception('Database connection required');
+        }
+
+        $product = $this->fetchLocalProductBySku($sku);
+        if (!$product) {
+            throw new Exception('Product not found');
+        }
+
+        return $this->pushProductUpdateFromRow($product);
+    }
+
+    /**
+     * Push already-loaded local product row to CNY API
+     */
+    public function pushProductUpdateFromRow(array $localProduct)
+    {
+        if (!$this->db) {
+            throw new Exception('Database connection required');
+        }
+
+        $this->ensurePushTables();
+
+        $payload = $this->normalizePushPayload($localProduct);
+        $apiResponse = $this->updateProduct($payload);
+        $success = $apiResponse['success'] ?? false;
+        $message = $success ? 'Push completed' : ($apiResponse['error'] ?? 'Unknown error');
+
+        $this->logProductPush(
+            $localProduct['id'] ?? null,
+            $payload['sku'],
+            $payload,
+            $apiResponse
+        );
+
+        if (!$success) {
+            throw new Exception($message);
+        }
+
+        return [
+            'success' => true,
+            'payload' => $payload,
+            'response' => $apiResponse['data'] ?? null,
+            'http_code' => $apiResponse['http_code'] ?? null
+        ];
+    }
+
+    /**
+     * Get aggregated stats for outbound push jobs
+     */
+    public function getPushStats()
+    {
+        if (!$this->db) {
+            return null;
+        }
+
+        $this->ensurePushTables();
+        $table = $this->pushStateTable;
+
+        $stats = [
+            'tracked' => 0,
+            'success' => 0,
+            'failed' => 0,
+            'pending' => 0,
+            'needs_push' => 0,
+            'last_success' => null,
+            'last_error' => null
+        ];
+
+        try {
+            $stats['tracked'] = (int)$this->db->query("SELECT COUNT(*) FROM {$table}")->fetchColumn();
+            $stats['success'] = (int)$this->db->query("SELECT COUNT(*) FROM {$table} WHERE last_status = 'success'")->fetchColumn();
+            $stats['failed'] = (int)$this->db->query("SELECT COUNT(*) FROM {$table} WHERE last_status = 'failed'")->fetchColumn();
+            $stats['pending'] = (int)$this->db->query("SELECT COUNT(*) FROM {$table} WHERE last_status = 'pending'")->fetchColumn();
+
+            $stmt = $this->db->query("SELECT MAX(last_pushed_at) FROM {$table} WHERE last_status = 'success'");
+            $stats['last_success'] = $stmt->fetchColumn() ?: null;
+
+            $stmt = $this->db->query("SELECT last_error FROM {$table} WHERE last_status = 'failed' ORDER BY updated_at DESC LIMIT 1");
+            $stats['last_error'] = $stmt->fetchColumn() ?: null;
+
+            // Count products needing push (never pushed or updated after last push)
+            $itemsTable = $this->getItemsTable();
+            if ($itemsTable) {
+                $needsSql = "SELECT COUNT(*)
+                              FROM {$itemsTable} bi
+                              LEFT JOIN {$table} ps ON ps.product_id = bi.id
+                             WHERE ps.product_id IS NULL
+                                OR ps.last_pushed_at IS NULL
+                                OR bi.updated_at > ps.last_pushed_at";
+                $stats['needs_push'] = (int)$this->db->query($needsSql)->fetchColumn();
+            }
+
+        } catch (Exception $e) {
+            // Ignore stats errors
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Get recent push logs for dashboard display
+     */
+    public function getRecentPushLogs($limit = 10)
+    {
+        if (!$this->db) {
+            return [];
+        }
+
+        $this->ensurePushTables();
+        $limit = max(1, min(100, (int)$limit));
+
+        try {
+            $stmt = $this->db->prepare("SELECT * FROM {$this->pushLogTable} ORDER BY id DESC LIMIT :limit");
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Public helper for ensuring push tables exist
+     */
+    public function ensurePushTablesExist()
+    {
+        $this->ensurePushTables();
+    }
+
+    /**
+     * Expose detected items table name
+     */
+    public function getItemsTableName()
+    {
+        return $this->getItemsTable();
     }
     
     // ==================== SYNC METHODS ====================
@@ -938,6 +1102,176 @@ class CnyPharmacyAPI
         $sql = "UPDATE {$table} SET " . implode(', ', $sets) . " WHERE id = ?";
         $stmt = $this->db->prepare($sql);
         return $stmt->execute($values);
+    }
+
+    /**
+     * Ensure outbound push tables exist
+     */
+    private function ensurePushTables()
+    {
+        if (!$this->db) {
+            return;
+        }
+
+        try {
+            $this->db->exec("CREATE TABLE IF NOT EXISTS {$this->pushStateTable} (
+                product_id INT PRIMARY KEY,
+                sku VARCHAR(100) NULL,
+                last_status ENUM('pending','success','failed') DEFAULT 'pending',
+                last_error TEXT NULL,
+                last_http_code INT NULL,
+                last_payload JSON NULL,
+                last_response JSON NULL,
+                last_pushed_at DATETIME NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                INDEX idx_last_status (last_status),
+                INDEX idx_last_pushed (last_pushed_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            $this->db->exec("CREATE TABLE IF NOT EXISTS {$this->pushLogTable} (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                product_id INT NULL,
+                sku VARCHAR(100) NULL,
+                success TINYINT(1) DEFAULT 0,
+                http_code INT NULL,
+                message VARCHAR(255) NULL,
+                payload JSON NULL,
+                response JSON NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_product (product_id),
+                INDEX idx_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        } catch (Exception $e) {
+            // Table creation issues should not block runtime
+        }
+    }
+
+    private function fetchLocalProductById($productId)
+    {
+        $table = $this->getItemsTable();
+        if (!$table) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare("SELECT * FROM {$table} WHERE id = ? LIMIT 1");
+        $stmt->execute([$productId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    private function fetchLocalProductBySku($sku)
+    {
+        $table = $this->getItemsTable();
+        if (!$table) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare("SELECT * FROM {$table} WHERE sku = ? LIMIT 1");
+        $stmt->execute([$sku]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    private function normalizePushPayload(array $product)
+    {
+        $sku = trim($product['sku'] ?? '');
+        if ($sku === '') {
+            throw new Exception('SKU is required for push');
+        }
+
+        $productId = $product['cny_id'] ?? $product['id'] ?? null;
+        if (!$productId) {
+            throw new Exception('Product ID is required for push');
+        }
+
+        $productCode = $product['sku_id'] ?? $this->extractProductCode($sku);
+        $uomName = $product['unit'] ?? ($product['base_unit'] ?? 'ชิ้น');
+        $uomFactor = isset($product['uom_factor']) ? (float)$product['uom_factor'] : 1.0;
+
+        $payload = [
+            'sku' => $sku,
+            'product_id' => (int)$productId,
+            'product_code' => $productCode,
+            'uom_factor' => $uomFactor > 0 ? $uomFactor : 1.0,
+            'uom_name' => $uomName,
+            'barcode' => $product['barcode'] ?? null,
+            'name' => $product['name'] ?? '',
+            'list_price' => isset($product['price']) ? (float)$product['price'] : 0.0,
+            'active' => (bool)($product['is_active'] ?? 1),
+            'benefit' => !empty($product['properties_other']),
+            'how_to_use' => !empty($product['usage_instructions']),
+            'caution' => !empty($product['caution'] ?? $product['contraindications'] ?? null)
+        ];
+
+        // Remove nulls but keep boolean false values
+        foreach ($payload as $key => $value) {
+            if ($value === null) {
+                unset($payload[$key]);
+            }
+        }
+
+        return $payload;
+    }
+
+    private function extractProductCode($sku)
+    {
+        if (strpos($sku, '-') !== false) {
+            return trim(strtok($sku, '-'));
+        }
+        return $sku;
+    }
+
+    private function logProductPush($productId, $sku, array $payload, array $apiResponse)
+    {
+        if (!$this->db) {
+            return;
+        }
+
+        $success = $apiResponse['success'] ?? false;
+        $httpCode = $apiResponse['http_code'] ?? null;
+        $message = $success ? 'OK' : ($apiResponse['error'] ?? 'Unknown error');
+        $now = date('Y-m-d H:i:s');
+
+        try {
+            $logStmt = $this->db->prepare("INSERT INTO {$this->pushLogTable} (product_id, sku, success, http_code, message, payload, response) VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $logStmt->execute([
+                $productId,
+                $sku,
+                $success ? 1 : 0,
+                $httpCode,
+                mb_substr($message, 0, 250),
+                json_encode($payload, JSON_UNESCAPED_UNICODE),
+                isset($apiResponse['data']) ? json_encode($apiResponse['data'], JSON_UNESCAPED_UNICODE) : null
+            ]);
+        } catch (Exception $e) {
+            // Ignore logging failure
+        }
+
+        try {
+            $stateStmt = $this->db->prepare("INSERT INTO {$this->pushStateTable}
+                (product_id, sku, last_status, last_error, last_http_code, last_payload, last_response, last_pushed_at)
+                VALUES (:product_id, :sku, :status, :error, :http_code, :payload, :response, :pushed_at)
+                ON DUPLICATE KEY UPDATE
+                    sku = VALUES(sku),
+                    last_status = VALUES(last_status),
+                    last_error = VALUES(last_error),
+                    last_http_code = VALUES(last_http_code),
+                    last_payload = VALUES(last_payload),
+                    last_response = VALUES(last_response),
+                    last_pushed_at = VALUES(last_pushed_at),
+                    updated_at = CURRENT_TIMESTAMP");
+
+            $stateStmt->execute([
+                ':product_id' => $productId,
+                ':sku' => $sku,
+                ':status' => $success ? 'success' : 'failed',
+                ':error' => $success ? null : $message,
+                ':http_code' => $httpCode,
+                ':payload' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                ':response' => isset($apiResponse['data']) ? json_encode($apiResponse['data'], JSON_UNESCAPED_UNICODE) : null,
+                ':pushed_at' => $now
+            ]);
+        } catch (Exception $e) {
+            // Ignore state failure
+        }
     }
     
     /**
