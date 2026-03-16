@@ -752,16 +752,21 @@ class CnyPharmacyAPI
     }
     
     /**
-     * Check if column exists
+     * Check if column exists — results cached per-request to avoid N×M SHOW COLUMNS queries
      */
+    private static $columnCache = [];
     private function hasColumn($table, $column)
     {
-        try {
-            $stmt = $this->db->query("SHOW COLUMNS FROM {$table} LIKE '{$column}'");
-            return $stmt->rowCount() > 0;
-        } catch (Exception $e) {
-            return false;
+        $key = $table . '.' . $column;
+        if (!array_key_exists($key, self::$columnCache)) {
+            try {
+                $stmt = $this->db->query("SHOW COLUMNS FROM {$table} LIKE '{$column}'");
+                self::$columnCache[$key] = $stmt->rowCount() > 0;
+            } catch (Exception $e) {
+                self::$columnCache[$key] = false;
+            }
         }
+        return self::$columnCache[$key];
     }
     
     /**

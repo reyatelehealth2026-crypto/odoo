@@ -271,6 +271,8 @@ $pageTitle = 'CNY Sync Dashboard';
                             <option value="20">20 รายการ</option>
                             <option value="50">50 รายการ</option>
                             <option value="100">100 รายการ</option>
+                            <option value="200">200 รายการ</option>
+                            <option value="500">500 รายการ</option>
                         </select>
                     </div>
                     <div>
@@ -532,14 +534,22 @@ $pageTitle = 'CNY Sync Dashboard';
                     
                     // Check if complete
                     if (data.progress && data.progress.complete) {
-                        addLog(`🎉 Sync เสร็จสมบูรณ์! ทั้งหมด ${data.progress.total} รายการ`, 'success');
+                        addLog(`🎉 Sync เสร็จสมบูรณ์! ทั้งหมด ${data.progress.total.toLocaleString()} รายการ`, 'success');
                         document.getElementById('syncStatusBadge').textContent = 'เสร็จสมบูรณ์';
                         document.getElementById('syncStatusBadge').className = 'px-3 py-1 bg-green-500 text-white text-sm rounded-full';
                         stopSync();
                         return;
                     }
                 } else {
-                    addLog(`⚠️ ไม่มีรายการให้ sync แล้ว`, 'warning');
+                    // processed=0 can mean: (1) truly complete, (2) all items failed this batch
+                    if (data.progress && data.progress.complete) {
+                        addLog(`🎉 Sync เสร็จสมบูรณ์! ทั้งหมด ${(data.progress.total || 0).toLocaleString()} รายการ`, 'success');
+                        document.getElementById('syncStatusBadge').textContent = 'เสร็จสมบูรณ์';
+                        document.getElementById('syncStatusBadge').className = 'px-3 py-1 bg-green-500 text-white text-sm rounded-full';
+                        stopSync();
+                        return;
+                    }
+                    addLog(`⚠️ Batch #${syncStats.batches}: ไม่มีรายการให้ sync แล้ว`, 'warning');
                     stopSync();
                     return;
                 }

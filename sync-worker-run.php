@@ -23,7 +23,7 @@ require_once __DIR__ . '/classes/CnyPharmacyAPI.php';
 $isCli = php_sapi_name() === 'cli';
 $isApi = isset($_GET['api']) && $_GET['api'] === '1';
 $batchSize = isset($_GET['batch_size']) ? intval($_GET['batch_size']) : 10;
-$batchSize = max(1, min(100, $batchSize));
+$batchSize = max(1, min(500, $batchSize));
 $maxJobs = isset($_GET['max_jobs']) ? intval($_GET['max_jobs']) : 0;
 $mode = isset($_GET['mode']) ? $_GET['mode'] : 'batch'; // batch, continuous, direct
 $reset = isset($_GET['reset']) && $_GET['reset'] === '1';
@@ -54,16 +54,20 @@ if ($isApi) {
         $cnyApi = new CnyPharmacyAPI($db);
         
         if ($mode === 'direct') {
-            // Direct sync from CNY API (no queue)
+            // Direct sync: cny_products → business_items using SQL pagination (no memory spike)
             $offset = $reset ? 0 : getProgress();
             
-            $cacheResult = $cnyApi->getAllProductsCached();
-            if (!$cacheResult['success']) {
-                throw new Exception('Cannot get products: ' . ($cacheResult['error'] ?? 'Unknown'));
+            // Use cny_products table for reliable SQL-based pagination
+            // This avoids loading all 4,802+ products into memory on every batch request
+            try {
+                $totalAvailable = (int)$db->query("SELECT COUNT(*) FROM cny_products")->fetchColumn();
+            } catch (Exception $e) {
+                throw new Exception('cny_products table not found. Use Method 2 (Sync from API) first.');
             }
             
-            $allProducts = $cacheResult['data'];
-            $totalAvailable = count($allProducts);
+            if ($totalAvailable === 0) {
+                throw new Exception('cny_products table is empty. Use Method 2 (Sync from API) first.');
+            }
             
             if ($offset >= $totalAvailable) {
                 saveProgress(0);
@@ -75,8 +79,19 @@ if ($isApi) {
                 exit;
             }
             
-            $batchProducts = array_slice($allProducts, $offset, $batchSize);
-            unset($allProducts);
+            // Fetch only this batch via SQL LIMIT/OFFSET
+            $stmt = $db->prepare("SELECT * FROM cny_products ORDER BY id ASC LIMIT ? OFFSET ?");
+            $stmt->execute([$batchSize, $offset]);
+            $batchProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Decode product_price JSON → array (syncProduct expects CNY API array format)
+            foreach ($batchProducts as &$p) {
+                if (!empty($p['product_price']) && is_string($p['product_price'])) {
+                    $decoded = json_decode($p['product_price'], true);
+                    if (is_array($decoded)) $p['product_price'] = $decoded;
+                }
+            }
+            unset($p);
             
             $stats = ['processed' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0];
             
@@ -88,11 +103,13 @@ if ($isApi) {
                     elseif ($result['action'] === 'updated') $stats['updated']++;
                     else $stats['skipped']++;
                 } catch (Exception $e) {
+                    $stats['processed']++; // Always advance offset even on failure
                     $stats['failed']++;
                 }
             }
             
-            $newOffset = $offset + $stats['processed'];
+            // Advance by actual batch count (not just successful items)
+            $newOffset = $offset + count($batchProducts);
             $isComplete = $newOffset >= $totalAvailable;
             
             if ($isComplete) {
