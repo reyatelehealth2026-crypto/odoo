@@ -1,0 +1,325 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// User management
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  role          UserRole @default(STAFF)
+  lineAccountId String   @map("line_account_id")
+  permissions   Json?
+  isActive      Boolean  @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  sessions    UserSession[]
+  auditLogs   AuditLog[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  STAFF
+  PHARMACIST
+}
+
+// JWT session management
+model UserSession {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  tokenHash        String   @unique @map("token_hash")
+  refreshTokenHash String   @unique @map("refresh_token_hash")
+  expiresAt        DateTime @map("expires_at")
+  lastActivity     DateTime @default(now()) @map("last_activity")
+  ipAddress        String?  @map("ip_address")
+  userAgent        String?  @map("user_agent") @db.Text
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "idx_user_sessions_user")
+  @@index([tokenHash], name: "idx_user_sessions_token")
+  @@index([expiresAt], name: "idx_user_sessions_expires")
+  @@map("user_sessions")
+}
+
+// Comprehensive audit trail
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  oldValues    Json?    @map("old_values")
+  newValues    Json?    @map("new_values")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, action], name: "idx_audit_logs_user_action")
+  @@index([resourceType, resourceId], name: "idx_audit_logs_resource")
+  @@index([createdAt], name: "idx_audit_logs_created")
+  @@map("audit_logs")
+}
+
+// Dashboard metrics caching
+model DashboardMetricsCache {
+  id            String      @id @default(cuid())
+  lineAccountId String      @map("line_account_id")
+  metricType    MetricType  @map("metric_type")
+  dateKey       DateTime    @map("date_key") @db.Date
+  data          Json
+  expiresAt     DateTime    @map("expires_at")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  @@unique([lineAccountId, metricType, dateKey])
+  @@index([expiresAt])
+  @@index([lineAccountId, metricType, dateKey], name: "idx_dashboard_metrics_lookup")
+  @@map("dashboard_metrics_cache")
+}
+
+enum MetricType {
+  ORDERS
+  PAYMENTS
+  WEBHOOKS
+  CUSTOMERS
+}
+
+// API request caching
+model ApiCache {
+  cacheKey  String   @id @map("cache_key")
+  data      Json
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([expiresAt], name: "idx_api_cache_expiry")
+  @@map("api_cache")
+}
+
+// Existing tables (mapped from current schema)
+// These models map to existing database tables
+
+model OdooOrder {
+  id                String    @id @default(cuid())
+  odooOrderId       String    @unique @map("odoo_order_id")
+  lineAccountId     String    @map("line_account_id")
+  customerRef       String?   @map("customer_ref")
+  customerName      String?   @map("customer_name")
+  status            String    @default("draft")
+  totalAmount       Decimal   @map("total_amount") @db.Decimal(10, 2)
+  currency          String    @default("THB")
+  orderDate         DateTime? @map("order_date")
+  deliveryDate      DateTime? @map("delivery_date")
+  notes             String?   @db.Text
+  webhookProcessed  Boolean   @default(false) @map("webhook_processed")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([lineAccountId])
+  @@index([status])
+  @@index([orderDate])
+  @@map("odoo_orders")
+}
+
+model OdooSlipUpload {
+  id            String    @id @default(cuid())
+  lineAccountId String    @map("line_account_id")
+  imageUrl      String    @map("image_url")
+  amount        Decimal?  @db.Decimal(10, 2)
+  uploadedBy    String    @map("uploaded_by")
+  matchedOrderId String?  @map("matched_order_id")
+  status        SlipStatus @default(PENDING)
+  processedAt   DateTime? @map("processed_at")
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([lineAccountId])
+  @@index([status])
+  @@index([matchedOrderId])
+  @@map("odoo_slip_uploads")
+}
+
+enum SlipStatus {
+  PENDING
+  MATCHED
+  REJECTED
+  PROCESSING
+}
+
+model OdooWebhookLog {
+  id            String    @id @default(cuid())
+  lineAccountId String    @map("line_account_id")
+  webhookType   String    @map("webhook_type")
+  payload       Json
+  status        WebhookStatus @default(PENDING)
+  processedAt   DateTime? @map("processed_at")
+  errorMessage  String?   @map("error_message") @db.Text
+  retryCount    Int       @default(0) @map("retry_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([lineAccountId])
+  @@index([webhookType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("odoo_webhooks_log")
+}
+
+enum WebhookStatus {
+  PENDING
+  PROCESSED
+  FAILED
+  RETRYING
+}
+
+model OdooBdo {
+  id            String   @id @default(cuid())
+  lineAccountId String   @map("line_account_id")
+  bdoNumber     String   @map("bdo_number")
+  customerRef   String?  @map("customer_ref")
+  status        String   @default("pending")
+  totalAmount   Decimal  @map("total_amount") @db.Decimal(10, 2)
+  deliveryDate  DateTime? @map("delivery_date")
+  notes         String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([lineAccountId])
+  @@index([status])
+  @@map("odoo_bdos")
+}
+
+// Core existing tables from current system
+model LineAccount {
+  id                   Int       @id @default(autoincrement())
+  name                 String    @db.VarChar(255) // ชื่อบัญชี LINE OA
+  channelId            String?   @map("channel_id") @db.VarChar(100) // Channel ID
+  channelSecret        String    @map("channel_secret") @db.VarChar(100) // Channel Secret
+  liffId               String?   @map("liff_id") @db.VarChar(50)
+  unifiedLiffId        String?   @map("unified_liff_id") @db.VarChar(50)
+  channelAccessToken   String    @map("channel_access_token") @db.Text // Channel Access Token
+  webhookUrl           String?   @map("webhook_url") @db.VarChar(500) // Webhook URL
+  basicId              String?   @map("basic_id") @db.VarChar(50) // LINE Basic ID (@xxx)
+  pictureUrl           String?   @map("picture_url") @db.VarChar(500) // รูปโปรไฟล์
+  isActive             Boolean   @default(true) @map("is_active")
+  isDefault            Boolean   @default(false) @map("is_default") // บัญชีหลัก
+  botMode              BotMode   @default(SHOP) @map("bot_mode")
+  settings             Json?     // ตั้งค่าเพิ่มเติม
+  welcomeMessage       String?   @map("welcome_message") @db.Text
+  autoReplyEnabled     Boolean   @default(true) @map("auto_reply_enabled")
+  shopEnabled          Boolean   @default(true) @map("shop_enabled")
+  richMenuId           String?   @map("rich_menu_id") @db.VarChar(100)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  followers            AccountFollower[]
+  events               AccountEvent[]
+  dailyStats           AccountDailyStats[]
+
+  @@unique([channelSecret], name: "unique_channel_secret")
+  @@map("line_accounts")
+}
+
+enum BotMode {
+  SHOP @map("shop")
+  GENERAL @map("general")
+  AUTO_REPLY_ONLY @map("auto_reply_only")
+}
+
+model AccountFollower {
+  id                   Int       @id @default(autoincrement())
+  lineAccountId        Int       @map("line_account_id")
+  lineUserId           String    @map("line_user_id") @db.VarChar(50)
+  userId               Int?      @map("user_id")
+  displayName          String?   @map("display_name") @db.VarChar(255)
+  pictureUrl           String?   @map("picture_url") @db.Text
+  statusMessage        String?   @map("status_message") @db.Text
+  isFollowing          Boolean   @default(true) @map("is_following")
+  followedAt           DateTime  @default(now()) @map("followed_at")
+  unfollowedAt         DateTime? @map("unfollowed_at")
+  followCount          Int       @default(1) @map("follow_count")
+  lastInteractionAt    DateTime? @map("last_interaction_at")
+  totalMessages        Int       @default(0) @map("total_messages")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  lineAccount          LineAccount @relation(fields: [lineAccountId], references: [id])
+
+  @@unique([lineAccountId, lineUserId], name: "unique_account_follower")
+  @@index([lineAccountId])
+  @@index([lineUserId])
+  @@index([isFollowing])
+  @@index([followedAt])
+  @@map("account_followers")
+}
+
+model AccountEvent {
+  id                   Int       @id @default(autoincrement())
+  lineAccountId        Int       @map("line_account_id")
+  eventType            String    @map("event_type") @db.VarChar(50)
+  lineUserId           String    @map("line_user_id") @db.VarChar(50)
+  userId               Int?      @map("user_id")
+  eventData            Json?     @map("event_data")
+  webhookEventId       String?   @map("webhook_event_id") @db.VarChar(100)
+  sourceType           String    @default("user") @map("source_type") @db.VarChar(20)
+  sourceId             String?   @map("source_id") @db.VarChar(50)
+  replyToken           String?   @map("reply_token") @db.VarChar(255)
+  timestamp            BigInt?
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  lineAccount          LineAccount @relation(fields: [lineAccountId], references: [id])
+
+  @@index([lineAccountId])
+  @@index([lineUserId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([webhookEventId])
+  @@map("account_events")
+}
+
+model AccountDailyStats {
+  id                   Int       @id @default(autoincrement())
+  lineAccountId        Int       @map("line_account_id")
+  statDate             DateTime  @map("stat_date") @db.Date
+  newFollowers         Int       @default(0) @map("new_followers")
+  unfollowers          Int       @default(0) @map("unfollowers")
+  totalMessages        Int       @default(0) @map("total_messages")
+  incomingMessages     Int       @default(0) @map("incoming_messages")
+  outgoingMessages     Int       @default(0) @map("outgoing_messages")
+  uniqueUsers          Int       @default(0) @map("unique_users")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  lineAccount          LineAccount @relation(fields: [lineAccountId], references: [id])
+
+  @@unique([lineAccountId, statDate], name: "unique_account_date")
+  @@index([lineAccountId])
+  @@index([statDate])
+  @@map("account_daily_stats")
+}

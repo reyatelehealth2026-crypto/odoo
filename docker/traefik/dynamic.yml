@@ -1,0 +1,239 @@
+# Traefik Dynamic Configuration for Migration
+# Purpose: Configure traffic splitting and routing rules
+# Requirements: TC-3.1
+
+http:
+  # Routers for different services
+  routers:
+    # Main application router with traffic splitting
+    app-router:
+      rule: "Host(`telepharmacy.local`) || Host(`www.telepharmacy.local`)"
+      service: "app-service"
+      middlewares:
+        - "feature-flag-routing"
+        - "cors-headers"
+        - "rate-limit"
+      tls:
+        certResolver: "myresolver"
+
+    # API router with version-based routing
+    api-router:
+      rule: "Host(`telepharmacy.local`) && PathPrefix(`/api/`)"
+      service: "api-service"
+      middlewares:
+        - "api-routing"
+        - "cors-headers"
+        - "rate-limit"
+      tls:
+        certResolver: "myresolver"
+
+    # WebSocket router
+    websocket-router:
+      rule: "Host(`telepharmacy.local`) && PathPrefix(`/socket.io/`)"
+      service: "websocket-service"
+      middlewares:
+        - "cors-headers"
+      tls:
+        certResolver: "myresolver"
+
+    # Admin panel router (always legacy for now)
+    admin-router:
+      rule: "Host(`telepharmacy.local`) && PathPrefix(`/admin/`)"
+      service: "legacy-service"
+      middlewares:
+        - "cors-headers"
+        - "rate-limit"
+      tls:
+        certResolver: "myresolver"
+
+    # Migration monitoring dashboard
+    monitor-router:
+      rule: "Host(`monitor.telepharmacy.local`)"
+      service: "monitor-service"
+      middlewares:
+        - "auth-admin"
+      tls:
+        certResolver: "myresolver"
+
+  # Services with load balancing
+  services:
+    # Main application service with weighted routing
+    app-service:
+      weighted:
+        services:
+          - name: "legacy-service"
+            weight: 90  # 90% to legacy initially
+          - name: "modern-service"
+            weight: 10  # 10% to modern system
+
+    # API service with path-based routing
+    api-service:
+      weighted:
+        services:
+          - name: "legacy-api-service"
+            weight: 80  # 80% to legacy API initially
+          - name: "modern-api-service"
+            weight: 20  # 20% to modern API
+
+    # Individual service definitions
+    legacy-service:
+      loadBalancer:
+        servers:
+          - url: "http://legacy-web:80"
+        healthCheck:
+          path: "/health.php"
+          interval: "30s"
+          timeout: "5s"
+
+    modern-service:
+      loadBalancer:
+        servers:
+          - url: "http://modern-frontend:3000"
+        healthCheck:
+          path: "/api/health"
+          interval: "30s"
+          timeout: "5s"
+
+    legacy-api-service:
+      loadBalancer:
+        servers:
+          - url: "http://legacy-web:80"
+        healthCheck:
+          path: "/api/health.php"
+          interval: "30s"
+          timeout: "5s"
+
+    modern-api-service:
+      loadBalancer:
+        servers:
+          - url: "http://modern-backend:4000"
+        healthCheck:
+          path: "/api/v1/health"
+          interval: "30s"
+          timeout: "5s"
+
+    websocket-service:
+      loadBalancer:
+        servers:
+          - url: "http://websocket:3001"
+        healthCheck:
+          path: "/health"
+          interval: "30s"
+          timeout: "5s"
+
+    monitor-service:
+      loadBalancer:
+        servers:
+          - url: "http://migration-monitor:9090"
+
+  # Middlewares for request processing
+  middlewares:
+    # Feature flag based routing
+    feature-flag-routing:
+      plugin:
+        dev:
+          headers:
+            X-Routing-Decision: "feature-flag"
+
+    # API version routing
+    api-routing:
+      replacePath:
+        path: "/api/v1"
+      headers:
+        customRequestHeaders:
+          X-API-Version: "v1"
+
+    # CORS headers
+    cors-headers:
+      headers:
+        accessControlAllowMethods:
+          - "GET"
+          - "POST"
+          - "PUT"
+          - "DELETE"
+          - "OPTIONS"
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+          - "X-Line-Account-ID"
+          - "X-Requested-With"
+        accessControlAllowOriginList:
+          - "https://telepharmacy.local"
+          - "https://www.telepharmacy.local"
+          - "http://localhost:3000"
+        accessControlMaxAge: 86400
+
+    # Rate limiting
+    rate-limit:
+      rateLimit:
+        burst: 100
+        average: 50
+        period: "1m"
+        sourceCriterion:
+          ipStrategy:
+            depth: 1
+
+    # Admin authentication
+    auth-admin:
+      basicAuth:
+        users:
+          - "admin:$2y$10$..."  # Generated password hash
+
+    # Request/Response logging
+    request-logging:
+      accessLog:
+        filePath: "/var/log/traefik/access.log"
+        format: json
+
+    # Circuit breaker for legacy system
+    legacy-circuit-breaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.3 || ResponseCodeRatio(500, 600, 0, 600) > 0.3"
+        checkPeriod: "10s"
+        fallbackDuration: "30s"
+        recoveryDuration: "10s"
+
+    # Circuit breaker for modern system
+    modern-circuit-breaker:
+      circuitBreaker:
+        expression: "NetworkErrorRatio() > 0.3 || ResponseCodeRatio(500, 600, 0, 600) > 0.3"
+        checkPeriod: "10s"
+        fallbackDuration: "30s"
+        recoveryDuration: "10s"
+
+    # Retry mechanism
+    retry-policy:
+      retry:
+        attempts: 3
+        initialInterval: "100ms"
+
+    # Request timeout
+    request-timeout:
+      forwardTimeout: "30s"
+
+# TLS Configuration
+tls:
+  options:
+    default:
+      sslProtocols:
+        - "TLSv1.2"
+        - "TLSv1.3"
+      cipherSuites:
+        - "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        - "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+        - "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+
+# TCP Services (for WebSocket)
+tcp:
+  routers:
+    websocket-tcp:
+      rule: "HostSNI(`telepharmacy.local`)"
+      service: "websocket-tcp-service"
+      tls:
+        passthrough: true
+
+  services:
+    websocket-tcp-service:
+      loadBalancer:
+        servers:
+          - address: "websocket:3001"

@@ -1,0 +1,127 @@
+# Docker ignore file for Odoo Dashboard
+# Excludes unnecessary files from Docker build context
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+CLAUDE.md
+README.md
+
+# IDE and editor files
+.vscode/
+.idea/
+.cursor/
+.windsurf/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+error_log
+
+# Environment files
+.env*
+!.env.example
+!.env.*.example
+
+# Dependencies (will be installed in container)
+node_modules/
+vendor/
+
+# Build outputs
+dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Test files
+coverage/
+.nyc_output/
+test-results/
+
+# Cache directories
+.cache/
+.npm/
+.yarn/
+.pnpm-store/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Database files
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads and user content
+uploads/
+storage/
+
+# PHP specific
+composer.phar
+phpunit.xml
+phpstan.neon
+.php-cs-fixer.php
+.php-cs-fixer.cache
+
+# Legacy PHP system (exclude from modern containers)
+api/
+classes/
+config/
+cron/
+database/
+includes/
+install/
+liff/
+admin/
+shop/
+modules/
+app/
+tests/
+vendor/
+*.php
+composer.json
+composer.lock
+
+# Docker files (don't include in build context)
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z

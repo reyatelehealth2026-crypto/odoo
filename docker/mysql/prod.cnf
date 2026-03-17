@@ -1,0 +1,73 @@
+# MySQL Production Configuration
+# Optimized for performance and reliability
+
+[mysqld]
+# Basic settings
+default-storage-engine = InnoDB
+default-time-zone = '+07:00'
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# Connection settings
+max_connections = 200
+max_connect_errors = 1000000
+wait_timeout = 28800
+interactive_timeout = 28800
+
+# InnoDB settings for performance
+innodb_buffer_pool_size = 1G
+innodb_log_file_size = 256M
+innodb_log_buffer_size = 64M
+innodb_flush_log_at_trx_commit = 2
+innodb_flush_method = O_DIRECT
+innodb_file_per_table = 1
+innodb_open_files = 400
+
+# Query cache (disabled in MySQL 8.0+, but keeping for compatibility)
+query_cache_type = 0
+query_cache_size = 0
+
+# Logging
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2
+log_queries_not_using_indexes = 1
+
+# Binary logging for replication
+log_bin = mysql-bin
+binlog_format = ROW
+expire_logs_days = 7
+max_binlog_size = 100M
+
+# Security
+local_infile = 0
+skip_show_database = 1
+
+# Performance schema
+performance_schema = ON
+performance_schema_max_table_instances = 400
+performance_schema_max_table_handles = 4000
+
+# Temporary tables
+tmp_table_size = 64M
+max_heap_table_size = 64M
+
+# MyISAM settings (for system tables)
+key_buffer_size = 32M
+myisam_sort_buffer_size = 8M
+
+# Thread settings
+thread_cache_size = 50
+thread_stack = 256K
+
+# Sort and group settings
+sort_buffer_size = 2M
+read_buffer_size = 128K
+read_rnd_buffer_size = 256K
+join_buffer_size = 128K
+
+[mysql]
+default-character-set = utf8mb4
+
+[client]
+default-character-set = utf8mb4

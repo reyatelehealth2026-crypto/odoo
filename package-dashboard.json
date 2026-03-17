@@ -1,0 +1,40 @@
+{
+  "name": "odoo-dashboard-websocket-server",
+  "version": "1.0.0",
+  "description": "Real-time WebSocket server for Odoo Dashboard modernization",
+  "main": "websocket-dashboard-server.js",
+  "scripts": {
+    "start": "node websocket-dashboard-server.js",
+    "dev": "nodemon websocket-dashboard-server.js",
+    "pm2:start": "pm2 start websocket-dashboard-server.js --name dashboard-websocket",
+    "pm2:stop": "pm2 stop dashboard-websocket",
+    "pm2:restart": "pm2 restart dashboard-websocket",
+    "pm2:logs": "pm2 logs dashboard-websocket",
+    "pm2:delete": "pm2 delete dashboard-websocket"
+  },
+  "keywords": [
+    "websocket",
+    "socket.io",
+    "dashboard",
+    "real-time",
+    "odoo",
+    "telepharmacy"
+  ],
+  "author": "LINE Telepharmacy Platform",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "@socket.io/redis-adapter": "^8.2.1",
+    "mysql2": "^3.6.5",
+    "redis": "^4.6.5",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}

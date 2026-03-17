@@ -1,0 +1,42 @@
+# Multi-stage Dockerfile for WebSocket Server (Production)
+# Optimized for real-time performance and minimal resource usage
+
+# Stage 1: Dependencies
+FROM node:18-alpine AS deps
+WORKDIR /app
+
+# Install dependencies
+COPY websocket-dashboard-server.js package.json package-lock.json* ./
+RUN \
+  if [ -f package-lock.json ]; then npm ci --only=production; \
+  else npm install --only=production; \
+  fi
+
+# Stage 2: Runner (Production)
+FROM node:18-alpine AS runner
+WORKDIR /app
+
+# Create non-root user for security
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nodejs
+
+# Copy dependencies and application
+COPY --from=deps --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --chown=nodejs:nodejs websocket-dashboard-server.js ./
+COPY --chown=nodejs:nodejs package.json ./
+
+# Create logs directory
+RUN mkdir -p /app/logs && chown nodejs:nodejs /app/logs
+
+# Switch to non-root user
+USER nodejs
+
+# Expose WebSocket port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
+
+# Start the WebSocket server
+CMD ["node", "websocket-dashboard-server.js"]
