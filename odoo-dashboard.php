@@ -1186,6 +1186,9 @@
         </div>
     </div>
 
+    <script>
+        window.ENABLE_LOCAL_DASHBOARD = false;
+    </script>
     <script src="odoo-dashboard.js?v=<?= filemtime(__DIR__ . '/odoo-dashboard.js') ?>"></script>
 </body>
 </html>

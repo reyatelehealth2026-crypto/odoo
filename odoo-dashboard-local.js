@@ -13,10 +13,18 @@
 // Local API Configuration
 const LOCAL_API = {
     endpoint: 'api/odoo-dashboard-local.php',
-    enabled: true,
+    enabled: false,
     fallbackToWebhook: true, // Fallback to old API if local fails
     cacheTTL: 30000 // 30 seconds client-side cache
 };
+
+function isLocalApiOptedIn() {
+    if (typeof window === 'undefined') return false;
+    if (window.ENABLE_LOCAL_DASHBOARD === true) return true;
+    if (document.body && document.body.dataset.enableLocalApi === '1') return true;
+    const params = new URLSearchParams(window.location.search || '');
+    return params.get('local_api') === '1';
+}
 
 // Local API client
 async function localApiCall(action, params = {}) {
@@ -582,6 +590,11 @@ async function globalSearchLocal(query) {
 
 // Auto-detect and switch to local API when available
 async function initLocalApi() {
+    if (!LOCAL_API.enabled && !isLocalApiOptedIn()) {
+        console.log('[LocalAPI] Auto-init disabled - using primary dashboard runtime');
+        return false;
+    }
+
     const status = await checkLocalApiAvailable();
     
     console.log('[LocalAPI] Status:', status);
