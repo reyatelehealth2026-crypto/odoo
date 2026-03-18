@@ -42,7 +42,7 @@ try {
     // Resolve line_user_id from customer_ref or partner_id if not directly provided
     if ($lineUserId === '' && $customerRef !== '') {
         try {
-            $stmt = $db->prepare("SELECT line_user_id FROM odoo_line_users WHERE customer_ref = ? AND line_user_id IS NOT NULL LIMIT 1");
+            $stmt = $db->prepare("SELECT line_user_id FROM odoo_line_users WHERE odoo_customer_code = ? AND line_user_id IS NOT NULL LIMIT 1");
             $stmt->execute([$customerRef]);
             $row = $stmt->fetchColumn();
             if ($row) $lineUserId = $row;
@@ -132,7 +132,7 @@ try {
             s.matched_at,
             u.display_name AS customer_name,
             u.picture_url  AS customer_avatar,
-            COALESCE(olu.customer_ref, ob.customer_ref) AS customer_ref,
+            COALESCE(olu.odoo_customer_code, ob.customer_ref) AS customer_ref,
             COALESCE(olu.odoo_partner_id, ob.partner_id) AS partner_id
         FROM odoo_slip_uploads s
         LEFT JOIN users u ON u.line_user_id = s.line_user_id
