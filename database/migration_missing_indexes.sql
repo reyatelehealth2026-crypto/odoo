@@ -25,11 +25,16 @@ ALTER TABLE odoo_bdo_context
     ADD INDEX IF NOT EXISTS idx_bdo_ctx_id     (id);
 
 -- ── odoo_bdo_orders ───────────────────────────────────────────────────────
--- JOIN กับ odoo_bdo_context และ filter ด้วย payment_state / state
+-- Actual columns (from OdooSyncService.php INSERT):
+--   bdo_id, bdo_name, order_id, order_name, amount_total, payment_reference,
+--   partner_id, customer_name, line_user_id, payment_method, webhook_delivery_id,
+--   payment_status, created_at, updated_at
+-- NOTE: due_date และ payment_state ไม่มีใน table นี้ (อยู่ใน odoo_bdos แทน)
 ALTER TABLE odoo_bdo_orders
-    ADD INDEX IF NOT EXISTS idx_bdo_orders_bdo_id  (bdo_id),
-    ADD INDEX IF NOT EXISTS idx_bdo_orders_partner (partner_id, due_date),
-    ADD INDEX IF NOT EXISTS idx_bdo_orders_payment (payment_state, state);
+    ADD INDEX IF NOT EXISTS idx_bdo_orders_bdo_id         (bdo_id),
+    ADD INDEX IF NOT EXISTS idx_bdo_orders_partner        (partner_id, order_id),
+    ADD INDEX IF NOT EXISTS idx_bdo_orders_payment_status (payment_status),
+    ADD INDEX IF NOT EXISTS idx_bdo_orders_payment_method (payment_method);
 
 -- ── odoo_webhook_dlq ──────────────────────────────────────────────────────
 -- retry queue: ดึง rows ที่ next_retry_at ถึงกำหนดแล้ว
