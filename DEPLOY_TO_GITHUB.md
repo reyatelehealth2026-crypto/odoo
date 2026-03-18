@@ -1,10 +1,18 @@
 # คู่มือ Deploy โปรเจค Odoo Dashboard ขึ้น GitHub
 
+> 💡 **สำหรับการ deploy แบบรวดเร็ว**: ดู [QUICK_DEPLOY_GUIDE.md](QUICK_DEPLOY_GUIDE.md) สำหรับคำแนะนำแบบย่อและรวดเร็ว
+
 ## ภาพรวม
 
-เอกสารนี้อธิบายขั้นตอนการ deploy โปรเจค LINE Telepharmacy Platform - Odoo Dashboard Modernization ขึ้น GitHub repository
+เอกสารนี้อธิบายขั้นตอนการ deploy โปรเจค LINE Telepharmacy Platform - Odoo Dashboard Modernization ขึ้น GitHub repository แบบละเอียด
 
 **Repository URL**: https://github.com/reyatelehealth2026-crypto/odoo.git
+
+## เอกสารที่เกี่ยวข้อง
+
+- **[QUICK_DEPLOY_GUIDE.md](QUICK_DEPLOY_GUIDE.md)** - คู่มือ deploy แบบรวดเร็ว (แนะนำสำหรับผู้เริ่มต้น)
+- **[GITHUB_PUSH_GUIDE.md](GITHUB_PUSH_GUIDE.md)** - คู่มือ Git workflow และการแก้ปัญหา
+- **[DEPLOY_SUMMARY.md](DEPLOY_SUMMARY.md)** - สรุปสถานะการ deploy
 
 ## วิธีการ Deploy
 

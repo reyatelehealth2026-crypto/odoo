@@ -1,5 +1,7 @@
 # คู่มือ Push โค้ดขึ้น GitHub
 
+> 💡 **ต้องการ deploy แบบรวดเร็ว?** ดู [QUICK_DEPLOY_GUIDE.md](QUICK_DEPLOY_GUIDE.md) สำหรับคำแนะนำแบบย่อ
+
 ## ขั้นตอนการ Deploy
 
 ### วิธีที่ 1: ใช้ Bash Script (แนะนำ)

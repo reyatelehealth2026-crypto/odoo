@@ -1,12 +1,16 @@
 #!/bin/bash
 # Deploy to GitHub Repository Script
 # Repository: https://github.com/reyatelehealth2026-crypto/odoo.git
+#
+# For quick deployment guide, see: QUICK_DEPLOY_GUIDE.md
 
 set -e
 
 echo "=========================================="
 echo "🚀 Deploy to GitHub Repository"
 echo "=========================================="
+echo ""
+echo "📖 For quick guide, see: QUICK_DEPLOY_GUIDE.md"
 echo ""
 
 # Colors

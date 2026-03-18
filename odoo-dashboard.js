@@ -13,6 +13,15 @@ const EVENT_ICONS={'sale.order.confirmed':'🛒','sale.order.cancelled':'❌','s
 
 function escapeHtml(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
+// ===== DEBOUNCE UTILITY =====
+function debounce(func, wait){
+    let timeout;
+    return function executedFunction(...args){
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
 // ===== SESSION CACHE (TTL-based, sessionStorage) =====
 const _CACHE_TTL = 300000; // 5 minutes (was 3 min)
 function _cacheSet(key, data, ttlMs){
@@ -220,6 +229,13 @@ async function testConnection(){
 
 // ===== WEBHOOKS =====
 let whCurrentOffset=0;const whPageSize=30;
+
+// Debounced search for webhooks
+const debouncedLoadWebhooks = debounce(function(){
+    whCurrentOffset = 0;
+    loadWebhooks();
+}, 400);
+
 function populateWebhookEventFilter(types){const sel=document.getElementById('whFilterEvent');if(!sel)return;const cur=sel.value;let opts='<option value="">ทั้งหมด</option>';(types||[]).filter(Boolean).forEach(et=>{opts+='<option value="'+escapeHtml(et)+'"'+(cur===et?' selected':'')+'>'+escapeHtml(webhookEventShortName(et))+'</option>';});sel.innerHTML=opts;}
 function applyWebhookEventFilter(et){const s=document.getElementById('whFilterEvent');if(s)s.value=et;whCurrentOffset=0;loadWebhooks();}
 function safeParseWebhookPayload(d,r){if(d&&typeof d==='object')return JSON.stringify(d,null,2);if(typeof r==='string'&&r.trim()){try{return JSON.stringify(JSON.parse(r),null,2);}catch(e){return JSON.stringify({raw:r},null,2);}}return '{}';}
@@ -356,6 +372,13 @@ async function showOrderTimeline(orderId,orderName){
 let custCurrentOffset=0;const custPageSize=30;
 let _salespersonDropdownLoaded=false;
 let _salespersonDropdownPromise=null;
+
+// Debounced search functions
+const debouncedLoadCustomers = debounce(function(){
+    custCurrentOffset = 0;
+    loadCustomers();
+}, 500);
+
 function resetCustomerFilter(){const el=document.getElementById('custSearch');if(el)el.value='';const fi=document.getElementById('custInvoiceFilter');if(fi)fi.value='';const sb=document.getElementById('custSortBy');if(sb)sb.value='';const sp=document.getElementById('custSalesperson');if(sp)sp.value='';custCurrentOffset=0;loadCustomers();}
 async function loadSalespersonDropdown(){
     const sel=document.getElementById('custSalesperson');if(!sel)return;
@@ -1664,6 +1687,12 @@ const ORDER_STAGES=[
 let whViewMode='grouped'; // 'grouped' or 'list'
 let grpCurrentOffset=0;const grpPageSize=30;
 
+// Debounced search for grouped orders
+const debouncedLoadOrdersGrouped = debounce(function(){
+    grpCurrentOffset = 0;
+    loadOrdersGrouped();
+}, 400);
+
 function setWhViewMode(mode){
     whViewMode=mode;
     const btnList=document.getElementById('whViewBtnList'),btnGrp=document.getElementById('whViewBtnGrouped');
@@ -1754,6 +1783,13 @@ async function loadOrdersGrouped(){
 
 // ===== SLIPS =====
 let slipCurrentOffset=0;const slipPageSize=30;
+
+// Debounced search for slips
+const debouncedLoadSlips = debounce(function(){
+    slipCurrentOffset = 0;
+    loadSlips();
+}, 300);
+
 function slipGoPage(p){slipCurrentOffset=p*slipPageSize;loadSlips();}
 function slipStatusBadge(s){
     const map={pending:'<span style="background:#fef3c7;color:#d97706;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:500;">⏳ รอตรวจสอบ</span>',matched:'<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:500;">✅ จับคู่แล้ว</span>',failed:'<span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:500;">❌ ไม่สำเร็จ</span>'};
@@ -1804,7 +1840,7 @@ async function loadSlips(){
             const bg=i%2===0?'white':'var(--gray-50)';
             const amt=s.amount!=null?'฿'+parseFloat(s.amount).toLocaleString('th-TH',{minimumFractionDigits:2}):'-';
             const dt=s.uploaded_at?new Date(s.uploaded_at).toLocaleString('th-TH',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'-';
-            const thumb=s.image_full_url?'<img src="'+escapeHtml(s.image_full_url)+'" onclick="openSlipPreview(\''+escapeHtml(s.image_full_url)+'\')" style="width:48px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'">':'<span style="color:var(--gray-400);font-size:0.75rem;">ไม่มีรูป</span>';
+            const thumb=s.image_full_url?'<img src="'+escapeHtml(s.image_full_url)+'" loading="lazy" onclick="openSlipPreview(\''+escapeHtml(s.image_full_url)+'\')" style="width:48px;height:60px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--gray-200);" onerror="this.style.display=\'none\'">':'<span style="color:var(--gray-400);font-size:0.75rem;">ไม่มีรูป</span>';
             const custName=escapeHtml(s.customer_name||s.line_user_id||'-');
             const custLine=s.customer_name?'<div style="font-size:0.75rem;color:var(--gray-400);">'+escapeHtml(s.line_user_id||'')+'</div>':'';
             if(s.status==='failed')window._slipErrors=window._slipErrors||{},(window._slipErrors[s.id]=s.match_reason||'ไม่มีข้อมูล');
@@ -2650,6 +2686,25 @@ function restoreAdminMode(){
     }
 }
 
+// ===== CACHE WARMING =====
+async function warmCriticalCaches(){
+    console.log('[Cache] Warming critical caches...');
+    
+    // Warm overview cache if not present
+    if(typeof _cacheGet === 'function' && typeof _dashCacheKey === 'function'){
+        if(!_cacheGet(_dashCacheKey('overview', 'today'))){
+            console.log('[Cache] Warming overview cache...');
+            if(typeof loadTodayOverview === 'function') loadTodayOverview();
+        }
+    }
+    
+    // Warm matching grid cache if not present
+    if(typeof _cacheGet === 'function' && !_cacheGet('match_grid')){
+        console.log('[Cache] Warming matching grid cache...');
+        if(typeof loadMatchingCustomerGrid === 'function') loadMatchingCustomerGrid();
+    }
+}
+
 // ===== TODAY OVERVIEW =====
 let _overviewLoaded=false;
 function _isSectionActive(id){
@@ -3073,12 +3128,46 @@ function renderMatchingCustomerGrid(){
 }
 
 function openMatchingForCustomer(ref, name, partnerId, salespersonName){
-    const url = 'odoo-customer-detail.php'
-        + '?ref='        + encodeURIComponent(ref || '')
-        + '&partner_id=' + encodeURIComponent(partnerId || '')
-        + '&name='       + encodeURIComponent(name || '')
-        + '&tab=matching';
-    window.location.href = url;
+    // Store active customer context
+    _matchActiveCustomer = {
+        ref: ref,
+        name: name,
+        partnerId: partnerId,
+        salespersonName: salespersonName
+    };
+    
+    // Toggle zones
+    const gridZone = document.getElementById('matchCustomerGridZone');
+    const detailZone = document.getElementById('matchCustomerDetailZone');
+    
+    if(gridZone) gridZone.style.display = 'none';
+    if(detailZone) detailZone.style.display = 'block';
+    
+    // Update header with back button
+    const header = document.getElementById('matchCustomerDetailHeader');
+    if(header){
+        header.innerHTML = `
+            <div class="content-card" style="margin-bottom:0.75rem;">
+                <div style="display:flex;align-items:center;gap:1rem;">
+                    <button class="chip" onclick="closeMatchingCustomer()" style="font-size:0.85rem;">
+                        <i class="bi bi-arrow-left"></i> กลับรายการลูกค้า
+                    </button>
+                    <div style="flex:1;">
+                        <div style="font-weight:700;font-size:1.05rem;color:var(--gray-800);">
+                            ${escapeHtml(name)}
+                        </div>
+                        <div style="font-size:0.8rem;color:var(--gray-500);">
+                            รหัส: ${escapeHtml(ref)}
+                            ${salespersonName ? ' · พนักงานขาย: ' + escapeHtml(salespersonName) : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Load matching data for this customer
+    loadMatchingDashboard();
 }
 
 function closeMatchingCustomer(){
@@ -3888,7 +3977,10 @@ document.addEventListener('DOMContentLoaded',()=>{
     restoreAdminMode();
 
     // Test API connectivity immediately (uses fast 'health' action, no DB query)
-    testConnection();
+    testConnection().then(() => {
+        // Warm critical caches after connection established
+        setTimeout(warmCriticalCaches, 500);
+    });
 
     const params = new URLSearchParams(window.location.search);
     const initialTab = (params.get('tab') || '').trim();
@@ -3907,4 +3999,16 @@ document.addEventListener('DOMContentLoaded',()=>{
 
     // Re-check connection every 60s
     setInterval(testConnection, 60000);
+    
+    // Log page load performance
+    window.addEventListener('load', () => {
+        const perfData = performance.getEntriesByType('navigation')[0];
+        if(perfData){
+            console.log('[Perf] Page load:', {
+                domContentLoaded: Math.round(perfData.domContentLoadedEventEnd - perfData.domContentLoadedEventStart) + 'ms',
+                loadComplete: Math.round(perfData.loadEventEnd - perfData.loadEventStart) + 'ms',
+                total: Math.round(perfData.loadEventEnd - perfData.fetchStart) + 'ms'
+            });
+        }
+    });
 });

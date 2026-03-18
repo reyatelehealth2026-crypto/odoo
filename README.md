@@ -162,6 +162,8 @@ Set up in Admin > AI Settings:
 
 ## 🚀 Modernization Project
 
+> **📋 Quick Reference**: [Dashboard Code Review Summary](DASHBOARD_CODE_REVIEW_SUMMARY.md) - Executive summary of legacy dashboard review and optimization plan
+
 The platform is undergoing a major modernization effort for the Odoo Dashboard system:
 
 ### Current State (PHP)
@@ -266,7 +268,9 @@ The modernization is tracked in `.kiro/specs/odoo-dashboard-modernization/tasks.
 - [Setup Guide](SETUP_GUIDE_COMPLETE.md)
 
 ### Deployment Guides
-- **[GitHub Deployment Guide](DEPLOY_TO_GITHUB.md)** - Deploy project to GitHub repository
+- **[Quick Deploy Guide (Thai)](QUICK_DEPLOY_GUIDE.md)** - 🚀 Fast GitHub deployment (recommended for first-time setup)
+- **[GitHub Deployment Guide](DEPLOY_TO_GITHUB.md)** - Complete GitHub deployment documentation
+- **[GitHub Push Guide](GITHUB_PUSH_GUIDE.md)** - Detailed Git workflow and troubleshooting
 - **[Production Deployment Guide (Thai)](/docs/DEPLOYMENT_GUIDE_TH.md)** - Complete production deployment guide
   - [Part 2: Migration System](/docs/DEPLOYMENT_GUIDE_TH_PART2.md)
   - [Part 3: Monitoring & Maintenance](/docs/DEPLOYMENT_GUIDE_TH_PART3.md)
@@ -277,6 +281,17 @@ The modernization is tracked in `.kiro/specs/odoo-dashboard-modernization/tasks.
   - [Requirements](/.kiro/specs/odoo-dashboard-modernization/requirements.md)
   - [Design](/.kiro/specs/odoo-dashboard-modernization/design.md)
   - [Implementation Tasks](/.kiro/specs/odoo-dashboard-modernization/tasks.md)
+
+### Legacy Dashboard Optimization
+- **[Optimization Guide](DASHBOARD_OPTIMIZATION_GUIDE.md)** - 🚀 **NEW** Complete optimization guide for legacy PHP dashboard
+  - Critical fixes (navigation bug, search debouncing)
+  - Performance optimizations (cache warming, lazy loading, optimistic UI)
+  - Implementation checklist with expected 50% performance improvement
+- **[Code Review (Thai)](docs/ODOO_DASHBOARD_REVIEW.md)** - Concise code review summary in Thai
+- **[Detailed Analysis (English)](ODOO_DASHBOARD_ANALYSIS.md)** - Comprehensive technical analysis
+  - Correctness issues identified (section loading, cache keys, navigation)
+  - Performance optimization recommendations (API batching, lazy loading, debouncing)
+  - Implementation priorities and expected outcomes
 
 ### API Documentation
 - [Customer Management API](/docs/API_CUSTOMER_MANAGEMENT.md) - Search, profile, and LINE connection management
