@@ -1,0 +1,105 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+PHP 8.0+ multi-tenant CRM/e-commerce platform for Thai pharmacies integrating LINE Official Accounts, Odoo ERP, AI (Gemini/OpenAI), and telepharmacy. All UI text and DB comments are bilingual Thai/English. Timezone is always `Asia/Bangkok` (`+07:00`).
+
+## Commands
+
+```bash
+# PHP dependencies
+composer install
+
+# Run all tests (PHPUnit, property-based)
+composer test
+
+# Run a single test file
+./vendor/bin/phpunit tests/LandingPage/ShopDataDisplayPropertyTest.php
+
+# Static analysis (PHPStan level 0)
+composer analyse
+
+# Code style check (PSR-12, dry-run)
+composer lint
+
+# Apply code style fixes
+composer lint:fix
+
+# Node.js WebSocket server (dev)
+npm install && npm run dev
+
+# Deploy to production (force — discards server-side changes)
+bash force_deploy_testry.sh
+
+# Deploy preserving local changes in stash
+bash deploy_testry_branch.sh
+```
+
+## Architecture
+
+### Entry Points
+
+| Path | Purpose |
+|------|---------|
+| `webhook.php?account={id}` | LINE Messaging API webhook (multi-account) |
+| `liff/index.php` | LIFF SPA (client-side routing, single entry point) |
+| `api/*.php` | 59 REST API endpoints |
+| Root `*.php` files | Admin panel pages (104 files) |
+| `cron/*.php` | 19 scheduled background tasks |
+| `index.php` | Public landing page |
+
+### Database — Always Use Singleton
+
+```php
+$db = Database::getInstance()->getConnection(); // returns PDO
+```
+
+`classes/Database.php` is a backward-compat wrapper around `modules/Core/Database.php`. Never instantiate PDO directly. Charset is `utf8mb4_unicode_ci`; MySQL timezone forced to `+07:00`.
+
+### Multi-Account LINE OA
+
+Every LINE feature is scoped to a `line_account_id` FK against `line_accounts`. Pass `$lineAccountId` to service constructors (e.g., `new BusinessBot($db, $line, $lineAccountId)`). Webhook identifies account via `?account={id}` + HMAC-SHA256 signature validation.
+
+### Service Class Patterns
+
+- `classes/` — plain PHP classes, no namespace (legacy). Settings loaded from DB first, fall back to `config/config.php`, then hardcoded defaults.
+- `modules/` — PSR-4 namespaced (`Modules\Core\`, `Modules\AIChat\`, `Modules\Onboarding\`).
+- `app/` — `App\` namespace for Controllers, Models, Services, Views.
+
+Autoloading declared in `composer.json`: `App\` → `app/`, `Classes\` → `classes/`, `Modules\` → `modules/`.
+
+### Standard Admin Page Template
+
+```php
+require_once 'config/config.php';
+require_once 'config/database.php';
+require_once 'includes/header.php'; // pulls in auth_check.php, session, $currentUser
+// ... page logic ...
+require_once 'includes/footer.php';
+```
+
+Role helpers available after header: `isSuperAdmin()`, `isAdmin()`, `isStaff()`.
+Role hierarchy: `super_admin` → `admin` → `pharmacist` / `marketing` / `tech` → `staff`
+
+### Key Integrations
+
+- **LINE API** — `classes/LineAPI.php`. Always pass token + secret from the `line_accounts` DB row, not from constants.
+- **Odoo ERP** — `classes/OdooAPIClient.php` (JSON-RPC 2.0, circuit breaker + exponential backoff). Sync flow: Odoo webhook → `api/odoo-webhook.php` → `OdooSyncService` → cache tables (`odoo_orders`, `odoo_invoices`, `odoo_bdos`). Use `OdooAPIPool.php` for parallel fan-out queries.
+- **AI** — `classes/GeminiAI.php` (primary), `classes/OpenAI.php`. Settings per `line_account_id` in `ai_settings` table.
+- **Notifications** — `classes/NotificationRouter.php` fans out to LINE, Telegram, email.
+- **Real-time** — Node.js + Socket.io WebSocket server (`package.json`).
+
+## Conventions & Gotchas
+
+- **`file_exists()` guards** — Optional classes (`BusinessBot`, `WebSocketNotifier`) are `require_once`-d only after a `file_exists()` check in `webhook.php`. Do the same for new optional integrations.
+- **AI settings from DB** — Never hardcode AI model names. Stored in `ai_settings.model` (default `gemini-2.0-flash`).
+- **Cache buster** — LIFF SPA uses `$v` version string (e.g., `202602142228`). Update it on any JS/CSS change in `liff/index.php`.
+- **Odoo dashboard queries** — Always query cache tables (`odoo_orders`, `odoo_invoices`, `odoo_bdos`); never hit the Odoo API directly for dashboard reads.
+- **`dev_logs` table** — Fatal errors in `webhook.php` are written here. For debug logging in webhook context: `INSERT INTO dev_logs (log_type, source, message, data, created_at)`.
+- **Clean URLs** — `.htaccess` strips `.php` extensions. Use `cleanUrl()` from `includes/header.php` when building admin nav links.
+- **Cron jobs** — New reminder/broadcast jobs go in `cron/` as separate files. Do not add to `scheduled.php` (admin-triggered only).
+- **Tests** — Property-based; each test generates 100+ random cases per property. Bootstrap: `tests/bootstrap.php`.
+- **Database schema** — 223 tables. Main migration: `database/install_complete_latest.sql`. Incremental changes go in `database/migration_*.sql`.
+- **Server path** — `/home/zrismpsz/public_html/cny.re-ya.com` on production.

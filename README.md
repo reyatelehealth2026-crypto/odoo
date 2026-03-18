@@ -51,7 +51,13 @@
 - Customer analytics
 - Sales reports
 - Campaign performance
-- Executive dashboard
+- **Modern Odoo Dashboard** (Next.js + Node.js modernization - **Ready for Implementation**)
+  - Real-time dashboard updates with WebSocket integration
+  - Enhanced performance (<1s load times, <3% error rate)
+  - Modern TypeScript architecture with comprehensive testing
+  - JWT authentication and role-based access control
+  - Comprehensive audit logging and security features
+  - Docker containerization and production deployment ready
 
 ---
 
@@ -146,10 +152,64 @@ Set up in Admin > AI Settings:
 ├── liff/             # LIFF SPA application
 ├── admin/            # Admin panel
 ├── shop/             # Shop management
+├── backend/          # Modern Node.js API (Odoo Dashboard modernization)
+├── frontend/         # Modern Next.js frontend (Odoo Dashboard modernization)
+├── docker/           # Docker configuration for modernized stack
 ├── index.php         # Landing page
 ├── webhook.php       # LINE webhook
 └── inbox-v2.php      # Chat inbox
 ```
+
+## 🚀 Modernization Project
+
+> **📋 Quick Reference**: [Dashboard Code Review Summary](DASHBOARD_CODE_REVIEW_SUMMARY.md) - Executive summary of legacy dashboard review and optimization plan
+
+The platform is undergoing a major modernization effort for the Odoo Dashboard system:
+
+### Current State (PHP)
+- Legacy PHP dashboard with 4700+ lines
+- 15% error rate, slow load times
+- Monolithic architecture
+
+### Target State (Next.js + Node.js)
+- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
+- **Backend**: Node.js + Fastify + Prisma ORM
+- **Performance**: <1s load times, <3% error rate
+- **Features**: Real-time updates, comprehensive audit logging
+- **Infrastructure**: Docker + Redis + Nginx
+
+### Implementation Status
+The modernization is tracked in `.kiro/specs/odoo-dashboard-modernization/tasks.md` with 17 major task groups covering:
+
+**✅ COMPLETED INFRASTRUCTURE (Task 1)**
+- ✅ **1.1** Next.js 14 frontend with TypeScript, Tailwind CSS, ESLint, Prettier
+- ✅ **1.2** Node.js backend with Fastify, Prisma ORM, clean architecture
+- ✅ **1.3** Docker containerization with multi-stage builds for dev/prod
+- 📋 **1.4** Development tooling (hot reload, debugging, pre-commit hooks) - *Optional*
+
+**✅ COMPLETED CORE SYSTEMS**
+- ✅ Database schema and migration setup (Prisma ORM, performance tables)
+- ✅ Authentication and authorization system (JWT, RBAC)
+- ✅ Core API infrastructure (Fastify, circuit breaker, Redis caching)
+- ✅ Dashboard overview implementation (metrics calculation, API endpoints)
+- ✅ Real-time updates system (WebSocket server, React hooks)
+- ✅ Order management system (data access layer, API endpoints, frontend)
+- ✅ Performance optimization and caching (comprehensive caching, query optimization)
+- ✅ Error handling and reliability (error handling, retry mechanisms)
+- ✅ Security implementation (input validation, audit logging, rate limiting)
+- ✅ Testing framework setup (Jest, Vitest, property-based testing)
+- ✅ Deployment and DevOps setup (Docker production, blue-green deployment)
+- ✅ Migration system (feature flags, traffic routing, data migration)
+
+**📋 REMAINING IMPLEMENTATION**
+- 📋 Payment processing system (slip upload, matching algorithm)
+- ✅ Webhook management system (logging, monitoring, retry mechanism) - **COMPLETED**
+- 📋 Customer management system (data sync, profile management)
+- 📋 Final integration and testing (system testing, security testing)
+
+**Current Status**: **Infrastructure Complete** - Task 1 has been successfully completed with modern Next.js + Node.js stack, Docker containerization, and development environment ready. The project is now ready for feature implementation starting with Task 8 (Payment Processing System).
+
+**Ready for Implementation**: The specification is complete with detailed tasks, requirements traceability, and 15 correctness properties for property-based testing. Developers can begin implementation by following the tasks in `tasks.md`.
 
 ---
 
@@ -200,11 +260,43 @@ Set up in Admin > AI Settings:
 
 ## 📖 Documentation
 
+### General Documentation
 - [Architecture](ARCHITECTURE.md)
 - [Project Flow](PROJECT_FLOW_DOCUMENTATION.md)
 - [CRM Workflow](CRM_WORKFLOW_COMPLETE.md)
 - [User Manual](USER_MANUAL.md)
 - [Setup Guide](SETUP_GUIDE_COMPLETE.md)
+
+### Deployment Guides
+- **[Quick Deploy Guide (Thai)](QUICK_DEPLOY_GUIDE.md)** - 🚀 Fast GitHub deployment (recommended for first-time setup)
+- **[GitHub Deployment Guide](DEPLOY_TO_GITHUB.md)** - Complete GitHub deployment documentation
+- **[GitHub Push Guide](GITHUB_PUSH_GUIDE.md)** - Detailed Git workflow and troubleshooting
+- **[Production Deployment Guide (Thai)](/docs/DEPLOYMENT_GUIDE_TH.md)** - Complete production deployment guide
+  - [Part 2: Migration System](/docs/DEPLOYMENT_GUIDE_TH_PART2.md)
+  - [Part 3: Monitoring & Maintenance](/docs/DEPLOYMENT_GUIDE_TH_PART3.md)
+- **[Docker Deployment Guide](DEPLOYMENT_GUIDE.md)** - Docker-based deployment
+
+### Odoo Dashboard Modernization
+- **[Project Overview](/.kiro/specs/odoo-dashboard-modernization/)** - Next.js + Node.js rewrite project
+  - [Requirements](/.kiro/specs/odoo-dashboard-modernization/requirements.md)
+  - [Design](/.kiro/specs/odoo-dashboard-modernization/design.md)
+  - [Implementation Tasks](/.kiro/specs/odoo-dashboard-modernization/tasks.md)
+
+### Legacy Dashboard Optimization
+- **[Optimization Guide](DASHBOARD_OPTIMIZATION_GUIDE.md)** - 🚀 **NEW** Complete optimization guide for legacy PHP dashboard
+  - Critical fixes (navigation bug, search debouncing)
+  - Performance optimizations (cache warming, lazy loading, optimistic UI)
+  - Implementation checklist with expected 50% performance improvement
+- **[Code Review (Thai)](docs/ODOO_DASHBOARD_REVIEW.md)** - Concise code review summary in Thai
+- **[Detailed Analysis (English)](ODOO_DASHBOARD_ANALYSIS.md)** - Comprehensive technical analysis
+  - Correctness issues identified (section loading, cache keys, navigation)
+  - Performance optimization recommendations (API batching, lazy loading, debouncing)
+  - Implementation priorities and expected outcomes
+
+### API Documentation
+- [Customer Management API](/docs/API_CUSTOMER_MANAGEMENT.md) - Search, profile, and LINE connection management
+- [Webhook Management System](/docs/WEBHOOK_MANAGEMENT_SYSTEM.md) - Webhook logging and monitoring
+- [Audit Logging](/docs/AUDIT_LOGGING.md) - Enhanced audit trail and session management
 
 ---
 

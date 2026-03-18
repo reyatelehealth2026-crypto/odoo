@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Migration Monitor - Odoo Dashboard Modernization</title>
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .header { background: #2563eb; color: white; padding: 1rem; text-align: center; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .metric { text-align: center; }
+        .metric-value { font-size: 2rem; font-weight: bold; color: #2563eb; }
+        .metric-label { color: #6b7280; margin-top: 0.5rem; }
+        .status { display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; }
+        .status.healthy { background: #dcfce7; color: #166534; }
+        .status.unhealthy { background: #fecaca; color: #dc2626; }
+        .alert { padding: 1rem; margin: 0.5rem 0; border-radius: 4px; }
+        .alert.critical { background: #fecaca; border-left: 4px solid #dc2626; }
+        .alert.high { background: #fed7aa; border-left: 4px solid #ea580c; }
+        .alert.medium { background: #fef3c7; border-left: 4px solid #d97706; }
+        .progress { width: 100%; height: 20px; background: #e5e7eb; border-radius: 10px; overflow: hidden; }
+        .progress-bar { height: 100%; background: #2563eb; transition: width 0.3s ease; }
+        .btn { background: #2563eb; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #1d4ed8; }
+        .btn.danger { background: #dc2626; }
+        .btn.danger:hover { background: #b91c1c; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 Migration Monitor</h1>
+        <p>Odoo Dashboard Modernization - Real-time System Status</p>
+    </div>
+    
+    <div class="container">
+        <div class="grid">
+            <div class="card">
+                <div class="metric">
+                    <div class="metric-value" id="migration-progress">0%</div>
+                    <div class="metric-label">Migration Progress</div>
+                    <div class="progress" style="margin-top: 1rem;">
+                        <div class="progress-bar" id="progress-bar" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="metric">
+                    <div class="metric-value" id="current-phase">Phase 1</div>
+                    <div class="metric-label">Current Phase</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="metric">
+                    <div class="metric-value" id="system-health">
+                        <span class="status healthy">Healthy</span>
+                    </div>
+                    <div class="metric-label">System Health</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>Service Status</h3>
+                <div id="service-status">
+                    <div>Legacy System: <span class="status healthy">Healthy</span></div>
+                    <div>Modern System: <span class="status healthy">Healthy</span></div>
+                    <div>WebSocket: <span class="status healthy">Healthy</span></div>
+                    <div>Database: <span class="status healthy">Connected</span></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Feature Flags</h3>
+                <div id="feature-flags">
+                    <div>Dashboard: <span id="flag-dashboard">5%</span></div>
+                    <div>Orders: <span id="flag-orders">0%</span></div>
+                    <div>Payments: <span id="flag-payments">0%</span></div>
+                    <div>Webhooks: <span id="flag-webhooks">0%</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>System Alerts</h3>
+            <div id="alerts">
+                <p>No active alerts</p>
+            </div>
+        </div>
+        
+        <div class="card" style="text-align: center;">
+            <h3>Emergency Controls</h3>
+            <button class="btn danger" onclick="emergencyRollback()">🚨 Emergency Rollback</button>
+            <p style="margin-top: 1rem; color: #6b7280; font-size: 0.875rem;">
+                Use only in case of critical system failure
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        
+        socket.on('metrics', (data) => {
+            updateDashboard(data);
+        });
+        
+        socket.on('alert', (alert) => {
+            addAlert(alert);
+        });
+        
+        function updateDashboard(data) {
+            // Update migration progress
+            if (data.migration) {
+                const progress = data.migration.overallProgress || 0;
+                document.getElementById('migration-progress').textContent = progress + '%';
+                document.getElementById('progress-bar').style.width = progress + '%';
+                
+                if (data.migration.phase) {
+                    document.getElementById('current-phase').textContent = 
+                        `Phase ${data.migration.phase.number}: ${data.migration.phase.name}`;
+                }
+            }
+            
+            // Update service status
+            if (data.services) {
+                const serviceStatus = document.getElementById('service-status');
+                serviceStatus.innerHTML = '';
+                
+                for (const [name, service] of Object.entries(data.services)) {
+                    const statusClass = service.status === 'healthy' ? 'healthy' : 'unhealthy';
+                    serviceStatus.innerHTML += 
+                        `<div>${name}: <span class="status ${statusClass}">${service.status}</span></div>`;
+                }
+            }
+            
+            // Update feature flags
+            if (data.featureFlags) {
+                data.featureFlags.forEach(flag => {
+                    const element = document.getElementById(`flag-${flag.name.replace('useNew', '').toLowerCase()}`);
+                    if (element) {
+                        element.textContent = flag.rolloutPercentage + '%';
+                    }
+                });
+            }
+        }
+        
+        function addAlert(alert) {
+            const alertsContainer = document.getElementById('alerts');
+            const alertElement = document.createElement('div');
+            alertElement.className = `alert ${alert.severity}`;
+            alertElement.innerHTML = `
+                <strong>${alert.type.toUpperCase()}</strong>: ${alert.message}
+                <small style="display: block; margin-top: 0.5rem; opacity: 0.7;">
+                    ${new Date(alert.timestamp).toLocaleString()}
+                </small>
+            `;
+            
+            if (alertsContainer.firstChild.textContent === 'No active alerts') {
+                alertsContainer.innerHTML = '';
+            }
+            
+            alertsContainer.insertBefore(alertElement, alertsContainer.firstChild);
+        }
+        
+        function emergencyRollback() {
+            if (confirm('Are you sure you want to trigger an emergency rollback? This will route all traffic back to the legacy system.')) {
+                const reason = prompt('Please provide a reason for the rollback:');
+                if (reason) {
+                    fetch('/api/emergency/rollback', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ reason })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            alert('Emergency rollback initiated successfully');
+                        } else {
+                            alert('Failed to initiate rollback: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        alert('Error: ' + error.message);
+                    });
+                }
+            }
+        }
+        
+        // Initial load
+        fetch('/api/metrics')
+            .then(response => response.json())
+            .then(data => updateDashboard(data))
+            .catch(error => console.error('Failed to load initial metrics:', error));
+    </script>
+</body>
+</html>

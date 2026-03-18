@@ -1,0 +1,42 @@
+# Docker Compose override for Blue environment
+# Used in blue-green deployment strategy
+
+version: '3.8'
+
+services:
+  # Backend API (Blue)
+  backend-blue:
+    extends:
+      file: docker-compose.prod.yml
+      service: backend
+    container_name: odoo-dashboard-backend-blue
+    environment:
+      - DEPLOYMENT_ENVIRONMENT=blue
+    networks:
+      - odoo-dashboard-network
+
+  # Frontend (Blue)
+  frontend-blue:
+    extends:
+      file: docker-compose.prod.yml
+      service: frontend
+    container_name: odoo-dashboard-frontend-blue
+    environment:
+      - DEPLOYMENT_ENVIRONMENT=blue
+    networks:
+      - odoo-dashboard-network
+
+  # WebSocket Server (Blue)
+  websocket-blue:
+    extends:
+      file: docker-compose.prod.yml
+      service: websocket
+    container_name: odoo-dashboard-websocket-blue
+    environment:
+      - DEPLOYMENT_ENVIRONMENT=blue
+    networks:
+      - odoo-dashboard-network
+
+networks:
+  odoo-dashboard-network:
+    external: true
