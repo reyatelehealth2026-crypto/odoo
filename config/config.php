@@ -19,9 +19,9 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // Database
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'zrismpsz_cny');
-define('DB_USER', 'zrismpsz_cny');
-define('DB_PASS', 'zrismpsz_cny');
+define('DB_NAME', 'cny_re_ya_com');
+define('DB_USER', 'cny_re_ya_com');
+define('DB_PASS', 'cny_re_ya_com');
 
 // Application
 define('APP_NAME', 'Agentic line');
