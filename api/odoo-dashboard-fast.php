@@ -254,7 +254,7 @@ if ($action === 'customers_fast') {
     exit;
 }
 
-// ── customer_list: ดึงจาก odoo_customer_projection (indexed) ────────────
+// ── customer_list: ดึงจาก odoo_customer_projection ────────────
 if ($action === 'customer_list') {
     require_once __DIR__ . '/../config/config.php';
     require_once __DIR__ . '/../config/database.php';
@@ -262,7 +262,7 @@ if ($action === 'customer_list') {
     try {
         $db = Database::getInstance()->getConnection();
     } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
+        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage(), 'fallback' => true]);
         exit;
     }
 
@@ -270,14 +270,12 @@ if ($action === 'customer_list') {
     $offset = max((int) ($input['offset'] ?? 0), 0);
     $search = trim((string) ($input['search'] ?? ''));
     $invoiceFilter = trim((string) ($input['invoice_filter'] ?? ''));
-    $sortBy = trim((string) ($input['sort_by'] ?? ''));
-    $salespersonId = trim((string) ($input['salesperson_id'] ?? ''));
 
     $where = [];
     $params = [];
 
     if ($search !== '') {
-        $where[] = '(customer_name LIKE :search OR customer_ref LIKE :search OR partner_name LIKE :search)';
+        $where[] = '(customer_name LIKE :search OR customer_ref LIKE :search)';
         $params[':search'] = '%' . $search . '%';
     }
     if ($invoiceFilter === 'unpaid') {
@@ -285,18 +283,8 @@ if ($action === 'customer_list') {
     } elseif ($invoiceFilter === 'overdue') {
         $where[] = 'COALESCE(overdue_amount,0) > 0';
     }
-    if ($salespersonId !== '') {
-        $where[] = 'salesperson_id = :spid';
-        $params[':spid'] = $salespersonId;
-    }
 
     $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
-
-    $orderBy = 'ORDER BY latest_order_at DESC';
-    if ($sortBy === 'spend_desc') $orderBy = 'ORDER BY spend_30d DESC';
-    elseif ($sortBy === 'due_desc') $orderBy = 'ORDER BY total_due DESC';
-    elseif ($sortBy === 'orders_desc') $orderBy = 'ORDER BY orders_count_30d DESC';
-    elseif ($sortBy === 'name_asc') $orderBy = 'ORDER BY customer_name ASC';
 
     // Count total
     $total = 0;
@@ -307,35 +295,25 @@ if ($action === 'customer_list') {
         $total = (int) $stmtCount->fetchColumn();
     } catch (Exception $e) { /* ignore */ }
 
-    // Fetch with BDO join
+    // Fetch
     $customers = [];
     try {
-        $bdoJoin = '';
-        $chk = $db->query("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='odoo_bdos' LIMIT 1");
-        if ($chk->fetchColumn()) {
-            $bdoJoin = "LEFT JOIN (SELECT partner_id, COUNT(*) AS waiting_bdo_count FROM odoo_bdos WHERE state='waiting' GROUP BY partner_id) bdo_cnt ON bdo_cnt.partner_id = COALESCE(cp.odoo_partner_id, cp.customer_id)";
-        }
-
         $sql = "SELECT
-            COALESCE(cp.partner_name, cp.customer_name, '') as customer_name,
-            COALESCE(cp.partner_code, cp.customer_ref, '') as customer_ref,
-            COALESCE(cp.odoo_partner_id, cp.customer_id) as customer_id,
-            COALESCE(cp.odoo_partner_id, cp.customer_id) as partner_id,
-            COALESCE(cp.orders_count_30d, 0) as orders_30d,
-            COALESCE(cp.orders_count_total, 0) as orders_total,
-            COALESCE(cp.spend_30d, 0) as spend_30d,
-            COALESCE(cp.total_due, 0) as total_due,
-            COALESCE(cp.overdue_amount, 0) as overdue_amount,
-            COALESCE(cp.credit_limit, 0) as credit_limit,
-            COALESCE(cp.credit_used, 0) as credit_used,
-            COALESCE(cp.credit_remaining, 0) as credit_remaining,
-            cp.latest_order_at,
-            cp.line_user_id,
-            COALESCE(bdo_cnt.waiting_bdo_count, 0) as waiting_bdo_count
-        FROM odoo_customer_projection cp
-        {$bdoJoin}
+            customer_name,
+            customer_ref,
+            customer_id,
+            odoo_partner_id as partner_id,
+            orders_count_30d,
+            orders_count_total,
+            spend_30d,
+            total_due,
+            overdue_amount,
+            credit_limit,
+            latest_order_at,
+            line_user_id
+        FROM odoo_customer_projection
         {$whereClause}
-        {$orderBy}
+        ORDER BY latest_order_at DESC
         LIMIT {$limit} OFFSET {$offset}";
 
         $stmt = $db->prepare($sql);
@@ -354,37 +332,15 @@ if ($action === 'customer_list') {
     exit;
 }
 
-// ── salesperson_list: ดึงจาก odoo_customer_projection ────────────────
+// ── salesperson_list: ไม่รองรับใน fast endpoint ────────────────
 if ($action === 'salesperson_list') {
-    require_once __DIR__ . '/../config/config.php';
-    require_once __DIR__ . '/../config/database.php';
-
-    try {
-        $db = Database::getInstance()->getConnection();
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
-        exit;
-    }
-
-    $salespersons = [];
-    try {
-        $sql = "SELECT salesperson_id as id, salesperson_name as name, COUNT(*) as customer_count
-                FROM odoo_customer_projection
-                WHERE salesperson_id IS NOT NULL AND salesperson_name IS NOT NULL AND salesperson_name != ''
-                GROUP BY salesperson_id, salesperson_name
-                ORDER BY salesperson_name ASC";
-        $stmt = $db->query($sql);
-        $salespersons = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);
-        exit;
-    }
-
+    // Return fallback so JS tries heavy endpoint
     echo json_encode([
-        'success' => true,
-        'data' => ['salespersons' => $salespersons],
-        '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'action' => $action],
-    ], JSON_UNESCAPED_UNICODE);
+        'success' => false,
+        'error' => 'salesperson_list not supported by fast endpoint',
+        'fallback' => true,
+        'action' => $action,
+    ]);
     exit;
 }
 
