@@ -52,28 +52,49 @@ try {
     }
 
     $cacheTtls = [
-        'stats' => 60,
+        // ── Read-heavy / aggregation queries (60s) ────────────────────────
+        'stats'               => 60,
         'order_grouped_today' => 60,
-        'customer_list' => 60,
-        'invoice_list' => 60,
-        'order_list' => 60,
-        'notification_log' => 60,
-        'salesperson_list' => 300,
-        'overview_today' => 45,
+        'customer_list'       => 60,
+        'invoice_list'        => 60,
+        'order_list'          => 60,
+        'notification_log'    => 60,
+        'pending_bdo_orders'  => 60,
+        'daily_summary_preview' => 60,
+
+        // ── Long-lived reference data (300s) ──────────────────────────────
+        'salesperson_list'    => 300,
+
+        // ── Overview / combined queries (45s) ─────────────────────────────
+        'overview_today'      => 45,
         'customer_full_detail' => 45,
-        'overview_combined' => 45,
-        'odoo_orders' => 30,
-        'odoo_invoices' => 30,
-        'odoo_slips' => 30,
-        'odoo_bdo_list_api' => 30,
-        'customer_detail' => 45,
-        'customer_360' => 30,
-        'pending_bdo_orders' => 60,
-        'slip_center_bdo_overview' => 30,
+        'overview_combined'   => 45,
+        'customer_detail'     => 45,
+
+        // ── Per-record / paginated reads (30s) ────────────────────────────
+        'odoo_orders'                => 30,
+        'odoo_invoices'              => 30,
+        'odoo_slips'                 => 30,
+        'odoo_bdo_list_api'          => 30,
+        'customer_360'               => 30,
+        'slip_center_bdo_overview'   => 30,
+        'activity_log_list'          => 30,
+        'webhook_stats_mini'         => 30,
+        'dlq_stats'                  => 30,
+        'order_timeline'             => 30,
+        'slip_center_bdo_global'     => 30,
+        'order_notes_list'           => 30,
+        'customer_lookup'            => 30,
+        'invoice_lookup'             => 30,
+        'bdo_detail'                 => 30,
+        'bdo_detail_live'            => 30,
+        'odoo_bdo_detail_api'        => 30,
+
+        // ── Fast-changing / user-filtered (20s) ───────────────────────────
         'slip_center_customer_detail' => 20,
-        'activity_log_list' => 30,
-        'webhook_stats_mini' => 30,
-        'dlq_stats' => 30,
+        'list'                        => 20,
+        'detail'                      => 20,
+        'dlq_list'                    => 20,
     ];
     $cacheKey = null;
     $cacheTtl = null;

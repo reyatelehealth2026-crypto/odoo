@@ -284,6 +284,25 @@ if (!function_exists('dashboardApiShouldCache')) {
             }
         }
 
+        // detail/order_timeline/bdo_detail require a record identifier to be useful
+        if ($action === 'detail' && empty($input['id'])) {
+            return false;
+        }
+
+        if ($action === 'order_timeline' && empty($input['order_id']) && empty($input['order_name'])) {
+            return false;
+        }
+
+        if (in_array($action, ['bdo_detail', 'bdo_detail_live', 'odoo_bdo_detail_api'], true)
+            && empty($input['bdo_id']) && empty($input['id'])
+        ) {
+            return false;
+        }
+
+        if ($action === 'order_notes_list' && empty($input['order_id'])) {
+            return false;
+        }
+
         return true;
     }
 }
