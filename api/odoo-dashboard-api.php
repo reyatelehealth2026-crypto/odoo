@@ -2481,7 +2481,7 @@ function getOverviewSlipsSummary($db)
             ORDER BY s.uploaded_at DESC
             LIMIT 5
         ");
-        $stmt->execute();
+        $stmt->execute($openStatuses);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $row) {
             $row['id'] = (int) $row['id'];
@@ -2683,6 +2683,12 @@ function inferOrderProgressStageKey($eventType, $stateLabel)
  * @param string $column
  * @return bool
  */
+// NOTE: The functions below are also defined in odoo-dashboard-functions.php (which is
+// included at the top of this file). The guards below allow the optimised versions from
+// odoo-dashboard-functions.php (with APCu + file caching) to take priority on shared
+// hosting, while still providing a working fallback if this file is ever loaded standalone.
+
+if (!function_exists('hasWebhookColumn')) {
 function hasWebhookColumn($db, $column)
 {
     static $cache = [];
@@ -2713,6 +2719,7 @@ function hasWebhookColumn($db, $column)
 
     return $cache[$column];
 }
+}
 
 /**
  * Resolve the best available webhook timestamp column expression.
@@ -2720,6 +2727,7 @@ function hasWebhookColumn($db, $column)
  * @param PDO $db
  * @return string|null Backticked column name or null if none found.
  */
+if (!function_exists('resolveWebhookTimeColumn')) {
 function resolveWebhookTimeColumn($db)
 {
     foreach (['processed_at', 'created_at', 'received_at', 'updated_at'] as $column) {
@@ -2730,7 +2738,9 @@ function resolveWebhookTimeColumn($db)
 
     return null;
 }
+}
 
+if (!function_exists('webhookRecentWindowWhere')) {
 function webhookRecentWindowWhere($db, $processedAtColumn, $days = 180, $maxRows = 80000)
 {
     $days = max(1, (int) $days);
@@ -2742,10 +2752,12 @@ function webhookRecentWindowWhere($db, $processedAtColumn, $days = 180, $maxRows
 
     return "id >= GREATEST((SELECT MAX(id) - {$maxRows} FROM odoo_webhooks_log), 0)";
 }
+}
 
 /**
  * Get ORDER BY expression for webhook fallback customer list sorting.
  */
+if (!function_exists('webhookCustomerSortExpr')) {
 function webhookCustomerSortExpr($sortBy)
 {
     $map = [
@@ -2758,6 +2770,7 @@ function webhookCustomerSortExpr($sortBy)
     ];
     return $map[$sortBy] ?? 'latest_order_at DESC';
 }
+}
 
 /**
  * Check table existence.
@@ -2766,6 +2779,7 @@ function webhookCustomerSortExpr($sortBy)
  * @param string $table
  * @return bool
  */
+if (!function_exists('tableExists')) {
 function tableExists($db, $table)
 {
     static $cache = [];
@@ -2797,7 +2811,9 @@ function tableExists($db, $table)
 
     return $cache[$table];
 }
+}
 
+if (!function_exists('dashboardApiShouldCache')) {
 function dashboardApiShouldCache($action, $input, $result)
 {
     if (!is_array($result)) {
@@ -2814,7 +2830,9 @@ function dashboardApiShouldCache($action, $input, $result)
 
     return true;
 }
+}
 
+if (!function_exists('dashboardApiBuildCacheKey')) {
 function dashboardApiBuildCacheKey($action, $input)
 {
     if (is_array($input)) {
@@ -2824,7 +2842,9 @@ function dashboardApiBuildCacheKey($action, $input)
 
     return $action . '_' . sha1(json_encode($input, JSON_UNESCAPED_UNICODE));
 }
+}
 
+if (!function_exists('dashboardApiNormalizeCacheInput')) {
 function dashboardApiNormalizeCacheInput(&$value)
 {
     if (!is_array($value)) {
@@ -2839,7 +2859,9 @@ function dashboardApiNormalizeCacheInput(&$value)
     }
     unset($item);
 }
+}
 
+if (!function_exists('dashboardApiCacheDir')) {
 function dashboardApiCacheDir()
 {
     static $dir = null;
@@ -2854,10 +2876,13 @@ function dashboardApiCacheDir()
 
     return $dir;
 }
+}
 
+if (!function_exists('dashboardApiCachePath')) {
 function dashboardApiCachePath($key)
 {
     return dashboardApiCacheDir() . DIRECTORY_SEPARATOR . preg_replace('/[^a-zA-Z0-9_-]/', '_', $key) . '.json';
+}
 }
 
 function dashboardApiCacheRead($key)
@@ -2881,6 +2906,7 @@ function dashboardApiCacheRead($key)
     return $payload;
 }
 
+if (!function_exists('dashboardApiCacheGet')) {
 function dashboardApiCacheGet($key, $ttl)
 {
     $payload = dashboardApiCacheRead($key);
@@ -2894,7 +2920,9 @@ function dashboardApiCacheGet($key, $ttl)
 
     return $payload['d'] ?? null;
 }
+}
 
+// dashboardApiCacheGetStale is only defined here (not in odoo-dashboard-functions.php)
 function dashboardApiCacheGetStale($key, $maxAge)
 {
     $payload = dashboardApiCacheRead($key);
@@ -2909,6 +2937,7 @@ function dashboardApiCacheGetStale($key, $maxAge)
     return $payload['d'] ?? null;
 }
 
+if (!function_exists('dashboardApiCacheSet')) {
 function dashboardApiCacheSet($key, $data)
 {
     $path = dashboardApiCachePath($key);
@@ -2920,6 +2949,7 @@ function dashboardApiCacheSet($key, $data)
     if ($payload !== false) {
         @file_put_contents($path, $payload, LOCK_EX);
     }
+}
 }
 
 // =====================================================================

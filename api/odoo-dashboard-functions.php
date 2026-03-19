@@ -58,7 +58,7 @@ if (!function_exists('_loadWebhookColumns')) {
         // Use file-based cache for shared hosting without APCu
         $dbName = defined('DB_NAME') ? DB_NAME : 'default';
         $cacheFile = sys_get_temp_dir() . '/odoo_wh_cols_' . md5($dbName) . '.cache';
-        $cacheTtl = 300; // 5 minutes
+        $cacheTtl = 3600; // 1 hour — webhook log schema changes only during migrations
 
         // Check file cache first
         if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < $cacheTtl) {
@@ -113,7 +113,7 @@ if (!function_exists('_loadWebhookColumns')) {
         if (!empty($columns)) {
             @file_put_contents($cacheFile, json_encode($columns), LOCK_EX);
             if (function_exists('apcu_store')) {
-                apcu_store($apcuKey, $columns, 30);
+                apcu_store($apcuKey, $columns, 3600);
             }
         }
 
