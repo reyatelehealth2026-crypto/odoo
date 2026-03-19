@@ -254,6 +254,140 @@ if ($action === 'customers_fast') {
     exit;
 }
 
+// ── customer_list: ดึงจาก odoo_customer_projection (indexed) ────────────
+if ($action === 'customer_list') {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../config/database.php';
+
+    try {
+        $db = Database::getInstance()->getConnection();
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
+        exit;
+    }
+
+    $limit  = min((int) ($input['limit'] ?? 30), 200);
+    $offset = max((int) ($input['offset'] ?? 0), 0);
+    $search = trim((string) ($input['search'] ?? ''));
+    $invoiceFilter = trim((string) ($input['invoice_filter'] ?? ''));
+    $sortBy = trim((string) ($input['sort_by'] ?? ''));
+    $salespersonId = trim((string) ($input['salesperson_id'] ?? ''));
+
+    $where = [];
+    $params = [];
+
+    if ($search !== '') {
+        $where[] = '(customer_name LIKE :search OR customer_ref LIKE :search OR partner_name LIKE :search)';
+        $params[':search'] = '%' . $search . '%';
+    }
+    if ($invoiceFilter === 'unpaid') {
+        $where[] = 'COALESCE(total_due,0) > 0';
+    } elseif ($invoiceFilter === 'overdue') {
+        $where[] = 'COALESCE(overdue_amount,0) > 0';
+    }
+    if ($salespersonId !== '') {
+        $where[] = 'salesperson_id = :spid';
+        $params[':spid'] = $salespersonId;
+    }
+
+    $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+    $orderBy = 'ORDER BY latest_order_at DESC';
+    if ($sortBy === 'spend_desc') $orderBy = 'ORDER BY spend_30d DESC';
+    elseif ($sortBy === 'due_desc') $orderBy = 'ORDER BY total_due DESC';
+    elseif ($sortBy === 'orders_desc') $orderBy = 'ORDER BY orders_count_30d DESC';
+    elseif ($sortBy === 'name_asc') $orderBy = 'ORDER BY customer_name ASC';
+
+    // Count total
+    $total = 0;
+    try {
+        $sqlCount = "SELECT COUNT(*) FROM odoo_customer_projection {$whereClause}";
+        $stmtCount = $db->prepare($sqlCount);
+        $stmtCount->execute($params);
+        $total = (int) $stmtCount->fetchColumn();
+    } catch (Exception $e) { /* ignore */ }
+
+    // Fetch with BDO join
+    $customers = [];
+    try {
+        $bdoJoin = '';
+        $chk = $db->query("SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='odoo_bdos' LIMIT 1");
+        if ($chk->fetchColumn()) {
+            $bdoJoin = "LEFT JOIN (SELECT partner_id, COUNT(*) AS waiting_bdo_count FROM odoo_bdos WHERE state='waiting' GROUP BY partner_id) bdo_cnt ON bdo_cnt.partner_id = COALESCE(cp.odoo_partner_id, cp.customer_id)";
+        }
+
+        $sql = "SELECT
+            COALESCE(cp.partner_name, cp.customer_name, '') as customer_name,
+            COALESCE(cp.partner_code, cp.customer_ref, '') as customer_ref,
+            COALESCE(cp.odoo_partner_id, cp.customer_id) as customer_id,
+            COALESCE(cp.odoo_partner_id, cp.customer_id) as partner_id,
+            COALESCE(cp.orders_count_30d, 0) as orders_30d,
+            COALESCE(cp.orders_count_total, 0) as orders_total,
+            COALESCE(cp.spend_30d, 0) as spend_30d,
+            COALESCE(cp.total_due, 0) as total_due,
+            COALESCE(cp.overdue_amount, 0) as overdue_amount,
+            COALESCE(cp.credit_limit, 0) as credit_limit,
+            COALESCE(cp.credit_used, 0) as credit_used,
+            COALESCE(cp.credit_remaining, 0) as credit_remaining,
+            cp.latest_order_at,
+            cp.line_user_id,
+            COALESCE(bdo_cnt.waiting_bdo_count, 0) as waiting_bdo_count
+        FROM odoo_customer_projection cp
+        {$bdoJoin}
+        {$whereClause}
+        {$orderBy}
+        LIMIT {$limit} OFFSET {$offset}";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'data' => ['customers' => $customers, 'total' => $total],
+        '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'action' => $action],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ── salesperson_list: ดึงจาก odoo_customer_projection ────────────────
+if ($action === 'salesperson_list') {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../config/database.php';
+
+    try {
+        $db = Database::getInstance()->getConnection();
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
+        exit;
+    }
+
+    $salespersons = [];
+    try {
+        $sql = "SELECT salesperson_id as id, salesperson_name as name, COUNT(*) as customer_count
+                FROM odoo_customer_projection
+                WHERE salesperson_id IS NOT NULL AND salesperson_name IS NOT NULL AND salesperson_name != ''
+                GROUP BY salesperson_id, salesperson_name
+                ORDER BY salesperson_name ASC";
+        $stmt = $db->query($sql);
+        $salespersons = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'data' => ['salespersons' => $salespersons],
+        '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'action' => $action],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ── Unknown action: redirect to heavy API ───────────────────────────────
 // Return a specific error so the JS client knows to try the heavy endpoint
 http_response_code(200);
