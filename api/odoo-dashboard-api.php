@@ -24,11 +24,19 @@ header('Access-Control-Allow-Headers: Content-Type');
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
-require_once __DIR__ . '/../vendor/autoload.php';
-require_once __DIR__ . '/../classes/RedisCache.php';
+if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+    require_once __DIR__ . '/../vendor/autoload.php';
+}
+if (file_exists(__DIR__ . '/../classes/RedisCache.php')) {
+    require_once __DIR__ . '/../classes/RedisCache.php';
+}
 require_once __DIR__ . '/odoo-dashboard-functions.php';
-require_once __DIR__ . '/../classes/BdoSlipContract.php';
-require_once __DIR__ . '/../classes/OdooRequestDedup.php';
+if (file_exists(__DIR__ . '/../classes/BdoSlipContract.php')) {
+    require_once __DIR__ . '/../classes/BdoSlipContract.php';
+}
+if (file_exists(__DIR__ . '/../classes/OdooRequestDedup.php')) {
+    require_once __DIR__ . '/../classes/OdooRequestDedup.php';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -124,7 +132,7 @@ try {
     /** @var resource|null */
     $dedupFp = null;
 
-    if ($cacheKey !== null) {
+    if ($cacheKey !== null && class_exists('OdooRequestDedup')) {
         $dedup = new OdooRequestDedup();
         [$dedupAcquired, $dedupFp] = $dedup->tryAcquire($cacheKey);
 
@@ -304,7 +312,7 @@ try {
     }
 
     if ($cacheKey !== null && dashboardApiShouldCache($action, $input, $result)) {
-        dashboardApiCacheSet($cacheKey, $result);
+        dashboardApiCacheSet($cacheKey, $result, $cacheTtl ?? 60);
     }
 
     // Dedup: write result so follower workers can read it, then release lock.

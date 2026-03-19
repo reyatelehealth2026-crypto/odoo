@@ -42,11 +42,13 @@ class RedisCache
 
             $this->client = new \Predis\Client(
                 [
-                    'scheme'   => $scheme,
-                    'host'     => defined('REDIS_HOST')     ? REDIS_HOST     : '127.0.0.1',
-                    'port'     => defined('REDIS_PORT')     ? (int) REDIS_PORT : 6379,
-                    'password' => defined('REDIS_PASSWORD') ? REDIS_PASSWORD : null,
-                    'username' => defined('REDIS_USERNAME') ? REDIS_USERNAME : 'default',
+                    'scheme'             => $scheme,
+                    'host'               => defined('REDIS_HOST')     ? REDIS_HOST     : '127.0.0.1',
+                    'port'               => defined('REDIS_PORT')     ? (int) REDIS_PORT : 6379,
+                    'password'           => defined('REDIS_PASSWORD') ? REDIS_PASSWORD : null,
+                    'username'           => defined('REDIS_USERNAME') ? REDIS_USERNAME : 'default',
+                    'timeout'            => 2.0,   // TCP connect timeout in seconds
+                    'read_write_timeout' => 2.0,   // per-command R/W timeout in seconds
                 ],
                 [
                     'parameters' => [
@@ -62,8 +64,8 @@ class RedisCache
                 ]
             );
 
-            // Eager PING — triggers actual TCP connect so we know immediately
-            // if the server is reachable.  Timeout is handled by Predis default (5s).
+            // Eager PING — confirms the TCP+TLS handshake succeeded.
+            // Will throw within 2s if Redis Cloud is unreachable.
             $this->client->ping();
             $this->available = true;
         } catch (\Exception $e) {
