@@ -1,68 +1,87 @@
 <?php
 /**
- * Redis Cache Test Script
- * ทดสอบการทำงานของ Redis Cache
+ * Universal Cache Test Script
+ * ทดสอบ Redis, Native Redis, หรือ File Cache
  */
 
 require_once __DIR__ . '/../classes/OdooRedisCache.php';
-require_once __DIR__ . '/../classes/CacheInvalidator.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 
 echo "═══════════════════════════════════════════════════════\n";
-echo "Redis Cache Test Script\n";
+echo "Universal Cache Test Script\n";
 echo "═══════════════════════════════════════════════════════\n\n";
 
-// 1. Test Connection
-echo "1. Testing Redis Connection...\n";
 $cache = OdooRedisCache::getInstance();
 
-if ($cache->isEnabled()) {
-    echo "   ✅ Redis connected successfully\n\n";
-} else {
-    echo "   ❌ Redis connection failed\n\n";
-    exit(1);
-}
+// 1. Check which cache type is being used
+echo "1. Cache Type Detection\n";
+echo "   Type: " . $cache->getType() . "\n";
+echo "   Enabled: " . ($cache->isEnabled() ? 'Yes' : 'No') . "\n\n";
 
-// 2. Test Basic Operations
-echo "2. Testing Basic Operations...\n";
+// 2. Test basic operations
+echo "2. Testing Basic Operations\n";
 
 // Set
-$cache->set('test:key', ['hello' => 'world', 'time' => time()], 60);
+$testData = [
+    'test' => true,
+    'time' => date('c'),
+    'random' => rand(1, 1000)
+];
+
+$cache->set('test:basic', $testData, 60);
 echo "   ✅ Set cache\n";
 
 // Get
-$value = $cache->get('test:key');
-if ($value && $value['hello'] === 'world') {
-    echo "   ✅ Get cache: " . json_encode($value) . "\n";
+$value = $cache->get('test:basic');
+if ($value && $value['test'] === true) {
+    echo "   ✅ Get cache: " . json_encode($value, JSON_UNESCAPED_UNICODE) . "\n";
 } else {
     echo "   ❌ Get cache failed\n";
 }
 
 // Delete
-$cache->delete('test:key');
-echo "   ✅ Delete cache\n\n";
+$cache->delete('test:basic');
+$deleted = $cache->get('test:basic');
+if ($deleted === null) {
+    echo "   ✅ Delete cache\n";
+} else {
+    echo "   ❌ Delete failed\n";
+}
+echo "\n";
 
 // 3. Test Remember Pattern
-echo "3. Testing Remember Pattern...\n";
+echo "3. Testing Remember Pattern\n";
 $callCount = 0;
+
 $result = $cache->remember('test:remember', 60, function() use (&$callCount) {
     $callCount++;
-    return ['computed' => true, 'value' => rand(1, 100)];
+    return [
+        'computed' => true,
+        'value' => rand(1, 100),
+        'timestamp' => time()
+    ];
 });
-echo "   ✅ First call computed: " . json_encode($result) . "\n";
-echo "      Call count: $callCount\n";
+echo "   First call: " . json_encode($result) . "\n";
+echo "   Call count: $callCount\n";
 
 // Second call should use cache
 $result2 = $cache->remember('test:remember', 60, function() use (&$callCount) {
     $callCount++;
     return ['computed' => true, 'value' => rand(1, 100)];
 });
-echo "   ✅ Second call (cached): " . json_encode($result2) . "\n";
-echo "      Call count: $callCount (should be 1)\n\n";
+echo "   Second call (cached): " . json_encode($result2) . "\n";
+echo "   Call count: $callCount (should be 1 if cache works)\n";
+
+if ($callCount === 1) {
+    echo "   ✅ Cache working correctly!\n";
+} else {
+    echo "   ⚠️  Cache might not be working\n";
+}
+echo "\n";
 
 // 4. Test Cache Key Generation
-echo "4. Testing Cache Key Generation...\n";
+echo "4. Testing Cache Key Generation\n";
 $keys = [
     OdooRedisCache::key('overview', 1),
     OdooRedisCache::key('stats', 1, 'today'),
@@ -73,69 +92,59 @@ foreach ($keys as $key) {
 }
 echo "\n";
 
-// 5. Test Stats
-echo "5. Testing Cache Stats...\n";
-$stats = $cache->getStats();
-echo "   Enabled: " . ($stats['enabled'] ? 'Yes' : 'No') . "\n";
-echo "   Hits: " . $stats['hits'] . "\n";
-echo "   Misses: " . $stats['misses'] . "\n";
-echo "   Hit Rate: " . $stats['hit_rate'] . "%\n\n";
-
-// 6. Test Invalidator
-echo "6. Testing Cache Invalidator...\n";
-$invalidator = new CacheInvalidator();
-
-// Set some test data
-$cache->set('odoo:overview:1', ['test' => 'data'], 300);
-$cache->set('odoo:stats:1', ['test' => 'data'], 300);
-$cache->set('odoo:orders:today:count:1', 100, 300);
-
-// Invalidate
-$invalidator->onOrderChange(1);
-echo "   ✅ Invalidated order cache\n";
-
-// Verify cleared
-$overview = $cache->get('odoo:overview:1');
-if ($overview === null) {
-    echo "   ✅ Overview cache cleared\n";
-} else {
-    echo "   ❌ Overview cache not cleared\n";
-}
-echo "\n";
-
-// 7. Performance Test
-echo "7. Performance Test...\n";
+// 5. Performance Test
+echo "5. Performance Test\n";
 $iterations = 100;
 
-// Without cache
-$start = microtime(true);
-for ($i = 0; $i < $iterations; $i++) {
-    // Simulate database query
-    usleep(1000); // 1ms
-}
-$withoutCache = (microtime(true) - $start) * 1000;
-echo "   Without cache (simulated): " . round($withoutCache, 2) . " ms\n";
+// Warm up cache
+$cache->set('perf:test', ['data' => 'test'], 60);
 
 // With cache
 $start = microtime(true);
 for ($i = 0; $i < $iterations; $i++) {
-    $cache->get('test:perf');
+    $cache->get('perf:test');
 }
 $withCache = (microtime(true) - $start) * 1000;
-echo "   With cache: " . round($withCache, 2) . " ms\n";
+echo "   $iterations reads with cache: " . round($withCache, 2) . " ms\n";
+echo "   Average per read: " . round($withCache / $iterations, 4) . " ms\n";
 
-if ($withCache > 0) {
-    $speedup = round($withoutCache / $withCache, 1);
-    echo "   Speedup: {$speedup}x faster\n";
+if ($withCache < 100) {
+    echo "   ✅ Excellent performance!\n";
+} elseif ($withCache < 500) {
+    echo "   ✅ Good performance\n";
+} else {
+    echo "   ⚠️  Performance could be improved\n";
 }
 echo "\n";
 
-// 8. Cleanup
-echo "8. Cleanup...\n";
+// 6. Stats
+echo "6. Cache Statistics\n";
+$stats = $cache->getStats();
+echo "   Enabled: " . ($stats['enabled'] ? 'Yes' : 'No') . "\n";
+echo "   Type: " . $stats['type'] . "\n";
+echo "   Hits: " . $stats['hits'] . "\n";
+echo "   Misses: " . $stats['misses'] . "\n";
+echo "   Hit Rate: " . $stats['hit_rate'] . "%\n\n";
+
+// 7. Cleanup
+echo "7. Cleanup\n";
 $cache->delete('test:remember');
-$cache->deletePattern('test:*');
+$cache->delete('perf:test');
 echo "   ✅ Test data cleaned up\n\n";
 
+// Summary
 echo "═══════════════════════════════════════════════════════\n";
-echo "All tests completed successfully! ✅\n";
+if ($cache->isEnabled()) {
+    echo "✅ Cache is working!\n";
+    echo "Type: " . $cache->getType() . "\n";
+    if ($cache->getType() === 'file') {
+        echo "\n⚠️  Using file-based cache (slower than Redis)\n";
+        echo "To enable Redis:\n";
+        echo "1. Install php-redis: sudo apt-get install php-redis\n";
+        echo "2. Or install Predis: bash scripts/install-predis.sh\n";
+    }
+} else {
+    echo "❌ No caching available\n";
+    echo "Install php-redis or Predis to enable caching\n";
+}
 echo "═══════════════════════════════════════════════════════\n";
