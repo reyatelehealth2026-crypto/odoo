@@ -67,23 +67,20 @@ preview_migrations() {
     log_info "Migration ที่จะรัน:"
     echo ""
     
-    echo -e "${YELLOW}1. database/migration_odoo_api_performance.sql${NC}"
-    echo "   - odoo_webhooks_log: 6 indexes + 2 generated columns"
-    echo "   - odoo_orders: 4 indexes"
-    echo "   - odoo_invoices: 2 indexes"
-    echo "   - odoo_bdos: 1 index"
-    echo "   - odoo_customer_projection: 2 indexes"
+    echo -e "${YELLOW}1. database/migration_comprehensive_indexes.sql${NC} ${GREEN}(RECOMMENDED)${NC}"
+    echo "   - ครอบคลุมทุก query pattern จากการวิเคราะห์ codebase"
+    echo "   - 13 ตาราง, ~70 indexes"
+    echo "   - รวม generated columns สำหรับ JSON queries"
     echo ""
     
-    echo -e "${YELLOW}2. database/migration_missing_indexes.sql${NC}"
-    echo "   - odoo_notification_log: 4 indexes"
-    echo "   - odoo_bdo_context: 2 indexes"
-    echo "   - odoo_bdo_orders: 4 indexes"
-    echo "   - odoo_webhook_dlq: 4 indexes"
-    echo "   - odoo_line_users: 2 indexes"
-    echo "   - odoo_slip_uploads: 4 indexes"
-    echo "   - odoo_orders_summary: 3 indexes"
-    echo "   - odoo_customers_cache: 2 indexes"
+    echo -e "${YELLOW}2. database/migration_odoo_api_performance.sql${NC}"
+    echo "   - Core API performance indexes"
+    echo "   - 6 tables, ~17 indexes"
+    echo ""
+    
+    echo -e "${YELLOW}3. database/migration_missing_indexes.sql${NC}"
+    echo "   - Missing indexes จากแผนเดิม"
+    echo "   - 8 tables, ~25 indexes"
     echo ""
 }
 
@@ -105,6 +102,9 @@ run_migration() {
     local alter_count=$(grep -c "ALTER TABLE" "$file" || echo "0")
     local index_count=$(grep -c "ADD INDEX" "$file" || echo "0")
     log_info "พบ $alter_count ALTER TABLE, $index_count ADD INDEX"
+    
+    # Show warning for large tables
+    log_warn "⚠️  ตารางใหญ่ (odoo_webhooks_log) อาจใช้เวลา 4-6 นาที"
     
     # Run migration with timing
     local start_time=$(date +%s)
@@ -129,7 +129,8 @@ verify_indexes() {
     mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" <<'EOF'
 SELECT 
     table_name,
-    COUNT(*) as index_count
+    COUNT(*) as index_count,
+    GROUP_CONCAT(DISTINCT CASE WHEN index_name LIKE 'idx_%' THEN index_name END ORDER BY index_name SEPARATOR ', ') as new_indexes
 FROM information_schema.statistics 
 WHERE table_schema = DATABASE()
     AND table_name IN (
@@ -147,50 +148,53 @@ WHERE table_schema = DATABASE()
     )
     AND index_name != 'PRIMARY'
 GROUP BY table_name
-ORDER BY table_name;
+ORDER BY FIELD(table_name, 
+    'odoo_webhooks_log',
+    'odoo_notification_log', 
+    'odoo_line_users',
+    'odoo_slip_uploads',
+    'odoo_bdos'
+);
 EOF
 }
 
 # Run query performance test
 test_queries() {
     echo ""
-    log_info "ทดสอบ query performance (ก่อน/หลัง comparison)..."
+    log_info "ทดสอบ query performance..."
     echo ""
     
     mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" <<'EOF'
--- Test 1: Webhooks count today
-SELECT 
-    'webhooks_today' as test_name,
-    COUNT(*) as result,
-    COUNT(*) > 0 as has_data
-FROM odoo_webhooks_log 
-WHERE created_at >= CURDATE();
+SELECT 'TEST' as type, 'webhooks_today' as name, COUNT(*) as result, 'rows' as unit
+FROM odoo_webhooks_log WHERE created_at >= CURDATE()
+UNION ALL
+SELECT 'TEST', 'notification_today', COUNT(*), 'rows'
+FROM odoo_notification_log WHERE sent_at >= CURDATE() AND sent_at < CURDATE() + INTERVAL 1 DAY
+UNION ALL
+SELECT 'TEST', 'pending_slips', COUNT(*), 'rows'
+FROM odoo_slip_uploads WHERE status IN ('new','pending')
+UNION ALL
+SELECT 'TEST', 'bdo_context_groups', COUNT(*), 'groups'
+FROM (SELECT bdo_id FROM odoo_bdo_context GROUP BY bdo_id LIMIT 10) t
+UNION ALL
+SELECT 'TEST', 'line_users', COUNT(*), 'rows'
+FROM odoo_line_users;
+EOF
+}
 
--- Test 2: Notification count today  
-SELECT 
-    'notification_today' as test_name,
-    COUNT(*) as result
-FROM odoo_notification_log 
-WHERE sent_at >= CURDATE() 
-    AND sent_at < CURDATE() + INTERVAL 1 DAY;
-
--- Test 3: BDO context group by (common query)
-SELECT 
-    'bdo_context_groups' as test_name,
-    COUNT(*) as result
-FROM (
-    SELECT bdo_id, MAX(id) as max_id 
-    FROM odoo_bdo_context 
-    GROUP BY bdo_id 
-    LIMIT 10
-) t;
-
--- Test 4: Pending slips count
-SELECT 
-    'pending_slips' as test_name,
-    COUNT(*) as result
-FROM odoo_slip_uploads 
-WHERE status IN ('new','pending');
+# Run EXPLAIN analysis
+explain_queries() {
+    echo ""
+    log_info "ตรวจสอบ query plans (EXPLAIN)..."
+    echo ""
+    
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" <<'EOF'
+-- Test if indexes are being used
+SELECT 'EXPLAIN webhooks created_at' as test, 
+    CASE WHEN possible_keys LIKE '%created_at%' THEN '✓ Index available' ELSE '✗ No index' END as status
+FROM information_schema.statistics 
+WHERE table_schema = DATABASE() AND table_name = 'odoo_webhooks_log' AND column_name = 'created_at'
+LIMIT 1;
 EOF
 }
 
@@ -202,9 +206,48 @@ main() {
     # Preview
     preview_migrations
     
+    # Migration selection
+    echo ""
+    log_info "เลือก migration ที่ต้องการรัน:"
+    echo "  1) migration_comprehensive_indexes.sql ${GREEN}(แนะนำ - ครอบคลุมทุก query)${NC}"
+    echo "  2) migration_odoo_api_performance.sql (เฉพาะ core tables)"
+    echo "  3) migration_missing_indexes.sql (เฉพาะ missing indexes)"
+    echo "  4) ทั้งหมด (all migrations in order)"
+    echo "  5) ยกเลิก"
+    echo ""
+    read -p "เลือก (1-5): " choice
+    
+    case $choice in
+        1)
+            migration_file="database/migration_comprehensive_indexes.sql"
+            migration_name="Comprehensive Index Migration"
+            ;;
+        2)
+            migration_file="database/migration_odoo_api_performance.sql"
+            migration_name="API Performance Indexes"
+            ;;
+        3)
+            migration_file="database/migration_missing_indexes.sql"
+            migration_name="Missing Indexes"
+            ;;
+        4)
+            migration_file="all"
+            migration_name="All Migrations"
+            ;;
+        5)
+            log_info "ยกเลิกการรัน migration"
+            exit 0
+            ;;
+        *)
+            log_error "ตัวเลือกไม่ถูกต้อง"
+            exit 1
+            ;;
+    esac
+    
     # Confirm
     echo ""
     log_warn "⚠️  การรัน migration จะเปลี่ยนแปลง database structure"
+    log_warn "⚠️  ตาราง odoo_webhooks_log (2.4M+ rows) อาจใช้เวลานาน"
     read -p "ต้องการดำเนินการต่อ? (yes/no): " confirm
     
     if [ "$confirm" != "yes" ]; then
@@ -215,9 +258,14 @@ main() {
     # Backup
     backup_schemas
     
-    # Run migrations
-    run_migration "database/migration_odoo_api_performance.sql" "Migration 1: API Performance Indexes" || exit 1
-    run_migration "database/migration_missing_indexes.sql" "Migration 2: Missing Indexes" || exit 1
+    # Run migration(s)
+    if [ "$migration_file" = "all" ]; then
+        run_migration "database/migration_odoo_api_performance.sql" "Migration 1: API Performance" || exit 1
+        run_migration "database/migration_missing_indexes.sql" "Migration 2: Missing Indexes" || exit 1
+        run_migration "database/migration_comprehensive_indexes.sql" "Migration 3: Comprehensive Indexes" || exit 1
+    else
+        run_migration "$migration_file" "$migration_name" || exit 1
+    fi
     
     # Verify
     verify_indexes
@@ -225,12 +273,17 @@ main() {
     # Test queries
     test_queries
     
+    # Explain
+    explain_queries
+    
     echo ""
     echo "═══════════════════════════════════════════════════════════"
     log_success "Migration เสร็จสิ้นทั้งหมด!"
     echo ""
     log_info "ไฟล์ backup: $BACKUP_DIR/schema_backup_$TIMESTAMP.sql"
-    log_info "รัน 'node scripts/analyze-slow-queries.php' เพื่อดูผลลัพธ์"
+    log_info "รัน 'node scripts/analyze-slow-queries.php' เพื่อดูผลลัพธ์เต็ม"
+    echo ""
+    log_warn "หมายเหตุ: หากต้องการ rollback ให้ใช้ไฟล์ backup ที่สร้างไว้"
     echo "═══════════════════════════════════════════════════════════"
 }
 
