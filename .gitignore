@@ -110,3 +110,4 @@ database/*.sql
 *.png
 DB_CONNECTION.md
 *.md
+!AGENTS.md
