@@ -342,12 +342,23 @@ if (!function_exists('dashboardApiCachePath')) {
 }
 
 /**
- * Cache read — tries APCu first, then falls back to file.
+ * Cache read — L0: Redis → L1: APCu → L2: File.
+ *
+ * Redis is the primary shared cache (shared across all PHP workers).
+ * APCu and file are local fallbacks for when Redis is unavailable.
  */
 if (!function_exists('dashboardApiCacheGet')) {
     function dashboardApiCacheGet($key, $ttl)
     {
-        // L1: APCu (fastest)
+        // L0: Redis (shared, persistent across workers)
+        if (class_exists('RedisCache')) {
+            $data = RedisCache::getInstance()->get('dash:' . $key);
+            if ($data !== null) {
+                return $data;
+            }
+        }
+
+        // L1: APCu (per-process, fast)
         if (function_exists('apcu_fetch')) {
             $apcuKey = 'dash_' . $key;
             $data = apcu_fetch($apcuKey, $hit);
@@ -380,9 +391,14 @@ if (!function_exists('dashboardApiCacheGet')) {
 
         $data = $payload['d'] ?? null;
 
-        // Promote to APCu for faster subsequent reads
-        if ($data !== null && function_exists('apcu_store')) {
-            apcu_store('dash_' . $key, $data, $ttl);
+        // Promote to upper layers for faster subsequent reads
+        if ($data !== null) {
+            if (function_exists('apcu_store')) {
+                apcu_store('dash_' . $key, $data, $ttl);
+            }
+            if (class_exists('RedisCache')) {
+                RedisCache::getInstance()->set('dash:' . $key, $data, $ttl);
+            }
         }
 
         return $data;
@@ -390,11 +406,23 @@ if (!function_exists('dashboardApiCacheGet')) {
 }
 
 /**
- * Cache write — writes to both APCu and file atomically.
+ * Cache write — writes to L0 Redis, L1 APCu, and L2 file atomically.
+ * Also stores a stale copy in Redis with ODOO_DASHBOARD_STALE_TTL for
+ * error-fallback reads (dashboardApiCacheGetStale).
  */
 if (!function_exists('dashboardApiCacheSet')) {
     function dashboardApiCacheSet($key, $data, $ttl = 60)
     {
+        $staleTtl = defined('ODOO_DASHBOARD_STALE_TTL') ? (int) ODOO_DASHBOARD_STALE_TTL : 300;
+
+        // L0: Redis
+        if (class_exists('RedisCache')) {
+            $redis = RedisCache::getInstance();
+            $redis->set('dash:' . $key, $data, $ttl);
+            // Keep a stale copy alive longer so error-fallback can serve it
+            $redis->set('stale:' . $key, $data, max($ttl, $staleTtl));
+        }
+
         // L1: APCu
         if (function_exists('apcu_store')) {
             apcu_store('dash_' . $key, $data, $ttl);
@@ -414,6 +442,45 @@ if (!function_exists('dashboardApiCacheSet')) {
             }
             @unlink($tmpPath); // cleanup if rename failed
         }
+    }
+}
+
+/**
+ * Stale cache read — returns data even if the normal TTL has expired.
+ * Checks Redis stale key first, then falls back to file-based stale read.
+ */
+if (!function_exists('dashboardApiCacheGetStale')) {
+    function dashboardApiCacheGetStale($key, $maxAge)
+    {
+        // Try Redis stale key first (longer-lived copy written by dashboardApiCacheSet)
+        if (class_exists('RedisCache')) {
+            $data = RedisCache::getInstance()->get('stale:' . $key);
+            if ($data !== null) {
+                return $data;
+            }
+        }
+
+        // Fallback: read file cache ignoring normal TTL, honour $maxAge only
+        $path = dashboardApiCachePath($key);
+        if (!is_file($path)) {
+            return null;
+        }
+
+        $raw = @file_get_contents($path);
+        if ($raw === false || $raw === '') {
+            return null;
+        }
+
+        $payload = json_decode($raw, true);
+        if (!is_array($payload) || !isset($payload['t'])) {
+            return null;
+        }
+
+        if ((time() - (int) $payload['t']) > $maxAge) {
+            return null;
+        }
+
+        return $payload['d'] ?? null;
     }
 }
 

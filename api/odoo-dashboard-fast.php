@@ -43,6 +43,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $action = trim((string) ($input['action'] ?? ''));
 
+// ── Redis bootstrap (optional, graceful) ─────────────────────────────────
+// Load config + RedisCache only for actions that benefit from caching.
+// health and circuit_breaker_* skip this to stay truly dependency-free.
+$_redisCacheableActions = ['overview_fast', 'orders_today_fast', 'customers_fast'];
+
+if (in_array($action, $_redisCacheableActions, true)) {
+    if (file_exists(__DIR__ . '/../config/config.php')) {
+        require_once __DIR__ . '/../config/config.php';
+    }
+    if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
+        require_once __DIR__ . '/../vendor/autoload.php';
+    }
+    if (file_exists(__DIR__ . '/../classes/RedisCache.php')) {
+        require_once __DIR__ . '/../classes/RedisCache.php';
+    }
+}
+
+/**
+ * Fast-endpoint Redis cache helper.
+ * TTLs are short (15–30s) because these actions query live data.
+ */
+function fastCacheGet(string $key): ?array
+{
+    if (!class_exists('RedisCache')) return null;
+    return RedisCache::getInstance()->get('fast:' . $key);
+}
+
+function fastCacheSet(string $key, array $data, int $ttl): void
+{
+    if (!class_exists('RedisCache')) return;
+    RedisCache::getInstance()->set('fast:' . $key, $data, $ttl);
+}
+
 // ── health: instant, no DB ──────────────────────────────────────────────
 if ($action === '' || $action === 'health') {
     echo json_encode([
@@ -89,7 +122,18 @@ if ($action === 'circuit_breaker_status' || $action === 'circuit_breaker_reset')
 
 // ── overview_fast: uses ONLY indexed sync tables ────────────────────────
 if ($action === 'overview_fast') {
-    require_once __DIR__ . '/../config/config.php';
+    // Redis cache check (TTL 20s — overview refreshes fast enough)
+    $cacheKey = 'overview_fast';
+    $cached = fastCacheGet($cacheKey);
+    if ($cached !== null) {
+        echo json_encode([
+            'success' => true,
+            'data'    => $cached,
+            '_meta'   => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'overview_fast'],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     require_once __DIR__ . '/../config/database.php';
     require_once __DIR__ . '/odoo-dashboard-functions.php';
 
@@ -161,17 +205,33 @@ if ($action === 'overview_fast') {
         }
     } catch (Exception $e) { /* table may not exist */ }
 
+    fastCacheSet($cacheKey, $r, 20);
+
     echo json_encode([
         'success' => true,
-        'data' => $r,
-        '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'overview_fast'],
+        'data'    => $r,
+        '_meta'   => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'overview_fast'],
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 // ── orders_today_fast: ดึงจาก odoo_orders_summary (cache table) ─────────
 if ($action === 'orders_today_fast') {
-    require_once __DIR__ . '/../config/config.php';
+    $limit = min((int) ($input['limit'] ?? 50), 200);
+    $cacheKey = 'orders_today_fast_' . $limit;
+
+    $cached = fastCacheGet($cacheKey);
+    if ($cached !== null) {
+        header('Cache-Control: private, max-age=30');
+        header('Vary: Accept-Encoding');
+        echo json_encode([
+            'success' => true,
+            'data'    => $cached,
+            '_meta'   => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'orders_today_fast'],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     require_once __DIR__ . '/../config/database.php';
 
     try {
@@ -185,7 +245,6 @@ if ($action === 'orders_today_fast') {
     header('Vary: Accept-Encoding');
 
     try {
-        $limit = min((int) ($input['limit'] ?? 50), 200);
         $stmt = $db->prepare("
             SELECT order_key, customer_name, customer_ref, amount_total,
                    state, payment_status, date_order, last_event_at
@@ -198,10 +257,13 @@ if ($action === 'orders_today_fast') {
         $stmt->execute();
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $data = ['orders' => $orders];
+        fastCacheSet($cacheKey, $data, 30);
+
         echo json_encode([
             'success' => true,
-            'data' => ['orders' => $orders],
-            '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'orders_today_fast'],
+            'data'    => $data,
+            '_meta'   => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'orders_today_fast'],
         ], JSON_UNESCAPED_UNICODE);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);
@@ -211,7 +273,22 @@ if ($action === 'orders_today_fast') {
 
 // ── customers_fast: ดึงจาก odoo_customers_cache (cache table) ───────────
 if ($action === 'customers_fast') {
-    require_once __DIR__ . '/../config/config.php';
+    $limit  = min((int) ($input['limit'] ?? 50), 500);
+    $offset = max((int) ($input['offset'] ?? 0), 0);
+    $cacheKey = 'customers_fast_' . $limit . '_' . $offset;
+
+    $cached = fastCacheGet($cacheKey);
+    if ($cached !== null) {
+        header('Cache-Control: private, max-age=30');
+        header('Vary: Accept-Encoding');
+        echo json_encode([
+            'success' => true,
+            'data'    => $cached,
+            '_meta'   => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'customers_fast'],
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     require_once __DIR__ . '/../config/database.php';
 
     try {
@@ -225,8 +302,6 @@ if ($action === 'customers_fast') {
     header('Vary: Accept-Encoding');
 
     try {
-        $limit  = min((int) ($input['limit'] ?? 50), 500);
-        $offset = max((int) ($input['offset'] ?? 0), 0);
         $stmt = $db->prepare("
             SELECT customer_id, customer_name, customer_ref, phone,
                    total_due, overdue_amount, latest_order_at, orders_count_total
@@ -239,13 +314,16 @@ if ($action === 'customers_fast') {
         $stmt->execute();
         $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $data = [
+            'customers'  => $customers,
+            'pagination' => ['limit' => $limit, 'offset' => $offset, 'has_more' => count($customers) === $limit],
+        ];
+        fastCacheSet($cacheKey, $data, 30);
+
         echo json_encode([
             'success' => true,
-            'data' => [
-                'customers'  => $customers,
-                'pagination' => ['limit' => $limit, 'offset' => $offset, 'has_more' => count($customers) === $limit],
-            ],
-            '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'customers_fast'],
+            'data'    => $data,
+            '_meta'   => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'customers_fast'],
         ], JSON_UNESCAPED_UNICODE);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);

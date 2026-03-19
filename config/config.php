@@ -137,6 +137,16 @@ define('ODOO_API_RATE_LIMIT', 60); // requests per minute
 define('ODOO_WEBHOOK_TIMEOUT', 5); // seconds - must respond within this time
 define('ODOO_DASHBOARD_STALE_TTL', $odooDashboardStaleEnv !== false ? max(30, (int) $odooDashboardStaleEnv) : 300); // seconds
 
+// ============================================================================
+// Redis Cache Configuration (Redis Cloud)
+// ============================================================================
+define('REDIS_HOST',     getenv('REDIS_HOST')     ?: 'redis-13718.fcrce172.us-east-1-1.ec2.cloud.redislabs.com');
+define('REDIS_PORT',     (int) (getenv('REDIS_PORT')     ?: 13718));
+define('REDIS_PASSWORD', getenv('REDIS_PASSWORD') ?: '8aOsi5ZlcevxIxkXOFn4b4qshhMTHKC5');
+define('REDIS_USERNAME', getenv('REDIS_USERNAME') ?: 'default');
+define('REDIS_TLS',      true);
+define('REDIS_KEY_PREFIX', 'cny:');
+
 // Odoo Product API credentials (for /ineco_gc endpoints)
 $defaultCnyOdooApiUser = ODOO_ENVIRONMENT === 'production' ? 'webapi_user2@cny.co' : '';
 $defaultCnyOdooUserToken = ODOO_ENVIRONMENT === 'production'

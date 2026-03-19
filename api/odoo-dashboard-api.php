@@ -24,6 +24,8 @@ header('Access-Control-Allow-Headers: Content-Type');
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../classes/RedisCache.php';
 require_once __DIR__ . '/odoo-dashboard-functions.php';
 require_once __DIR__ . '/../classes/BdoSlipContract.php';
 require_once __DIR__ . '/../classes/OdooRequestDedup.php';
@@ -2973,7 +2975,9 @@ function dashboardApiCacheGet($key, $ttl)
 }
 }
 
-// dashboardApiCacheGetStale is only defined here (not in odoo-dashboard-functions.php)
+// dashboardApiCacheGetStale is now defined in odoo-dashboard-functions.php
+// (checks Redis stale key first, then falls back to file-based stale read)
+if (!function_exists('dashboardApiCacheGetStale')) {
 function dashboardApiCacheGetStale($key, $maxAge)
 {
     $payload = dashboardApiCacheRead($key);
@@ -2986,6 +2990,7 @@ function dashboardApiCacheGetStale($key, $maxAge)
     }
 
     return $payload['d'] ?? null;
+}
 }
 
 if (!function_exists('dashboardApiCacheSet')) {
