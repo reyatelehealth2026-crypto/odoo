@@ -146,7 +146,7 @@ function showSection(id){
 let _lastApiDurationMs = null;
 
 // Actions supported by the lightweight fast endpoint
-const WH_FAST_ACTIONS=new Set(['health','overview_fast','orders_today_fast','customers_fast','circuit_breaker_status','circuit_breaker_reset']);
+const WH_FAST_ACTIONS=new Set(['health','overview_fast','orders_today_fast','customers_fast','circuit_breaker_status','circuit_breaker_reset','customer_list','salesperson_list']);
 
 async function whApiCall(data){
     const tried=[];
