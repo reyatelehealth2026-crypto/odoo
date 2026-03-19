@@ -26,6 +26,7 @@ require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/odoo-dashboard-functions.php';
 require_once __DIR__ . '/../classes/BdoSlipContract.php';
+require_once __DIR__ . '/../classes/OdooRequestDedup.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -85,6 +86,39 @@ try {
                 'meta' => ['cache' => 'hit']
             ], JSON_UNESCAPED_UNICODE);
             exit;
+        }
+    }
+
+    // ── Request deduplication ─────────────────────────────────────────────────
+    // ถ้า 3 user เปิดหน้า dashboard พร้อมกัน หลัง cache miss:
+    //   Worker 1 (leader)   → ได้ lock → คำนวณ → เขียนผล → release
+    //   Worker 2,3 (follower) → lock ไม่ได้ → รอ result file (poll 100ms) → return ผล
+    // ผล: Odoo ได้รับ 1 request แทน 3 — ลด load ~67%
+    // ใช้ file locking (flock) ที่ทำงานได้บน shared hosting ไม่ต้องการ Redis/APCu
+    // ──────────────────────────────────────────────────────────────────────────
+    /** @var OdooRequestDedup|null */
+    $dedup = null;
+    /** @var resource|null */
+    $dedupFp = null;
+
+    if ($cacheKey !== null) {
+        $dedup = new OdooRequestDedup();
+        [$dedupAcquired, $dedupFp] = $dedup->tryAcquire($cacheKey);
+
+        if (!$dedupAcquired) {
+            // Another worker is computing this exact action+params — wait for its result.
+            $dedupResult = $dedup->waitResult($cacheKey, 5000);
+            if ($dedupResult !== null) {
+                echo json_encode([
+                    'success' => true,
+                    'data'    => $dedupResult,
+                    'meta'    => ['cache' => 'dedup'],
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            // Timeout (leader took >5s or crashed) — try to acquire lock ourselves.
+            // If we get it, we become the new leader. If not, proceed without dedup.
+            [$dedupAcquired, $dedupFp] = $dedup->tryAcquire($cacheKey);
         }
     }
 
@@ -223,6 +257,12 @@ try {
                 throw new Exception('Unknown action: ' . $action);
         }
     } catch (Exception $actionException) {
+        // Release dedup lock on action error so followers don't wait until timeout.
+        if ($dedupFp !== null && $dedup !== null) {
+            $dedup->releaseOnError($dedupFp);
+            $dedupFp = null;
+        }
+
         if ($cacheKey !== null) {
             $staleResult = dashboardApiCacheGetStale($cacheKey, defined('ODOO_DASHBOARD_STALE_TTL') ? (int) ODOO_DASHBOARD_STALE_TTL : 300);
             if ($staleResult !== null) {
@@ -244,9 +284,20 @@ try {
         dashboardApiCacheSet($cacheKey, $result);
     }
 
+    // Dedup: write result so follower workers can read it, then release lock.
+    if ($dedupFp !== null && $dedup !== null && isset($result) && is_array($result)) {
+        $dedup->complete($cacheKey, $dedupFp, $result);
+        $dedupFp = null;
+    }
+
     echo json_encode(['success' => true, 'data' => $result], JSON_UNESCAPED_UNICODE);
 
 } catch (Exception $e) {
+    // Release dedup lock if still held (action threw and re-throw reached here).
+    if (!empty($dedupFp) && !empty($dedup)) {
+        $dedup->releaseOnError($dedupFp);
+    }
+
     http_response_code(400);
     echo json_encode(['success' => false, 'error' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
 }

@@ -20,27 +20,35 @@ class OdooCircuitBreaker
     private int $recoveryTimeout;
     private int $halfOpenMaxAttempts;
     private string $stateDir;
+    /** @var \PDO|null */
+    private $db;
 
     private const STATE_CLOSED = 'closed';
     private const STATE_OPEN = 'open';
     private const STATE_HALF_OPEN = 'half_open';
 
     /**
-     * @param string $serviceName       Unique key per upstream (e.g. 'odoo_reya', 'odoo_cny')
-     * @param int    $failureThreshold  Consecutive failures before opening circuit
-     * @param int    $recoveryTimeout   Seconds to wait before half-open probe
-     * @param int    $halfOpenMaxAttempts Max probe requests in half-open state
+     * @param string    $serviceName         Unique key per upstream (e.g. 'odoo_reya', 'odoo_cny')
+     * @param int       $failureThreshold    Consecutive failures before opening circuit
+     * @param int       $recoveryTimeout     Seconds to wait before half-open probe
+     * @param int       $halfOpenMaxAttempts Max probe requests in half-open state
+     * @param \PDO|null $db                  Optional PDO for MySQL-backed shared state (PHP ↔ Node.js)
+     *                                        When provided, state transitions are written to
+     *                                        `odoo_circuit_breaker_state` so the Node.js stack
+     *                                        sees the same circuit state.
      */
     public function __construct(
         string $serviceName = 'odoo_api',
         int $failureThreshold = 5,
         int $recoveryTimeout = 30,
-        int $halfOpenMaxAttempts = 2
+        int $halfOpenMaxAttempts = 2,
+        $db = null
     ) {
         $this->serviceName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $serviceName);
         $this->failureThreshold = max(1, $failureThreshold);
         $this->recoveryTimeout = max(5, $recoveryTimeout);
         $this->halfOpenMaxAttempts = max(1, $halfOpenMaxAttempts);
+        $this->db = $db instanceof \PDO ? $db : null;
 
         $this->stateDir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR)
             . DIRECTORY_SEPARATOR . 'odoo_circuit_breaker';
@@ -176,6 +184,10 @@ class OdooCircuitBreaker
         }
 
         $this->saveState($state);
+
+        // Sync state transition to MySQL so Node.js backend sees the same state.
+        // Only called on transitions (OPEN/CLOSED/HALF_OPEN), not on every failure count update.
+        $this->syncTransitionToMySQL($state);
     }
 
     private function loadState(): array
@@ -190,7 +202,7 @@ class OdooCircuitBreaker
             'last_error' => null,
         ];
 
-        // Try APCu first
+        // L1: APCu (sub-ms, per-process)
         if (function_exists('apcu_fetch')) {
             $data = apcu_fetch('cb_' . $this->serviceName, $found);
             if ($found && is_array($data)) {
@@ -198,19 +210,34 @@ class OdooCircuitBreaker
             }
         }
 
-        // File fallback
+        // L2: File (shared across all PHP-FPM workers on same host)
         $path = $this->statePath();
-        if (!is_file($path)) {
-            return $default;
+        if (is_file($path)) {
+            $raw = @file_get_contents($path);
+            if ($raw !== false && $raw !== '') {
+                $data = json_decode($raw, true);
+                if (is_array($data)) {
+                    $fileState = array_merge($default, $data);
+                    // File is fresh — no need to hit MySQL
+                    if ((time() - (int) filemtime($path)) < 8) {
+                        return $fileState;
+                    }
+                    // File is stale (>8s) — fall through to MySQL
+                }
+            }
         }
 
-        $raw = @file_get_contents($path);
-        if ($raw === false || $raw === '') {
-            return $default;
+        // L3: MySQL (shared across PHP + Node.js stacks)
+        // Only used as fallback when APCu is absent AND file is missing/stale.
+        $mysqlState = $this->loadStateFromMySQL();
+        if ($mysqlState !== null) {
+            $merged = array_merge($default, $mysqlState);
+            // Backfill local caches to avoid hitting MySQL on next request
+            $this->saveState($merged);
+            return $merged;
         }
 
-        $data = json_decode($raw, true);
-        return is_array($data) ? array_merge($default, $data) : $default;
+        return $default;
     }
 
     private function saveState(array $state): void
@@ -222,6 +249,87 @@ class OdooCircuitBreaker
         }
 
         @file_put_contents($this->statePath(), $json, LOCK_EX);
+    }
+
+    /**
+     * Write state transition to shared MySQL table.
+     * Called only on OPEN/CLOSED/HALF_OPEN transitions — not on every failure counter update.
+     * Safe to fail silently (circuit breaker still works via APCu+file).
+     */
+    private function syncTransitionToMySQL(array $state): void
+    {
+        if ($this->db === null) {
+            return;
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO `odoo_circuit_breaker_state`
+                    (`service_name`, `status`, `consecutive_failures`, `opened_at`,
+                     `half_open_attempts`, `last_failure_at`, `last_success_at`, `last_error`)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    `status`               = VALUES(`status`),
+                    `consecutive_failures` = VALUES(`consecutive_failures`),
+                    `opened_at`            = VALUES(`opened_at`),
+                    `half_open_attempts`   = VALUES(`half_open_attempts`),
+                    `last_failure_at`      = VALUES(`last_failure_at`),
+                    `last_success_at`      = VALUES(`last_success_at`),
+                    `last_error`           = VALUES(`last_error`),
+                    `updated_at`           = NOW()
+            ");
+            $stmt->execute([
+                $this->serviceName,
+                $state['status'],
+                (int) ($state['consecutive_failures'] ?? 0),
+                $state['opened_at'] ?? null,
+                (int) ($state['half_open_attempts'] ?? 0),
+                $state['last_failure_at'] ?? null,
+                $state['last_success_at'] ?? null,
+                isset($state['last_error']) ? mb_substr((string) $state['last_error'], 0, 200) : null,
+            ]);
+        } catch (\Exception $e) {
+            // MySQL sync failed — circuit breaker still functions via file/APCu
+            error_log("[CircuitBreaker:{$this->serviceName}] MySQL sync failed: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Read state from MySQL shared table.
+     * Returns null if table does not exist or query fails.
+     */
+    private function loadStateFromMySQL(): ?array
+    {
+        if ($this->db === null) {
+            return null;
+        }
+
+        try {
+            $stmt = $this->db->prepare("
+                SELECT `status`, `consecutive_failures`, `opened_at`,
+                       `half_open_attempts`, `last_failure_at`, `last_success_at`, `last_error`
+                FROM `odoo_circuit_breaker_state`
+                WHERE `service_name` = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$this->serviceName]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) {
+                return null;
+            }
+
+            return [
+                'status'               => $row['status'],
+                'consecutive_failures' => (int) $row['consecutive_failures'],
+                'opened_at'            => $row['opened_at'] !== null ? (int) $row['opened_at'] : null,
+                'half_open_attempts'   => (int) $row['half_open_attempts'],
+                'last_failure_at'      => $row['last_failure_at'] !== null ? (int) $row['last_failure_at'] : null,
+                'last_success_at'      => $row['last_success_at'] !== null ? (int) $row['last_success_at'] : null,
+                'last_error'           => $row['last_error'],
+            ];
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     private function statePath(): string

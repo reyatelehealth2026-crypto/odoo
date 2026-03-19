@@ -34,18 +34,32 @@ export interface OdooInvoice {
   due_date: string;
 }
 
+/** Row shape from odoo_circuit_breaker_state table */
+interface SharedCBRow {
+  status: 'closed' | 'open' | 'half_open';
+  opened_at: number | null;
+}
+
 export class OdooService extends BaseService {
   private circuitBreaker: CircuitBreaker;
   private retryHandler: RetryHandler;
   private baseUrl: string;
   private apiKey: string;
 
+  /**
+   * In-process cache of the shared MySQL circuit breaker state.
+   * Refreshed at most once per SHARED_CB_REFRESH_MS to avoid hammering the DB.
+   */
+  private sharedCbCache: { state: SharedCBRow; fetchedAt: number } | null = null;
+  private static readonly SHARED_CB_REFRESH_MS = 5_000; // re-read MySQL every 5s
+  private static readonly SHARED_CB_RECOVERY_S = 30;    // match PHP default recoveryTimeout
+
   constructor(prisma: any) {
     super(prisma);
-    
+
     this.baseUrl = config.ODOO_API_URL || '';
     this.apiKey = config.ODOO_API_KEY || '';
-    
+
     if (!this.baseUrl || !this.apiKey) {
       logger.warn('Odoo API configuration missing, service will be disabled');
     }
@@ -66,6 +80,65 @@ export class OdooService extends BaseService {
     });
   }
 
+  /**
+   * Check the shared MySQL circuit breaker table written by the PHP stack.
+   * Returns true if Odoo is known to be unavailable from PHP's perspective.
+   *
+   * This is a read-only check — Node.js does NOT write to this table.
+   * PHP (OdooCircuitBreaker.php) is the authoritative writer on state transitions.
+   *
+   * Uses a 5-second in-process cache to avoid a DB round-trip on every request.
+   */
+  private async isSharedCircuitOpen(): Promise<boolean> {
+    try {
+      const now = Date.now();
+
+      // Use cached value if fresh enough
+      if (
+        this.sharedCbCache &&
+        now - this.sharedCbCache.fetchedAt < OdooService.SHARED_CB_REFRESH_MS
+      ) {
+        return this.evalSharedCbOpen(this.sharedCbCache.state);
+      }
+
+      const rows = await this.prisma.$queryRaw<SharedCBRow[]>`
+        SELECT status, opened_at
+        FROM odoo_circuit_breaker_state
+        WHERE service_name = 'odoo_api'
+        LIMIT 1
+      `;
+
+      if (!rows.length) {
+        return false; // table empty or missing — allow request
+      }
+
+      this.sharedCbCache = { state: rows[0], fetchedAt: now };
+      return this.evalSharedCbOpen(rows[0]);
+
+    } catch (err) {
+      // If MySQL is unreachable, don't block requests — fall back to local CB only.
+      logger.warn('OdooService: could not read shared circuit breaker state', {
+        error: String(err),
+      });
+      return false;
+    }
+  }
+
+  private evalSharedCbOpen(row: SharedCBRow): boolean {
+    if (row.status !== 'open') {
+      return false;
+    }
+    // Respect PHP's recovery timeout — after SHARED_CB_RECOVERY_S the circuit
+    // transitions to half_open, so we should allow probes through.
+    if (row.opened_at !== null) {
+      const elapsedSec = Date.now() / 1000 - row.opened_at;
+      if (elapsedSec >= OdooService.SHARED_CB_RECOVERY_S) {
+        return false; // PHP will move to half_open soon — allow probes
+      }
+    }
+    return true;
+  }
+
   async getOrders(filters: {
     limit?: number;
     offset?: number;
@@ -74,6 +147,11 @@ export class OdooService extends BaseService {
     state?: string;
   } = {}): Promise<OdooOrder[]> {
     if (!this.isConfigured()) {
+      return this.getCachedOrders(filters);
+    }
+
+    if (await this.isSharedCircuitOpen()) {
+      logger.warn('OdooService.getOrders: shared circuit OPEN (PHP), using cache');
       return this.getCachedOrders(filters);
     }
 
@@ -101,6 +179,11 @@ export class OdooService extends BaseService {
     search?: string;
   } = {}): Promise<OdooCustomer[]> {
     if (!this.isConfigured()) {
+      return this.getCachedCustomers(filters);
+    }
+
+    if (await this.isSharedCircuitOpen()) {
+      logger.warn('OdooService.getCustomers: shared circuit OPEN (PHP), using cache');
       return this.getCachedCustomers(filters);
     }
 
@@ -133,6 +216,11 @@ export class OdooService extends BaseService {
       return this.getCachedInvoices(filters);
     }
 
+    if (await this.isSharedCircuitOpen()) {
+      logger.warn('OdooService.getInvoices: shared circuit OPEN (PHP), using cache');
+      return this.getCachedInvoices(filters);
+    }
+
     return this.circuitBreaker.call(async () => {
       return this.retryHandler.executeWithRetry(
         async () => {
@@ -154,6 +242,10 @@ export class OdooService extends BaseService {
   async updateOrderStatus(orderId: string, status: string): Promise<void> {
     if (!this.isConfigured()) {
       throw new Error('Odoo API not configured');
+    }
+
+    if (await this.isSharedCircuitOpen()) {
+      throw new Error('Odoo service unavailable (circuit open from PHP stack)');
     }
 
     return this.circuitBreaker.call(async () => {
