@@ -859,7 +859,7 @@ async function showCustomerDetail(ref, partnerId, custName){
             html += '<p style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-file-earmark-check" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>\u0e44\u0e21\u0e48\u0e1e\u0e1a BDO</p>';
         } else {
             html += '<p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.75rem;">\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14 ' + Number(bdoRes.data.total||0).toLocaleString() + ' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23</p>';
-            const ODOO_BASE = 'https://erp.cnyrxapp.com';
+            const ODOO_BASE = 'https://cny.cnyrxapp.com';
             const BDO_PAY_STATUS = {pending:{bg:'#fef3c7',clr:'#d97706',lbl:'\u0e23\u0e2d\u0e0a\u0e33\u0e23\u0e30',icon:'clock'},partial:{bg:'#ffedd5',clr:'#ea580c',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e1a\u0e32\u0e07\u0e2a\u0e48\u0e27\u0e19',icon:'hourglass-split'},slip_uploaded:{bg:'#dbeafe',clr:'#1d4ed8',lbl:'\u0e2d\u0e31\u0e1e\u0e2a\u0e25\u0e34\u0e1b\u0e41\u0e25\u0e49\u0e27',icon:'cloud-upload'},matched:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27',icon:'check-circle'},paid:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27',icon:'check-circle-fill'}};
             const PAYMENT_LABELS = {promptpay:'\u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e40\u0e1e\u0e22\u0e4c',bank_transfer:'\u0e42\u0e2d\u0e19\u0e40\u0e07\u0e34\u0e19'};
             html += '<div style="display:flex;flex-direction:column;gap:0.75rem;">';
@@ -879,7 +879,7 @@ async function showCustomerDetail(ref, partnerId, custName){
                 const payStatus = paymentState.key;
                 const ps = BDO_PAY_STATUS[payStatus] || BDO_PAY_STATUS.pending;
                 const payMethod = PAYMENT_LABELS[bdo.payment_method] || bdo.payment_method || '';
-                const deliveryTypeLabel = bdo.delivery_type === 'company' ? 'สายส่ง' : (bdo.delivery_type === 'private' ? 'ขนส่งเอกชน' : '');
+                const deliveryTypeLabel = bdo.delivery_type === 'company' ? 'สายส่ง (จ่ายทีหลัง)' : (bdo.delivery_type === 'private' ? 'ขนส่งเอกชน (จ่ายก่อนส่ง)' : '');
                 const customerLabel = bdo.customer_name || bdo.customer_ref || '';
                 const statementUrl = 'api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=' + encodeURIComponent(String(_bdoId));
                 const isPending = payStatus === 'pending' || payStatus === 'partial';

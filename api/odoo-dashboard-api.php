@@ -2050,6 +2050,17 @@ function sendBdoPaymentNotification($db, $input)
         ? $baseUrl . '/api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=' . urlencode($bdoId)
         : $baseUrl;
 
+    // Resolve LIFF ID from line_accounts table for upload slip link
+    $liffUrl = '';
+    try {
+        $liffStmt = $db->prepare("SELECT liff_id FROM line_accounts WHERE id = ? LIMIT 1");
+        $liffStmt->execute([$lineAccountId]);
+        $liffRow = $liffStmt->fetch(PDO::FETCH_ASSOC);
+        if ($liffRow && !empty($liffRow['liff_id'])) {
+            $liffUrl = 'https://liff.line.me/' . $liffRow['liff_id'] . '?page=slip-upload&bdo_id=' . urlencode($bdoId);
+        }
+    } catch (Exception $e) { /* ignore */ }
+
     $flexData = [
         'amount_total' => $netToPay > 0 ? $netToPay : $amountTotal,
         'bdo_ref'      => $bdoRef,
@@ -2063,6 +2074,7 @@ function sendBdoPaymentNotification($db, $input)
         'invoice' => [
             'pdf_url' => $invoicePdfUrl,
         ],
+        'liff_url' => $liffUrl,
     ];
 
     // ── 6. Generate QR code from EMVCo payload ──────────────────────────
@@ -4033,6 +4045,22 @@ function getBdoDetailFromLocalDb($db, $bdoId, $partnerId = 0)
     }
 
     // 2. Build BDO object
+    $customerRef = $row['customer_ref'] ?? '';
+    $partnerName = '';
+    $pId = (int) ($row['partner_id'] ?? $partnerId);
+    // Try to get customer name from odoo_bdos or odoo_line_users
+    if ($pId > 0) {
+        try {
+            $nameStmt = $db->prepare("SELECT customer_name FROM odoo_orders WHERE partner_id = ? AND customer_name IS NOT NULL AND customer_name != '' LIMIT 1");
+            $nameStmt->execute([$pId]);
+            $nameRow = $nameStmt->fetch(PDO::FETCH_ASSOC);
+            if ($nameRow) $partnerName = $nameRow['customer_name'];
+        } catch (Exception $e) { /* ignore */ }
+    }
+    if (empty($partnerName) && !empty($customerRef)) {
+        $partnerName = $customerRef;
+    }
+
     $bdo = [
         'name'             => $row['bdo_name'] ?? ('BDO-' . $bdoId),
         'bdo_name'         => $row['bdo_name'] ?? ('BDO-' . $bdoId),
@@ -4042,7 +4070,9 @@ function getBdoDetailFromLocalDb($db, $bdoId, $partnerId = 0)
         'delivery_type'    => $row['delivery_type'] ?? $row['ctx_delivery_type'] ?? null,
         'amount_total'     => (float) ($row['amount_total'] ?? $row['ctx_amount'] ?? 0),
         'amount_net_to_pay' => null,
-        'partner_id'       => (int) ($row['partner_id'] ?? $partnerId),
+        'partner_id'       => $pId,
+        'partner_name'     => $partnerName,
+        'customer_ref'     => $customerRef,
     ];
 
     // 3. Parse financial summary from context
@@ -4063,6 +4093,23 @@ function getBdoDetailFromLocalDb($db, $bdoId, $partnerId = 0)
                 'net_to_pay'         => $fs['net_to_pay'] ?? $fs['amount_net_to_pay'] ?? $bdo['amount_total'],
             ];
             $bdo['amount_net_to_pay'] = $summary['net_to_pay'];
+
+            // Extract deposits from financial_summary if available
+            if (!empty($fs['selected_deposits']) && is_array($fs['selected_deposits'])) {
+                $deposits = array_map(function ($dp) {
+                    return [
+                        'name'   => $dp['name'] ?? $dp['number'] ?? '-',
+                        'amount' => (float) ($dp['amount'] ?? $dp['amount_total'] ?? 0),
+                    ];
+                }, $fs['selected_deposits']);
+            } elseif (!empty($fs['deposits']) && is_array($fs['deposits'])) {
+                $deposits = array_map(function ($dp) {
+                    return [
+                        'name'   => $dp['name'] ?? $dp['number'] ?? '-',
+                        'amount' => (float) ($dp['amount'] ?? $dp['amount_total'] ?? 0),
+                    ];
+                }, $fs['deposits']);
+            }
         }
     }
 
@@ -4077,6 +4124,7 @@ function getBdoDetailFromLocalDb($db, $bdoId, $partnerId = 0)
                     'amount_total' => $inv['amount_total'] ?? 0,
                     'date'         => $inv['date'] ?? $inv['invoice_date'] ?? null,
                     'origin'       => $inv['origin'] ?? '',
+                    'selected'     => $inv['selected'] ?? true,
                 ];
             }, $invs);
         }
@@ -4091,6 +4139,7 @@ function getBdoDetailFromLocalDb($db, $bdoId, $partnerId = 0)
                     'name'         => $cn['name'] ?? $cn['number'] ?? '-',
                     'residual'     => $cn['residual'] ?? $cn['amount_total'] ?? 0,
                     'amount_total' => $cn['amount_total'] ?? 0,
+                    'selected'     => $cn['selected'] ?? true,
                 ];
             }, $cns);
         }
@@ -4157,7 +4206,7 @@ function getBdoDetailFromLocalDb($db, $bdoId, $partnerId = 0)
     }
 
     // 8. Build Odoo URL
-    $odooUrl = 'https://erp.cnyrxapp.com/web#id=' . $bdoId . '&model=cny.bill.invoice.before.delivery&view_type=form';
+    $odooUrl = 'https://cny.cnyrxapp.com/web#id=' . $bdoId . '&model=cny.bill.invoice.before.delivery&view_type=form';
 
     return [
         'bdo'                  => $bdo,
