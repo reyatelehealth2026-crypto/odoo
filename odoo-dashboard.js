@@ -930,7 +930,7 @@ async function showCustomerDetail(ref, partnerId, custName){
                 html += '<span style="font-weight:700;font-size:1rem;color:var(--gray-800);">'+amt+'</span>';
                 html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
                 if(isPending){
-                    html += '<button id="btnNotifyBdo'+escapeHtml(String(_bdoId))+'" onclick="sendBdoPaymentNotify(\''+escapeHtml(String(_bdoId))+'\',\''+escapeHtml(String(pidParam||partnerId||''))+'\',\''+escapeHtml(bdoName)+'\')" style="background:#06C755;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;" title="ส่งแจ้งยอดชำระให้ลูกค้าทาง LINE"><i class="bi bi-send"></i> ส่งแจ้งยอด</button>';
+                    html += '<button id="btnNotifyBdo'+escapeHtml(String(_bdoId))+'" onclick="sendBdoPaymentNotify(\''+escapeHtml(String(_bdoId))+'\',\''+escapeHtml(String(pidParam||partnerId||''))+'\',decodeURIComponent(\''+encodeURIComponent(bdoName)+'\'))" style="background:#06C755;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;" title="ส่งแจ้งยอดชำระให้ลูกค้าทาง LINE"><i class="bi bi-send"></i> ส่งแจ้งยอด</button>';
                     html += '<button onclick=\'openBdoSlipAttach('+escapeHtml(JSON.stringify(bdo))+','+escapeHtml(JSON.stringify(slips.filter(function(s){return s.status==="pending";})))+')\' style="background:#059669;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;"><i class="bi bi-paperclip"></i> \u0e41\u0e19\u0e1a\u0e2a\u0e25\u0e34\u0e1b</button>';
                 }
                 if(isPaid){
@@ -939,7 +939,7 @@ async function showCustomerDetail(ref, partnerId, custName){
                 if(isMatched){
                     const slipUpId = linkedSlip ? (linkedSlip.id||'') : '';
                     const slipInboxId = linkedSlip ? (linkedSlip.slip_inbox_id || linkedSlip.odoo_slip_id || 0) : 0;
-                    html += '<button onclick="unmatchBdoSlip('+escapeHtml(String(slipUpId))+','+escapeHtml(String(slipInboxId))+')" style="background:var(--gray-200);color:var(--gray-700);border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:inherit;" title="\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e01\u0e32\u0e23\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48"><i class="bi bi-x-circle"></i> \u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>';
+                    html += '<button onclick="unmatchBdoSlip(\''+escapeHtml(String(slipUpId))+'\',\''+escapeHtml(String(slipInboxId))+'\')" style="background:var(--gray-200);color:var(--gray-700);border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:inherit;" title="\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e01\u0e32\u0e23\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48"><i class="bi bi-x-circle"></i> \u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>';
                 }
                 html += '</div>';
                 html += '</div>';
