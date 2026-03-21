@@ -8,137 +8,373 @@ class OdooFlexTemplates
 {
     public static function bdoPaymentRequest($data, $qrCodeUrl)
     {
-        $amount = number_format($data['amount_total'], 2);
-        $bdoRef = $data['bdo_ref'] ?? 'BDO-XXX';
-        $orderRef = $data['order_ref'] ?? 'SO-XXX';
-        $dueDate = $data['due_date'] ?? date('Y-m-d');
+        $netToPay   = number_format((float)($data['amount_total'] ?? 0), 2);
+        $bdoRef     = $data['bdo_ref']   ?? 'BDO-XXX';
+        $orderRef   = $data['order_ref'] ?? '-';
+        $dueDate    = $data['due_date']  ?? date('Y-m-d');
+        $isTest     = strpos($bdoRef, '[TEST]') !== false;
 
-        $bankName = $data['bank_account']['bank_name'] ?? 'ธนาคารกสิกรไทย';
-        $accountNumber = $data['bank_account']['account_number'] ?? '123-4-56789-0';
-        $accountName = $data['bank_account']['account_name'] ?? 'บริษัท ซีเอ็นวาย จำกัด';
+        $bankName      = $data['bank_account']['bank_name']      ?? 'ธนาคารกสิกรไทย';
+        $accountNumber = $data['bank_account']['account_number'] ?? '027-8-40955-4';
+        $accountName   = $data['bank_account']['account_name']   ?? 'บริษัท ซีเอ็นวาย จำกัด';
 
         $invoiceUrl = $data['invoice']['pdf_url'] ?? '#';
-        $liffUrl = $data['liff_url'] ?? '';
+        $liffUrl    = $data['liff_url'] ?? '';
+
+        // Financial summary
+        $fs         = $data['financial_summary'] ?? [];
+        $soAmount   = isset($fs['so_amount'])          ? number_format((float)$fs['so_amount'], 2)          : null;
+        $invAmount  = isset($fs['outstanding_amount'])  ? number_format((float)$fs['outstanding_amount'], 2) : null;
+        $cnAmount   = isset($fs['credit_note_amount'])  ? number_format((float)$fs['credit_note_amount'], 2) : null;
+        $depAmount  = isset($fs['deposit_amount'])      ? number_format((float)$fs['deposit_amount'], 2)     : null;
+
+        // Invoice rows (max 8 to avoid oversized bubble)
+        $invoices   = array_slice($data['invoices'] ?? [], 0, 8);
+        $creditNotes = array_slice($data['credit_notes'] ?? [], 0, 3);
+
+        // ── Header ──────────────────────────────────────────────────────────
+        $headerContents = [
+            [
+                'type'   => 'box',
+                'layout' => 'horizontal',
+                'contents' => [
+                    [
+                        'type'   => 'box',
+                        'layout' => 'vertical',
+                        'flex'   => 1,
+                        'contents' => [
+                            [
+                                'type'   => 'text',
+                                'text'   => ($isTest ? '🧪 ' : '') . 'ใบแจ้งยอดก่อนส่งของ',
+                                'weight' => 'bold',
+                                'size'   => 'sm',
+                                'color'  => '#1a56db',
+                            ],
+                            [
+                                'type'  => 'text',
+                                'text'  => 'BILL DELIVERY ORDER',
+                                'size'  => 'xs',
+                                'color' => '#1e40af',
+                            ],
+                        ],
+                    ],
+                    [
+                        'type'            => 'box',
+                        'layout'          => 'vertical',
+                        'flex'            => 0,
+                        'backgroundColor' => '#1d4ed8',
+                        'cornerRadius'    => '6px',
+                        'paddingAll'      => '6px',
+                        'contents' => [[
+                            'type'   => 'text',
+                            'text'   => 'BDO',
+                            'size'   => 'xxs',
+                            'color'  => '#ffffff',
+                            'weight' => 'bold',
+                            'align'  => 'center',
+                        ]],
+                    ],
+                ],
+            ],
+            [
+                'type'   => 'box',
+                'layout' => 'horizontal',
+                'margin' => 'sm',
+                'contents' => [
+                    [
+                        'type'  => 'text',
+                        'text'  => $bdoRef,
+                        'size'  => 'xs',
+                        'color' => '#374151',
+                        'flex'  => 1,
+                    ],
+                    [
+                        'type'  => 'text',
+                        'text'  => 'วันที่: ' . $dueDate,
+                        'size'  => 'xxs',
+                        'color' => '#6b7280',
+                        'align' => 'end',
+                        'flex'  => 1,
+                    ],
+                ],
+            ],
+        ];
+
+        // ── Body ────────────────────────────────────────────────────────────
+        $bodyContents = [];
+
+        // Net to pay — big number
+        $bodyContents[] = [
+            'type'   => 'box',
+            'layout' => 'vertical',
+            'backgroundColor' => '#eff6ff',
+            'cornerRadius'    => '8px',
+            'paddingAll'      => '12px',
+            'contents' => [
+                [
+                    'type'  => 'text',
+                    'text'  => 'ยอดที่ต้องชำระ (Net to Pay)',
+                    'size'  => 'xs',
+                    'color' => '#1d4ed8',
+                ],
+                [
+                    'type'   => 'text',
+                    'text'   => '฿' . $netToPay,
+                    'size'   => 'xxl',
+                    'weight' => 'bold',
+                    'color'  => '#1d4ed8',
+                    'margin' => 'xs',
+                ],
+                [
+                    'type'  => 'text',
+                    'text'  => 'ออเดอร์: ' . $orderRef,
+                    'size'  => 'xxs',
+                    'color' => '#6b7280',
+                ],
+            ],
+        ];
+
+        // Financial summary row
+        if ($soAmount !== null || $invAmount !== null || $cnAmount !== null || $depAmount !== null) {
+            $summaryItems = [];
+            if ($soAmount !== null) {
+                $summaryItems[] = self::summaryCol('SO', '฿' . $soAmount, '#374151');
+            }
+            if ($invAmount !== null) {
+                $summaryItems[] = self::summaryCol('ใบแจ้งหนี้', '฿' . $invAmount, '#374151');
+            }
+            if ($cnAmount !== null) {
+                $neg = (float)($fs['credit_note_amount'] ?? 0) > 0;
+                $summaryItems[] = self::summaryCol('CN', ($neg ? '-' : '') . '฿' . $cnAmount, '#dc2626');
+            }
+            if ($depAmount !== null) {
+                $neg = (float)($fs['deposit_amount'] ?? 0) > 0;
+                $summaryItems[] = self::summaryCol('เงินมัดจำ', ($neg ? '-' : '') . '฿' . $depAmount, '#dc2626');
+            }
+
+            if (!empty($summaryItems)) {
+                $bodyContents[] = ['type' => 'separator', 'margin' => 'md'];
+                $bodyContents[] = [
+                    'type'    => 'text',
+                    'text'    => '📊 สรุปทางการเงิน',
+                    'size'    => 'xs',
+                    'weight'  => 'bold',
+                    'color'   => '#374151',
+                    'margin'  => 'md',
+                ];
+                $bodyContents[] = [
+                    'type'     => 'box',
+                    'layout'   => 'horizontal',
+                    'margin'   => 'sm',
+                    'contents' => $summaryItems,
+                ];
+            }
+        }
+
+        // Invoice list
+        if (!empty($invoices)) {
+            $bodyContents[] = ['type' => 'separator', 'margin' => 'md'];
+            $bodyContents[] = [
+                'type'   => 'text',
+                'text'   => '📄 ใบแจ้งหนี้ที่ค้างชำระ',
+                'size'   => 'xs',
+                'weight' => 'bold',
+                'color'  => '#374151',
+                'margin' => 'md',
+            ];
+            foreach ($invoices as $inv) {
+                $invNum    = $inv['number'] ?? $inv['name'] ?? '-';
+                $invAmt    = isset($inv['residual']) ? number_format((float)$inv['residual'], 2) : '-';
+                $invDate   = $inv['date'] ?? '';
+                $invOrigin = $inv['origin'] ?? '';
+                $bodyContents[] = [
+                    'type'   => 'box',
+                    'layout' => 'horizontal',
+                    'margin' => 'xs',
+                    'contents' => [
+                        [
+                            'type'  => 'box',
+                            'layout' => 'vertical',
+                            'flex'  => 3,
+                            'contents' => [
+                                [
+                                    'type'  => 'text',
+                                    'text'  => $invNum,
+                                    'size'  => 'xxs',
+                                    'color' => '#1d4ed8',
+                                    'weight' => 'bold',
+                                ],
+                                [
+                                    'type'  => 'text',
+                                    'text'  => ($invDate ? $invDate . ' ' : '') . ($invOrigin ?: ''),
+                                    'size'  => 'xxs',
+                                    'color' => '#9ca3af',
+                                    'wrap'  => true,
+                                ],
+                            ],
+                        ],
+                        [
+                            'type'   => 'text',
+                            'text'   => '฿' . $invAmt,
+                            'size'   => 'xs',
+                            'weight' => 'bold',
+                            'color'  => '#f59e0b',
+                            'align'  => 'end',
+                            'flex'   => 2,
+                        ],
+                    ],
+                ];
+            }
+            if (count($data['invoices'] ?? []) > 8) {
+                $bodyContents[] = [
+                    'type'  => 'text',
+                    'text'  => '... และอีก ' . (count($data['invoices']) - 8) . ' รายการ (ดูในใบแจ้งหนี้ PDF)',
+                    'size'  => 'xxs',
+                    'color' => '#9ca3af',
+                    'margin' => 'xs',
+                ];
+            }
+        }
+
+        // Credit notes (if any)
+        if (!empty($creditNotes)) {
+            $bodyContents[] = ['type' => 'separator', 'margin' => 'sm'];
+            foreach ($creditNotes as $cn) {
+                $cnNum = $cn['number'] ?? $cn['name'] ?? '-';
+                $cnAmt = isset($cn['residual']) ? number_format((float)$cn['residual'], 2) : '-';
+                $bodyContents[] = [
+                    'type'   => 'box',
+                    'layout' => 'horizontal',
+                    'margin' => 'xs',
+                    'contents' => [
+                        [
+                            'type'  => 'text',
+                            'text'  => '↩ ' . $cnNum,
+                            'size'  => 'xxs',
+                            'color' => '#dc2626',
+                            'flex'  => 3,
+                        ],
+                        [
+                            'type'   => 'text',
+                            'text'   => '-฿' . $cnAmt,
+                            'size'   => 'xxs',
+                            'color'  => '#dc2626',
+                            'align'  => 'end',
+                            'flex'   => 2,
+                        ],
+                    ],
+                ];
+            }
+        }
+
+        // QR code
+        $bodyContents[] = ['type' => 'separator', 'margin' => 'lg'];
+        $bodyContents[] = [
+            'type'  => 'text',
+            'text'  => '📲 สแกน QR PromptPay เพื่อชำระ',
+            'size'  => 'xs',
+            'align' => 'center',
+            'color' => '#374151',
+            'margin' => 'lg',
+        ];
+        $bodyContents[] = [
+            'type'        => 'image',
+            'url'         => $qrCodeUrl,
+            'size'        => 'lg',
+            'aspectMode'  => 'fit',
+            'aspectRatio' => '1:1',
+            'align'       => 'center',
+            'margin'      => 'sm',
+        ];
+
+        // Bank account
+        $bodyContents[] = ['type' => 'separator', 'margin' => 'md'];
+        $bodyContents[] = [
+            'type'   => 'text',
+            'text'   => 'หรือโอนเข้าบัญชี',
+            'size'   => 'xs',
+            'color'  => '#374151',
+            'margin' => 'md',
+        ];
+        $bodyContents[] = [
+            'type'            => 'box',
+            'layout'          => 'vertical',
+            'backgroundColor' => '#f9fafb',
+            'cornerRadius'    => '6px',
+            'paddingAll'      => '10px',
+            'margin'          => 'sm',
+            'contents' => [
+                [
+                    'type'   => 'text',
+                    'text'   => $bankName,
+                    'size'   => 'xs',
+                    'color'  => '#6b7280',
+                ],
+                [
+                    'type'   => 'text',
+                    'text'   => $accountNumber,
+                    'size'   => 'sm',
+                    'weight' => 'bold',
+                    'color'  => '#111827',
+                    'margin' => 'xs',
+                ],
+                [
+                    'type'  => 'text',
+                    'text'  => $accountName,
+                    'size'  => 'xs',
+                    'color' => '#9ca3af',
+                ],
+            ],
+        ];
 
         return [
             'type' => 'bubble',
+            'size' => 'mega',
             'header' => [
-                'type' => 'box',
-                'layout' => 'vertical',
-                'contents' => [
-                    [
-                        'type' => 'text',
-                        'text' => '💰 แจ้งชำระเงิน',
-                        'weight' => 'bold',
-                        'size' => 'xl',
-                        'color' => '#ffffff'
-                    ]
-                ],
-                'backgroundColor' => '#06C755'
+                'type'            => 'box',
+                'layout'          => 'vertical',
+                'backgroundColor' => '#dbeafe',
+                'paddingAll'      => '16px',
+                'contents'        => $headerContents,
             ],
             'body' => [
-                'type' => 'box',
-                'layout' => 'vertical',
-                'contents' => [
-                    [
-                        'type' => 'text',
-                        'text' => "BDO: {$bdoRef}",
-                        'size' => 'sm',
-                        'color' => '#aaaaaa'
-                    ],
-                    [
-                        'type' => 'text',
-                        'text' => "ออเดอร์: {$orderRef}",
-                        'size' => 'sm',
-                        'color' => '#aaaaaa'
-                    ],
-                    [
-                        'type' => 'separator',
-                        'margin' => 'lg'
-                    ],
-                    [
-                        'type' => 'box',
-                        'layout' => 'vertical',
-                        'contents' => [
-                            [
-                                'type' => 'text',
-                                'text' => 'ยอดชำระ',
-                                'size' => 'sm',
-                                'color' => '#555555'
-                            ],
-                            [
-                                'type' => 'text',
-                                'text' => "฿{$amount}",
-                                'size' => 'xxl',
-                                'weight' => 'bold',
-                                'color' => '#06C755'
-                            ],
-                            [
-                                'type' => 'text',
-                                'text' => "ครบกำหนด: {$dueDate}",
-                                'size' => 'xs',
-                                'color' => '#ff4444'
-                            ]
-                        ],
-                        'margin' => 'lg'
-                    ],
-                    [
-                        'type' => 'separator',
-                        'margin' => 'lg'
-                    ],
-                    [
-                        'type' => 'text',
-                        'text' => 'สแกน QR Code',
-                        'size' => 'sm',
-                        'margin' => 'lg',
-                        'align' => 'center'
-                    ],
-                    [
-                        'type' => 'image',
-                        'url' => $qrCodeUrl,
-                        'size' => 'full',
-                        'aspectMode' => 'cover',
-                        'aspectRatio' => '1:1',
-                        'margin' => 'md'
-                    ],
-                    [
-                        'type' => 'separator',
-                        'margin' => 'lg'
-                    ],
-                    [
-                        'type' => 'text',
-                        'text' => 'หรือโอนเงินเข้าบัญชี',
-                        'size' => 'sm',
-                        'margin' => 'lg'
-                    ],
-                    [
-                        'type' => 'box',
-                        'layout' => 'vertical',
-                        'contents' => [
-                            [
-                                'type' => 'text',
-                                'text' => $bankName,
-                                'size' => 'sm',
-                                'color' => '#555555'
-                            ],
-                            [
-                                'type' => 'text',
-                                'text' => $accountNumber,
-                                'size' => 'sm',
-                                'weight' => 'bold'
-                            ],
-                            [
-                                'type' => 'text',
-                                'text' => $accountName,
-                                'size' => 'xs',
-                                'color' => '#aaaaaa'
-                            ]
-                        ],
-                        'margin' => 'md'
-                    ]
-                ]
+                'type'     => 'box',
+                'layout'   => 'vertical',
+                'spacing'  => 'none',
+                'paddingAll' => '16px',
+                'contents' => $bodyContents,
             ],
-            'footer' => self::buildFooterButtons($invoiceUrl, $liffUrl)
+            'footer' => self::buildFooterButtons($invoiceUrl, $liffUrl),
+        ];
+    }
+
+    /**
+     * Helper: build a summary column box (used in financial summary row).
+     */
+    private static function summaryCol(string $label, string $value, string $color): array
+    {
+        return [
+            'type'   => 'box',
+            'layout' => 'vertical',
+            'flex'   => 1,
+            'contents' => [
+                [
+                    'type'  => 'text',
+                    'text'  => $label,
+                    'size'  => 'xxs',
+                    'color' => '#9ca3af',
+                    'align' => 'center',
+                ],
+                [
+                    'type'   => 'text',
+                    'text'   => $value,
+                    'size'   => 'xxs',
+                    'weight' => 'bold',
+                    'color'  => $color,
+                    'align'  => 'center',
+                    'wrap'   => true,
+                ],
+            ],
         ];
     }
 
