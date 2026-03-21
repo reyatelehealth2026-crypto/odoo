@@ -184,8 +184,7 @@ class OdooFlexTemplates
                 'type'       => 'box',
                 'layout'     => 'vertical',
                 'paddingAll' => '12px',
-                'spacing'    => 'sm',
-                'contents'   => array_values(array_filter([
+                'contents'   => [
                     [
                         'type'   => 'button',
                         'action' => [
@@ -197,17 +196,7 @@ class OdooFlexTemplates
                         'color'  => '#1d4ed8',
                         'height' => 'sm',
                     ],
-                    !empty($liffUrl) ? [
-                        'type'   => 'button',
-                        'action' => [
-                            'type'  => 'uri',
-                            'label' => 'อัพโหลดสลิป',
-                            'uri'   => $liffUrl,
-                        ],
-                        'style'  => 'secondary',
-                        'height' => 'sm',
-                    ] : null,
-                ])),
+                ],
             ],
         ];
     }
