@@ -8,26 +8,58 @@ class OdooFlexTemplates
 {
     public static function bdoPaymentRequest($data, $qrCodeUrl)
     {
-        $netToPay  = number_format((float)($data['amount_total'] ?? 0), 2);
-        $bdoRef    = $data['bdo_ref']   ?? 'BDO-XXX';
-        $orderRef  = $data['order_ref'] ?? '-';
-        $dueDate   = $data['due_date']  ?? date('Y-m-d');
-        $isTest    = strpos($bdoRef, '[TEST]') !== false;
+        $bdoRef   = $data['bdo_ref']   ?? 'BDO-XXX';
+        $orderRef = $data['order_ref'] ?? '-';
+        $dueDate  = $data['due_date']  ?? date('Y-m-d');
+        $isTest   = strpos($bdoRef, '[TEST]') !== false;
 
         $invoiceUrl = $data['invoice']['pdf_url'] ?? '#';
-        $liffUrl    = $data['liff_url'] ?? '';
 
-        // Financial summary
-        $fs        = $data['financial_summary'] ?? [];
-        $netLabel  = isset($fs['net_to_pay']) ? number_format((float)$fs['net_to_pay'], 2) : $netToPay;
+        // Financial summary values
+        $fs         = $data['financial_summary'] ?? [];
+        $soAmt      = isset($fs['so_amount'])          ? (float)$fs['so_amount']          : null;
+        $invAmt     = isset($fs['outstanding_amount'])  ? (float)$fs['outstanding_amount'] : null;
+        $cnAmt      = isset($fs['credit_note_amount'])  ? (float)$fs['credit_note_amount'] : null;
+        $depAmt     = isset($fs['deposit_amount'])      ? (float)$fs['deposit_amount']     : null;
+        $netAmt     = isset($fs['net_to_pay'])          ? (float)$fs['net_to_pay']         : (float)($data['amount_total'] ?? 0);
 
-        // Invoice rows (max 10)
-        $invoices  = array_slice($data['invoices'] ?? [], 0, 10);
+        $fmt = function($v) { return '฿' . number_format($v, 2); };
 
-        // ── Body ────────────────────────────────────────────────────────────
+        // Invoice rows (max 8)
+        $invoices = array_slice($data['invoices'] ?? [], 0, 8);
+
+        // ── helper: one summary row ──────────────────────────────────────
+        $summaryRow = function(string $label, string $value, string $valueColor = '#111827', bool $separator = false) {
+            $row = [
+                'type'   => 'box',
+                'layout' => 'horizontal',
+                'margin' => 'xs',
+                'contents' => [
+                    [
+                        'type'  => 'text',
+                        'text'  => $label,
+                        'size'  => 'sm',
+                        'color' => '#6b7280',
+                        'flex'  => 1,
+                    ],
+                    [
+                        'type'   => 'text',
+                        'text'   => $value,
+                        'size'   => 'sm',
+                        'weight' => 'bold',
+                        'color'  => $valueColor,
+                        'align'  => 'end',
+                        'flex'   => 1,
+                    ],
+                ],
+            ];
+            return $row;
+        };
+
+        // ── Body ─────────────────────────────────────────────────────────
         $bodyContents = [];
 
-        // Header row: BDO ref + date
+        // Title + BDO ref
         $bodyContents[] = [
             'type'   => 'box',
             'layout' => 'horizontal',
@@ -39,17 +71,17 @@ class OdooFlexTemplates
                     'contents' => [
                         [
                             'type'   => 'text',
-                            'text'   => ($isTest ? '[TEST] ' : '') . 'ใบแจ้งยอดก่อนส่งของ',
+                            'text'   => 'ใบแจ้งยอดก่อนส่งของ',
                             'weight' => 'bold',
-                            'size'   => 'sm',
+                            'size'   => 'md',
                             'color'  => '#1d4ed8',
-                            'wrap'   => true,
                         ],
                         [
                             'type'  => 'text',
-                            'text'  => $bdoRef,
+                            'text'  => ($isTest ? '[TEST] ' : '') . $bdoRef,
                             'size'  => 'xs',
                             'color' => '#6b7280',
+                            'margin' => 'xs',
                         ],
                     ],
                 ],
@@ -64,94 +96,87 @@ class OdooFlexTemplates
             ],
         ];
 
-        // Net to pay
+        // Financial summary section
+        $bodyContents[] = ['type' => 'separator', 'margin' => 'lg'];
         $bodyContents[] = [
-            'type'   => 'box',
-            'layout' => 'horizontal',
-            'margin' => 'md',
+            'type'   => 'text',
+            'text'   => 'สรุปยอด',
+            'size'   => 'xs',
+            'weight' => 'bold',
+            'color'  => '#374151',
+            'margin' => 'lg',
+        ];
+
+        if ($soAmt !== null)  $bodyContents[] = $summaryRow('SO รอบนี้',        $fmt($soAmt),  '#374151');
+        if ($invAmt !== null) $bodyContents[] = $summaryRow('Invoice ค้างชำระ', $fmt($invAmt), '#d97706');
+        if ($cnAmt !== null)  $bodyContents[] = $summaryRow('Credit Note',       $fmt(-abs($cnAmt)), '#dc2626');
+        if ($depAmt !== null) $bodyContents[] = $summaryRow('เงินมัดจำ',         $fmt(-abs($depAmt)), '#dc2626');
+
+        // Net to pay — highlighted row
+        $bodyContents[] = ['type' => 'separator', 'margin' => 'sm'];
+        $bodyContents[] = [
+            'type'            => 'box',
+            'layout'          => 'horizontal',
+            'margin'          => 'sm',
+            'backgroundColor' => '#eff6ff',
+            'cornerRadius'    => '6px',
+            'paddingAll'      => '10px',
             'contents' => [
                 [
-                    'type'  => 'text',
-                    'text'  => 'ยอดชำระสุทธิ',
-                    'size'  => 'xs',
-                    'color' => '#6b7280',
-                    'flex'  => 1,
+                    'type'   => 'text',
+                    'text'   => 'Net To Pay',
+                    'size'   => 'sm',
+                    'weight' => 'bold',
+                    'color'  => '#1d4ed8',
+                    'flex'   => 1,
                 ],
                 [
                     'type'   => 'text',
-                    'text'   => '฿' . $netLabel,
-                    'size'   => 'xl',
+                    'text'   => $fmt($netAmt),
+                    'size'   => 'lg',
                     'weight' => 'bold',
                     'color'  => '#059669',
                     'align'  => 'end',
-                    'flex'   => 2,
+                    'flex'   => 1,
                 ],
             ],
         ];
 
-        // Financial summary mini-row (SO / CN / มัดจำ)
-        $summaryParts = [];
-        if (!empty($fs['so_amount']))          $summaryParts[] = 'SO ฿' . number_format((float)$fs['so_amount'], 2);
-        if (!empty($fs['credit_note_amount'])) $summaryParts[] = 'CN -฿' . number_format((float)$fs['credit_note_amount'], 2);
-        if (!empty($fs['deposit_amount']))     $summaryParts[] = 'มัดจำ -฿' . number_format((float)$fs['deposit_amount'], 2);
-        if (!empty($summaryParts)) {
-            $bodyContents[] = [
-                'type'  => 'text',
-                'text'  => implode('  ·  ', $summaryParts),
-                'size'  => 'xxs',
-                'color' => '#9ca3af',
-                'wrap'  => true,
-                'margin' => 'xs',
-            ];
-        }
-
         // Invoice list
         if (!empty($invoices)) {
-            $bodyContents[] = ['type' => 'separator', 'margin' => 'md'];
+            $bodyContents[] = ['type' => 'separator', 'margin' => 'lg'];
             $bodyContents[] = [
                 'type'   => 'text',
                 'text'   => 'ใบแจ้งหนี้ค้างชำระ',
-                'size'   => 'xxs',
+                'size'   => 'xs',
                 'weight' => 'bold',
                 'color'  => '#6b7280',
-                'margin' => 'md',
+                'margin' => 'lg',
             ];
             foreach ($invoices as $inv) {
-                $invNum    = $inv['number'] ?? $inv['name'] ?? '-';
-                $invAmt    = isset($inv['residual']) ? '฿' . number_format((float)$inv['residual'], 2) : '-';
-                $invDate   = $inv['date'] ?? '';
-                $invOrigin = $inv['origin'] ?? '';
-                $sub       = trim(implode(' ', array_filter([$invDate, $invOrigin])));
+                $invNum  = $inv['number'] ?? $inv['name'] ?? '-';
+                $invVal  = isset($inv['residual']) ? $fmt((float)$inv['residual']) : '-';
+                $invDate = $inv['date'] ?? '';
+                $origin  = $inv['origin'] ?? '';
+                $sub     = trim(implode(' ', array_filter([$invDate, $origin])));
                 $bodyContents[] = [
                     'type'   => 'box',
                     'layout' => 'horizontal',
-                    'margin' => 'xs',
+                    'margin' => 'sm',
                     'contents' => [
                         [
                             'type'   => 'box',
                             'layout' => 'vertical',
                             'flex'   => 3,
-                            'contents' => array_filter([
-                                [
-                                    'type'   => 'text',
-                                    'text'   => $invNum,
-                                    'size'   => 'xxs',
-                                    'color'  => '#374151',
-                                    'weight' => 'bold',
-                                ],
-                                $sub ? [
-                                    'type'  => 'text',
-                                    'text'  => $sub,
-                                    'size'  => 'xxs',
-                                    'color' => '#9ca3af',
-                                    'wrap'  => true,
-                                ] : null,
-                            ]),
+                            'contents' => array_values(array_filter([
+                                ['type' => 'text', 'text' => $invNum, 'size' => 'xs', 'color' => '#374151', 'weight' => 'bold'],
+                                $sub ? ['type' => 'text', 'text' => $sub, 'size' => 'xxs', 'color' => '#9ca3af', 'wrap' => true] : null,
+                            ])),
                         ],
                         [
                             'type'   => 'text',
-                            'text'   => $invAmt,
-                            'size'   => 'xxs',
+                            'text'   => $invVal,
+                            'size'   => 'xs',
                             'color'  => '#d97706',
                             'align'  => 'end',
                             'flex'   => 2,
@@ -160,10 +185,10 @@ class OdooFlexTemplates
                 ];
             }
             $total = count($data['invoices'] ?? []);
-            if ($total > 10) {
+            if ($total > 8) {
                 $bodyContents[] = [
                     'type'   => 'text',
-                    'text'   => '... และอีก ' . ($total - 10) . ' รายการ',
+                    'text'   => '... และอีก ' . ($total - 8) . ' รายการ',
                     'size'   => 'xxs',
                     'color'  => '#9ca3af',
                     'margin' => 'xs',
@@ -173,11 +198,11 @@ class OdooFlexTemplates
 
         return [
             'type' => 'bubble',
-            'size' => 'kilo',
+            'size' => 'mega',
             'body' => [
                 'type'       => 'box',
                 'layout'     => 'vertical',
-                'paddingAll' => '16px',
+                'paddingAll' => '20px',
                 'contents'   => $bodyContents,
             ],
             'footer' => [
@@ -189,7 +214,7 @@ class OdooFlexTemplates
                         'type'   => 'button',
                         'action' => [
                             'type'  => 'uri',
-                            'label' => '📄 ดู Statement PDF',
+                            'label' => 'BILL DELIVERY',
                             'uri'   => $invoiceUrl ?: 'https://cny.re-ya.com',
                         ],
                         'style'  => 'primary',
