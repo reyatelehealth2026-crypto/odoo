@@ -30,7 +30,7 @@ use Modules\Core\Database;
 try {
     $db = Database::getInstance()->getConnection();
 
-    $limit       = min((int) ($_GET['limit']  ?? 30), 200);
+    $limit       = min((int) ($_GET['limit']  ?? 30), 2000);
     $offset      = max((int) ($_GET['offset'] ?? 0),  0);
     $search      = trim($_GET['search']      ?? '');
     $status      = trim($_GET['status']      ?? '');
