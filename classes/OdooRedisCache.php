@@ -3,6 +3,7 @@
  * Universal Cache Manager - Redis, Native Redis, or File Cache
  * Auto-detects available caching method
  * Priority: Local Redis (127.0.0.1) > Redis Cloud > Predis > File Cache
+ * Credentials read from config constants (REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, etc.)
  */
 
 // Try to load Predis from different locations
@@ -32,7 +33,8 @@ class OdooRedisCache {
     private $enabled = false;
     private $hitCount = 0;
     private $missCount = 0;
-    
+    private $keyPrefix = 'odoo:';
+
     // Cache TTL Constants
     const TTL_OVERVIEW = 60;
     const TTL_STATS = 30;
@@ -56,13 +58,25 @@ class OdooRedisCache {
     }
     
     private function connect() {
+        // Read credentials from config constants (set via .env or config.php)
+        $cloudHost = defined('REDIS_HOST')     ? REDIS_HOST     : null;
+        $cloudPort = defined('REDIS_PORT')     ? (int) REDIS_PORT : 6379;
+        $cloudUser = defined('REDIS_USERNAME') ? REDIS_USERNAME : 'default';
+        $cloudPass = defined('REDIS_PASSWORD') ? REDIS_PASSWORD : null;
+        $cloudDb   = defined('REDIS_DB')       ? (int) REDIS_DB  : 0;
+        $cloudTimeout = defined('REDIS_TIMEOUT') ? (float) REDIS_TIMEOUT : 3.0;
+
         // Try 1: Local Redis (127.0.0.1:6379 - fastest, no network latency)
         if (extension_loaded('redis')) {
             try {
                 $redis = new Redis();
                 // Try localhost first with short timeout
                 if (@$redis->connect('127.0.0.1', 6379, 1)) {
-                    // Local Redis usually has no password
+                    // Local Redis - try with password if configured, else no auth
+                    $localPass = ($cloudHost === '127.0.0.1' || $cloudHost === 'localhost') ? $cloudPass : null;
+                    if ($localPass) {
+                        $redis->auth($localPass);
+                    }
                     if ($redis->ping()) {
                         $this->cache = $redis;
                         $this->type = 'redis-local';
@@ -75,36 +89,46 @@ class OdooRedisCache {
                 error_log("[Cache] Local Redis failed: " . $e->getMessage());
             }
         }
-        
-        // Try 2: Redis Cloud (if local not available)
-        if (extension_loaded('redis')) {
+
+        // Try 2: Redis Cloud from config (if local not available)
+        if ($cloudHost && $cloudHost !== '127.0.0.1' && $cloudHost !== 'localhost' && extension_loaded('redis')) {
             try {
                 $redis = new Redis();
-                $redis->connect('redis-13718.fcrce172.us-east-1-1.ec2.cloud.redislabs.com', 13718, 3);
-                $redis->auth(['default', '8aOsi5ZlcevxIxkXOFn4b4qshhMTHKC5']);
-                
+                $redis->connect($cloudHost, $cloudPort, $cloudTimeout);
+                if ($cloudUser && $cloudPass) {
+                    $redis->auth([$cloudUser, $cloudPass]);
+                } elseif ($cloudPass) {
+                    $redis->auth($cloudPass);
+                }
+                if ($cloudDb > 0) {
+                    $redis->select($cloudDb);
+                }
                 if ($redis->ping()) {
                     $this->cache = $redis;
                     $this->type = 'redis-cloud';
                     $this->enabled = true;
-                    error_log("[Cache] Connected to Redis Cloud");
+                    error_log("[Cache] Connected to Redis Cloud ({$cloudHost}:{$cloudPort})");
                     return;
                 }
             } catch (Exception $e) {
                 error_log("[Cache] Redis Cloud failed: " . $e->getMessage());
             }
         }
-        
+
         // Try 3: Predis for local Redis
         if (class_exists('Predis\Client')) {
             try {
                 // Try localhost first
-                $client = new PredisClient([
-                    'host' => '127.0.0.1',
-                    'port' => 6379,
+                $localParams = [
+                    'host'    => '127.0.0.1',
+                    'port'    => 6379,
                     'timeout' => 2.0,
-                ]);
-                
+                ];
+                $localPass = ($cloudHost === '127.0.0.1' || $cloudHost === 'localhost') ? $cloudPass : null;
+                if ($localPass) {
+                    $localParams['password'] = $localPass;
+                }
+                $client = new PredisClient($localParams);
                 $client->ping();
                 $this->cache = $client;
                 $this->type = 'predis-local';
@@ -113,26 +137,29 @@ class OdooRedisCache {
                 return;
             } catch (Exception $e) {
                 error_log("[Cache] Predis local failed: " . $e->getMessage());
-                
+
                 // Try Redis Cloud via Predis
-                try {
-                    $client = new PredisClient([
-                        'host' => 'redis-13718.fcrce172.us-east-1-1.ec2.cloud.redislabs.com',
-                        'port' => 13718,
-                        'database' => 0,
-                        'username' => 'default',
-                        'password' => '8aOsi5ZlcevxIxkXOFn4b4qshhMTHKC5',
-                        'timeout' => 3.0,
-                    ]);
-                    
-                    $client->ping();
-                    $this->cache = $client;
-                    $this->type = 'predis-cloud';
-                    $this->enabled = true;
-                    error_log("[Cache] Connected to Redis Cloud via Predis");
-                    return;
-                } catch (Exception $e2) {
-                    error_log("[Cache] Predis cloud failed: " . $e2->getMessage());
+                if ($cloudHost && $cloudHost !== '127.0.0.1' && $cloudHost !== 'localhost') {
+                    try {
+                        $cloudParams = [
+                            'scheme'  => 'tcp',
+                            'host'    => $cloudHost,
+                            'port'    => $cloudPort,
+                            'timeout' => $cloudTimeout,
+                        ];
+                        if ($cloudUser)  { $cloudParams['username'] = $cloudUser; }
+                        if ($cloudPass)  { $cloudParams['password'] = $cloudPass; }
+                        if ($cloudDb > 0){ $cloudParams['database'] = $cloudDb; }
+                        $client = new PredisClient($cloudParams);
+                        $client->ping();
+                        $this->cache = $client;
+                        $this->type = 'predis-cloud';
+                        $this->enabled = true;
+                        error_log("[Cache] Connected to Redis Cloud via Predis ({$cloudHost}:{$cloudPort})");
+                        return;
+                    } catch (Exception $e2) {
+                        error_log("[Cache] Predis cloud failed: " . $e2->getMessage());
+                    }
                 }
             }
         }
@@ -229,24 +256,44 @@ class OdooRedisCache {
     
     public function deletePattern($pattern) {
         if (!$this->enabled) return 0;
-        
+
         try {
             switch ($this->type) {
                 case 'redis-local':
                 case 'redis-cloud':
+                    // Use SCAN instead of KEYS to avoid blocking Redis on large keyspaces
+                    $deleted = 0;
+                    $it = null;
+                    $this->cache->setOption(Redis::OPT_SCAN, Redis::SCAN_RETRY);
+                    while ($keys = $this->cache->scan($it, $pattern, 100)) {
+                        if (!empty($keys)) {
+                            $deleted += $this->cache->del($keys);
+                        }
+                    }
+                    return $deleted;
                 case 'predis-local':
                 case 'predis-cloud':
-                    $keys = $this->cache->keys($pattern);
-                    if (!empty($keys)) {
-                        return $this->cache->del($keys);
+                    // Predis: use Keyspace iterator (non-blocking)
+                    $deleted = 0;
+                    $batch = [];
+                    foreach (new \Predis\Collection\Iterator\Keyspace($this->cache, $pattern, 100) as $key) {
+                        $batch[] = $key;
+                        if (count($batch) >= 100) {
+                            $deleted += $this->cache->del($batch);
+                            $batch = [];
+                        }
                     }
-                    return 0;
+                    if (!empty($batch)) {
+                        $deleted += $this->cache->del($batch);
+                    }
+                    return $deleted;
                 case 'file':
                     return 0;
                 default:
                     return 0;
             }
         } catch (Exception $e) {
+            error_log("[Cache] deletePattern error: " . $e->getMessage());
             return 0;
         }
     }
@@ -288,6 +335,47 @@ class OdooRedisCache {
             $key .= ":{$suffix}";
         }
         return $key;
+    }
+
+    public function flush() {
+        if (!$this->enabled) return 0;
+        try {
+            switch ($this->type) {
+                case 'redis-local':
+                case 'redis-cloud':
+                    $deleted = 0;
+                    $it = null;
+                    $this->cache->setOption(Redis::OPT_SCAN, Redis::SCAN_RETRY);
+                    while ($keys = $this->cache->scan($it, 'odoo:*', 100)) {
+                        if (!empty($keys)) {
+                            $deleted += $this->cache->del($keys);
+                        }
+                    }
+                    return $deleted;
+                case 'predis-local':
+                case 'predis-cloud':
+                    $deleted = 0;
+                    $batch = [];
+                    foreach (new \Predis\Collection\Iterator\Keyspace($this->cache, 'odoo:*', 100) as $key) {
+                        $batch[] = $key;
+                        if (count($batch) >= 100) {
+                            $deleted += $this->cache->del($batch);
+                            $batch = [];
+                        }
+                    }
+                    if (!empty($batch)) {
+                        $deleted += $this->cache->del($batch);
+                    }
+                    return $deleted;
+                case 'file':
+                    return FileCache::getInstance()->flush();
+                default:
+                    return 0;
+            }
+        } catch (Exception $e) {
+            error_log("[Cache] flush error: " . $e->getMessage());
+            return 0;
+        }
     }
 }
 

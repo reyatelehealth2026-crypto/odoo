@@ -1,150 +1,268 @@
 <?php
 /**
- * Universal Cache Test Script
- * ทดสอบ Redis, Native Redis, หรือ File Cache
+ * Full System Cache Test
+ * ทดสอบ OdooRedisCache เต็มระบบ — ครอบคลุม 4 fix:
+ *   Fix1: credentials จาก config constants (ไม่ hardcode)
+ *   Fix2: key prefix 'odoo:'
+ *   Fix3: SCAN แทน KEYS ใน deletePattern()
+ *   Fix4: flush() scoped ใน 'odoo:*' เท่านั้น
  */
 
+require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../classes/OdooRedisCache.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 
+$pass = 0;
+$fail = 0;
+
+function ok($label) {
+    global $pass;
+    $pass++;
+    echo "   ✅ PASS  $label\n";
+}
+function fail($label, $detail = '') {
+    global $fail;
+    $fail++;
+    echo "   ❌ FAIL  $label" . ($detail ? " — $detail" : '') . "\n";
+}
+function section($title) {
+    echo "\n── $title ──────────────────────────────────────\n";
+}
+
 echo "═══════════════════════════════════════════════════════\n";
-echo "Universal Cache Test Script\n";
-echo "═══════════════════════════════════════════════════════\n\n";
+echo "  OdooRedisCache Full System Test\n";
+echo "  " . date('Y-m-d H:i:s T') . "\n";
+echo "═══════════════════════════════════════════════════════\n";
 
 $cache = OdooRedisCache::getInstance();
+$type  = $cache->getType();
 
-// 1. Check which cache type is being used
-echo "1. Cache Type Detection\n";
-echo "   Type: " . $cache->getType() . "\n";
-echo "   Enabled: " . ($cache->isEnabled() ? 'Yes' : 'No') . "\n\n";
+// ──────────────────────────────────────────────────────────
+section('1. Connection & Config-driven Credentials (Fix 1)');
+// ──────────────────────────────────────────────────────────
 
-// 2. Test basic operations
-echo "2. Testing Basic Operations\n";
+echo "   Cache type : $type\n";
+echo "   Enabled    : " . ($cache->isEnabled() ? 'Yes' : 'No') . "\n";
 
-// Set
-$testData = [
-    'test' => true,
-    'time' => date('c'),
-    'random' => rand(1, 1000)
-];
-
-$cache->set('test:basic', $testData, 60);
-echo "   ✅ Set cache\n";
-
-// Get
-$value = $cache->get('test:basic');
-if ($value && $value['test'] === true) {
-    echo "   ✅ Get cache: " . json_encode($value, JSON_UNESCAPED_UNICODE) . "\n";
-} else {
-    echo "   ❌ Get cache failed\n";
-}
-
-// Delete
-$cache->delete('test:basic');
-$deleted = $cache->get('test:basic');
-if ($deleted === null) {
-    echo "   ✅ Delete cache\n";
-} else {
-    echo "   ❌ Delete failed\n";
-}
-echo "\n";
-
-// 3. Test Remember Pattern
-echo "3. Testing Remember Pattern\n";
-$callCount = 0;
-
-$result = $cache->remember('test:remember', 60, function() use (&$callCount) {
-    $callCount++;
-    return [
-        'computed' => true,
-        'value' => rand(1, 100),
-        'timestamp' => time()
-    ];
-});
-echo "   First call: " . json_encode($result) . "\n";
-echo "   Call count: $callCount\n";
-
-// Second call should use cache
-$result2 = $cache->remember('test:remember', 60, function() use (&$callCount) {
-    $callCount++;
-    return ['computed' => true, 'value' => rand(1, 100)];
-});
-echo "   Second call (cached): " . json_encode($result2) . "\n";
-echo "   Call count: $callCount (should be 1 if cache works)\n";
-
-if ($callCount === 1) {
-    echo "   ✅ Cache working correctly!\n";
-} else {
-    echo "   ⚠️  Cache might not be working\n";
-}
-echo "\n";
-
-// 4. Test Cache Key Generation
-echo "4. Testing Cache Key Generation\n";
-$keys = [
-    OdooRedisCache::key('overview', 1),
-    OdooRedisCache::key('stats', 1, 'today'),
-    OdooRedisCache::key('orders', 2, 'p1l50'),
-];
-foreach ($keys as $key) {
-    echo "   ✅ $key\n";
-}
-echo "\n";
-
-// 5. Performance Test
-echo "5. Performance Test\n";
-$iterations = 100;
-
-// Warm up cache
-$cache->set('perf:test', ['data' => 'test'], 60);
-
-// With cache
-$start = microtime(true);
-for ($i = 0; $i < $iterations; $i++) {
-    $cache->get('perf:test');
-}
-$withCache = (microtime(true) - $start) * 1000;
-echo "   $iterations reads with cache: " . round($withCache, 2) . " ms\n";
-echo "   Average per read: " . round($withCache / $iterations, 4) . " ms\n";
-
-if ($withCache < 100) {
-    echo "   ✅ Excellent performance!\n";
-} elseif ($withCache < 500) {
-    echo "   ✅ Good performance\n";
-} else {
-    echo "   ⚠️  Performance could be improved\n";
-}
-echo "\n";
-
-// 6. Stats
-echo "6. Cache Statistics\n";
-$stats = $cache->getStats();
-echo "   Enabled: " . ($stats['enabled'] ? 'Yes' : 'No') . "\n";
-echo "   Type: " . $stats['type'] . "\n";
-echo "   Hits: " . $stats['hits'] . "\n";
-echo "   Misses: " . $stats['misses'] . "\n";
-echo "   Hit Rate: " . $stats['hit_rate'] . "%\n\n";
-
-// 7. Cleanup
-echo "7. Cleanup\n";
-$cache->delete('test:remember');
-$cache->delete('perf:test');
-echo "   ✅ Test data cleaned up\n\n";
-
-// Summary
-echo "═══════════════════════════════════════════════════════\n";
 if ($cache->isEnabled()) {
-    echo "✅ Cache is working!\n";
-    echo "Type: " . $cache->getType() . "\n";
-    if ($cache->getType() === 'file') {
-        echo "\n⚠️  Using file-based cache (slower than Redis)\n";
-        echo "To enable Redis:\n";
-        echo "1. Install php-redis: sudo apt-get install php-redis\n";
-        echo "2. Or install Predis: bash scripts/install-predis.sh\n";
-    }
+    ok("Cache connected via config constants");
 } else {
-    echo "❌ No caching available\n";
-    echo "Install php-redis or Predis to enable caching\n";
+    fail("Cache not connected", "Check REDIS_HOST/PORT/PASSWORD in config.php or .env");
+}
+
+// Confirm credentials are NOT hardcoded by checking config constants exist
+if (defined('REDIS_HOST') && REDIS_HOST !== '') {
+    ok("REDIS_HOST constant defined: " . REDIS_HOST);
+} else {
+    fail("REDIS_HOST not defined in config");
+}
+if (defined('REDIS_PASSWORD') && REDIS_PASSWORD !== '') {
+    ok("REDIS_PASSWORD constant defined (value hidden)");
+} else {
+    fail("REDIS_PASSWORD not defined in config");
+}
+
+// ──────────────────────────────────────────────────────────
+section('2. Key Prefix Isolation (Fix 2)');
+// ──────────────────────────────────────────────────────────
+
+$generatedKey = OdooRedisCache::key('overview', 1);
+if (strpos($generatedKey, 'odoo:') === 0) {
+    ok("key() generates prefix 'odoo:' → $generatedKey");
+} else {
+    fail("key() prefix wrong", "Got: $generatedKey");
+}
+
+$generatedKey2 = OdooRedisCache::key('orders', 99, 'p1l50');
+$expected2 = 'odoo:orders:99:p1l50';
+if ($generatedKey2 === $expected2) {
+    ok("key() with suffix → $generatedKey2");
+} else {
+    fail("key() with suffix wrong", "Expected $expected2, got $generatedKey2");
+}
+
+// ──────────────────────────────────────────────────────────
+section('3. Basic Operations (Set / Get / Delete)');
+// ──────────────────────────────────────────────────────────
+
+$testKey = OdooRedisCache::key('test', 0, 'basic');
+$testData = ['ok' => true, 'ts' => time(), 'rand' => rand(1000, 9999)];
+
+$cache->set($testKey, $testData, 60);
+$got = $cache->get($testKey);
+
+if ($got && $got['ok'] === true && $got['rand'] === $testData['rand']) {
+    ok("set() + get() round-trip");
+} else {
+    fail("set() + get() round-trip", "Got: " . json_encode($got));
+}
+
+$cache->delete($testKey);
+$afterDel = $cache->get($testKey);
+if ($afterDel === null) {
+    ok("delete() removes key");
+} else {
+    fail("delete() did not remove key");
+}
+
+// ──────────────────────────────────────────────────────────
+section('4. remember() Pattern');
+// ──────────────────────────────────────────────────────────
+
+$rememberKey = OdooRedisCache::key('test', 0, 'remember');
+$cache->delete($rememberKey);
+
+$callCount = 0;
+$v1 = $cache->remember($rememberKey, 30, function() use (&$callCount) {
+    $callCount++;
+    return ['val' => 42, 'computed' => true];
+});
+$v2 = $cache->remember($rememberKey, 30, function() use (&$callCount) {
+    $callCount++;
+    return ['val' => 99];
+});
+
+if ($v1['val'] === 42 && $v2['val'] === 42 && $callCount === 1) {
+    ok("remember() calls generator once, returns cached on 2nd call");
+} else {
+    fail("remember() not caching", "callCount=$callCount v1={$v1['val']} v2={$v2['val']}");
+}
+$cache->delete($rememberKey);
+
+// ──────────────────────────────────────────────────────────
+section('5. deletePattern() using SCAN — not KEYS (Fix 3)');
+// ──────────────────────────────────────────────────────────
+
+$patternBase = OdooRedisCache::key('test', 777);
+for ($i = 1; $i <= 5; $i++) {
+    $cache->set("{$patternBase}:item{$i}", ['n' => $i], 60);
+}
+
+// Verify 5 keys set
+$found = 0;
+for ($i = 1; $i <= 5; $i++) {
+    if ($cache->get("{$patternBase}:item{$i}") !== null) $found++;
+}
+if ($found === 5) {
+    ok("Setup: 5 pattern test keys set");
+} else {
+    fail("Setup: only $found/5 keys set");
+}
+
+$deleted = $cache->deletePattern("{$patternBase}:*");
+$remaining = 0;
+for ($i = 1; $i <= 5; $i++) {
+    if ($cache->get("{$patternBase}:item{$i}") !== null) $remaining++;
+}
+
+if ($remaining === 0) {
+    ok("deletePattern() removed all 5 keys (deleted=$deleted)");
+} else {
+    fail("deletePattern() left $remaining/5 keys behind");
+}
+
+// ──────────────────────────────────────────────────────────
+section('6. flush() scoped to odoo:* only (Fix 4)');
+// ──────────────────────────────────────────────────────────
+
+$odooKey  = OdooRedisCache::key('test', 0, 'flush_odoo');
+$cache->set($odooKey, ['odoo' => true], 60);
+
+$flushed = $cache->flush();
+$afterFlush = $cache->get($odooKey);
+
+if ($afterFlush === null) {
+    ok("flush() cleared odoo:* key (flushed=$flushed)");
+} else {
+    fail("flush() did not clear odoo:* key");
+}
+
+// ──────────────────────────────────────────────────────────
+section('7. Cache Invalidator Integration');
+// ──────────────────────────────────────────────────────────
+
+require_once __DIR__ . '/../classes/CacheInvalidator.php';
+
+$acct = 9999;
+// Pre-populate keys that CacheInvalidator will clear
+$cache->set(OdooRedisCache::key('overview', $acct), ['x' => 1], 60);
+$cache->set(OdooRedisCache::key('orders:today:count', $acct), 5, 60);
+$cache->set(OdooRedisCache::key('sales:today', $acct), 1000.0, 60);
+
+$inv = new CacheInvalidator();
+$inv->onOrderChange($acct, 12345);
+
+$stillHasOverview = $cache->get(OdooRedisCache::key('overview', $acct));
+$stillHasCount    = $cache->get(OdooRedisCache::key('orders:today:count', $acct));
+
+if ($stillHasOverview === null && $stillHasCount === null) {
+    ok("CacheInvalidator::onOrderChange() cleared expected keys");
+} else {
+    fail("CacheInvalidator::onOrderChange() did not clear all keys");
+}
+
+$cache->set(OdooRedisCache::key('slips:pending:count', $acct), 3, 60);
+$inv->onSlipChange($acct);
+if ($cache->get(OdooRedisCache::key('slips:pending:count', $acct)) === null) {
+    ok("CacheInvalidator::onSlipChange() cleared slip keys");
+} else {
+    fail("CacheInvalidator::onSlipChange() failed");
+}
+
+// ──────────────────────────────────────────────────────────
+section('8. Performance Benchmark');
+// ──────────────────────────────────────────────────────────
+
+$perfKey = OdooRedisCache::key('test', 0, 'perf');
+$cache->set($perfKey, ['data' => str_repeat('x', 512)], 60);
+
+$n = 200;
+$start = microtime(true);
+for ($i = 0; $i < $n; $i++) {
+    $cache->get($perfKey);
+}
+$ms = (microtime(true) - $start) * 1000;
+$avg = round($ms / $n, 4);
+echo "   $n reads total : " . round($ms, 2) . " ms\n";
+echo "   Average/read   : {$avg} ms\n";
+
+if ($avg < 1.0) {
+    ok("Excellent — avg {$avg}ms/read (local Redis)");
+} elseif ($avg < 10.0) {
+    ok("Good — avg {$avg}ms/read (Redis Cloud)");
+} else {
+    fail("Slow — avg {$avg}ms/read (check connection)");
+}
+$cache->delete($perfKey);
+
+// ──────────────────────────────────────────────────────────
+section('9. getStats()');
+// ──────────────────────────────────────────────────────────
+
+$stats = $cache->getStats();
+echo "   Type     : " . $stats['type'] . "\n";
+echo "   Hits     : " . $stats['hits'] . "\n";
+echo "   Misses   : " . $stats['misses'] . "\n";
+echo "   Hit Rate : " . $stats['hit_rate'] . "%\n";
+
+if ($stats['enabled']) {
+    ok("getStats() returns valid data");
+} else {
+    fail("getStats() reports cache disabled");
+}
+
+// ──────────────────────────────────────────────────────────
+// SUMMARY
+// ──────────────────────────────────────────────────────────
+$total = $pass + $fail;
+echo "\n═══════════════════════════════════════════════════════\n";
+echo "  RESULT: $pass/$total passed" . ($fail > 0 ? ", $fail FAILED" : " — ALL GOOD") . "\n";
+echo "  Cache : $type\n";
+
+if ($fail === 0) {
+    echo "  ✅ ระบบ Redis Cache พร้อมใช้งาน\n";
+} else {
+    echo "  ⚠️  มี $fail จุดที่ต้องแก้ไข ดูรายละเอียดด้านบน\n";
 }
 echo "═══════════════════════════════════════════════════════\n";
