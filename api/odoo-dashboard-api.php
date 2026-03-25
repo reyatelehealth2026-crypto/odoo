@@ -2219,13 +2219,90 @@ function sendBdoPaymentNotification($db, $input)
         throw new Exception('ส่งแจ้งเตือนไม่สำเร็จ: ' . ($apiError ?: 'Unknown error'));
     }
 
+    // ── 10. Save to inbox messages table for ChatPanel display ─────────
+    $inboxMessageId = null;
+    try {
+        $userStmt = $db->prepare("SELECT id, line_account_id FROM users WHERE line_user_id = ? LIMIT 1");
+        $userStmt->execute([$lineUserId]);
+        $inboxUser = $userStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($inboxUser) {
+            $inboxUserId      = (int) $inboxUser['id'];
+            $inboxLineAcctId  = (int) ($inboxUser['line_account_id'] ?: $lineAccountId);
+
+            $flexJson = json_encode([
+                'type'     => 'flex',
+                'altText'  => $altText,
+                'contents' => $flexBubble,
+            ], JSON_UNESCAPED_UNICODE);
+
+            $metadataJson = json_encode([
+                'flexContent' => [
+                    'type'     => 'flex',
+                    'altText'  => $altText,
+                    'contents' => $flexBubble,
+                ],
+                'bdo_id'  => $bdoId,
+                'bdo_ref' => $bdoRef,
+            ], JSON_UNESCAPED_UNICODE);
+
+            $msgStmt = $db->prepare("
+                INSERT INTO messages
+                (line_account_id, user_id, direction, message_type, content, metadata, sent_by, is_read, platform, created_at, updated_at)
+                VALUES (?, ?, 'outgoing', 'flex', ?, ?, 'system:bdo_notification', 1, 'line', NOW(), NOW())
+            ");
+            $msgStmt->execute([$inboxLineAcctId, $inboxUserId, $flexJson, $metadataJson]);
+            $inboxMessageId = (int) $db->lastInsertId();
+
+            // Notify Next.js via webhook-notify for real-time Pusher broadcast
+            $nextjsUrl = defined('NEXTJS_API_URL') ? NEXTJS_API_URL : '';
+            $apiSecret = defined('INTERNAL_API_SECRET') ? INTERNAL_API_SECRET : '';
+            if ($nextjsUrl !== '' && $apiSecret !== '' && $inboxMessageId > 0) {
+                $notifyPayload = json_encode([
+                    'type' => 'new_message',
+                    'data' => [
+                        'conversationId' => $inboxUserId,
+                        'message' => [
+                            'id'          => $inboxMessageId,
+                            'userId'      => $inboxUserId,
+                            'direction'   => 'outgoing',
+                            'messageType' => 'flex',
+                            'content'     => $flexJson,
+                            'mediaUrl'    => null,
+                            'createdAt'   => date('c'),
+                            'sentBy'      => 'system:bdo_notification',
+                            'platform'    => 'line',
+                        ],
+                    ],
+                ], JSON_UNESCAPED_UNICODE);
+
+                $nCh = curl_init($nextjsUrl . '/api/inbox/webhook-notify');
+                curl_setopt_array($nCh, [
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $notifyPayload,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/json',
+                        'x-api-key: ' . $apiSecret,
+                    ],
+                    CURLOPT_TIMEOUT => 5,
+                ]);
+                curl_exec($nCh);
+                curl_close($nCh);
+            }
+        }
+    } catch (Exception $e) {
+        error_log('[sendBdoPaymentNotification] inbox save error: ' . $e->getMessage());
+    }
+
     return [
-        'sent'       => true,
-        'bdo_id'     => $bdoId,
-        'bdo_ref'    => $bdoRef,
-        'amount'     => $flexData['amount_total'],
-        'has_qr'     => !empty($qrPayload),
-        'latency_ms' => $latencyMs,
+        'sent'             => true,
+        'bdo_id'           => $bdoId,
+        'bdo_ref'          => $bdoRef,
+        'amount'           => $flexData['amount_total'],
+        'has_qr'           => !empty($qrPayload),
+        'latency_ms'       => $latencyMs,
+        'inbox_message_id' => $inboxMessageId,
     ];
 }
 

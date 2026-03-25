@@ -6,7 +6,7 @@
 
 class OdooFlexTemplates
 {
-    public static function bdoPaymentRequest($data, $qrCodeUrl)
+    public static function bdoPaymentRequest($data, $qrCodeUrl = '')
     {
         $bdoRef   = $data['bdo_ref']   ?? 'BDO-XXX';
         $orderRef = $data['order_ref'] ?? '-';
@@ -196,79 +196,35 @@ class OdooFlexTemplates
             }
         }
 
-        // ── QR + Bank details section ─────────────────────────────────────
+        // ── Bank details section ────────────────────────────────────────
         $bank = $data['bank_account'] ?? [];
         $bankName    = $bank['bank_name']      ?? 'ธนาคารกสิกรไทย';
         $bankAccNo   = $bank['account_number'] ?? '';
         $bankAccName = $bank['account_name']   ?? '';
 
-        $qrSection = [];
-        if (!empty($qrCodeUrl)) {
-            $qrCaption = [];
-            $qrCaption[] = ['type' => 'text', 'text' => 'สแกน QR PromptPay', 'size' => 'xxs', 'color' => '#6b7280', 'align' => 'center', 'margin' => 'xs'];
-            $qrCaption[] = ['type' => 'text', 'text' => 'ยอด ' . $fmt($netAmt) . ' บาท', 'size' => 'xxs', 'color' => '#374151', 'weight' => 'bold', 'align' => 'center'];
-            $qrCaption[] = ['type' => 'text', 'text' => 'Ref: ' . $bdoRef, 'size' => 'xxs', 'color' => '#9ca3af', 'align' => 'center'];
+        $bankSection = [];
+        $bankSection[] = ['type' => 'separator', 'margin' => 'lg'];
+        $bankSection[] = [
+            'type'            => 'box',
+            'layout'          => 'vertical',
+            'margin'          => 'lg',
+            'backgroundColor' => '#ffffff',
+            'cornerRadius'    => '10px',
+            'paddingAll'      => '14px',
+            'spacing'         => 'sm',
+            'borderWidth'     => '1px',
+            'borderColor'     => '#e5e7eb',
+            'contents' => [
+                ['type' => 'text', 'text' => 'กรุณาชำระเงินที่', 'size' => 'sm', 'weight' => 'bold', 'color' => '#1f2937', 'align' => 'center'],
+                ['type' => 'text', 'text' => 'เลขบัญชี ' . $bankAccNo, 'size' => 'md', 'weight' => 'bold', 'color' => '#111827', 'align' => 'center', 'margin' => 'sm'],
+                ['type' => 'text', 'text' => $bankName, 'size' => 'xs', 'color' => '#6b7280', 'align' => 'center', 'margin' => 'xs'],
+                ['type' => 'text', 'text' => 'ชื่อบัญชี ' . $bankAccName, 'size' => 'xs', 'color' => '#6b7280', 'align' => 'center', 'wrap' => true, 'margin' => 'xs'],
+                ['type' => 'separator', 'margin' => 'md', 'color' => '#e5e7eb'],
+                ['type' => 'text', 'text' => 'หลังโอนเงิน กรุณาส่งหลักฐานการโอนมาที่ LINE', 'size' => 'xxs', 'color' => '#9ca3af', 'align' => 'center', 'wrap' => true, 'margin' => 'sm'],
+            ],
+        ];
 
-            $qrSection[] = ['type' => 'separator', 'margin' => 'lg'];
-            $qrSection[] = [
-                'type'            => 'box',
-                'layout'          => 'horizontal',
-                'margin'          => 'lg',
-                'backgroundColor' => '#ffffff',
-                'cornerRadius'    => '10px',
-                'paddingAll'      => '14px',
-                'spacing'         => 'lg',
-                'borderWidth'     => '1px',
-                'borderColor'     => '#e5e7eb',
-                'contents' => [
-                    [
-                        'type'   => 'box',
-                        'layout' => 'vertical',
-                        'flex'   => 0,
-                        'contents' => array_merge(
-                            [[
-                                'type'          => 'image',
-                                'url'           => $qrCodeUrl,
-                                'size'          => '100px',
-                                'aspectMode'    => 'cover',
-                                'aspectRatio'   => '1:1',
-                            ]],
-                            $qrCaption
-                        ),
-                    ],
-                    [
-                        'type'   => 'box',
-                        'layout' => 'vertical',
-                        'flex'   => 1,
-                        'spacing' => 'sm',
-                        'justifyContent' => 'center',
-                        'contents' => [
-                            ['type' => 'text', 'text' => 'กรุณาชำระเงินที่', 'size' => 'sm', 'weight' => 'bold', 'color' => '#1f2937', 'align' => 'center'],
-                            ['type' => 'text', 'text' => 'เลขบัญชี ' . $bankAccNo, 'size' => 'md', 'weight' => 'bold', 'color' => '#111827', 'align' => 'center', 'margin' => 'sm'],
-                            ['type' => 'text', 'text' => $bankName, 'size' => 'xs', 'color' => '#6b7280', 'align' => 'center', 'margin' => 'xs'],
-                            ['type' => 'text', 'text' => 'ชื่อบัญชี ' . $bankAccName, 'size' => 'xs', 'color' => '#6b7280', 'align' => 'center', 'wrap' => true, 'margin' => 'xs'],
-                            ['type' => 'separator', 'margin' => 'md', 'color' => '#e5e7eb'],
-                            ['type' => 'text', 'text' => 'หลังโอนเงิน กรุณาส่งหลักฐานการโอนมาที่ LINE', 'size' => 'xxs', 'color' => '#9ca3af', 'align' => 'center', 'wrap' => true, 'margin' => 'sm'],
-                        ],
-                    ],
-                ],
-            ];
-
-            // "บันทึก QR" button — opens the QR image URL so customer can save it
-            $qrSection[] = [
-                'type'   => 'button',
-                'action' => [
-                    'type'  => 'uri',
-                    'label' => 'บันทึก QR',
-                    'uri'   => $qrCodeUrl,
-                ],
-                'style'  => 'secondary',
-                'height' => 'sm',
-                'margin' => 'md',
-            ];
-        }
-
-        $bodyContents = array_merge($bodyContents, $qrSection);
+        $bodyContents = array_merge($bodyContents, $bankSection);
 
         return [
             'type' => 'bubble',
@@ -288,7 +244,7 @@ class OdooFlexTemplates
                         'type'   => 'button',
                         'action' => [
                             'type'  => 'uri',
-                            'label' => 'BILL DELIVERY',
+                            'label' => 'ชำระเงิน',
                             'uri'   => $invoiceUrl ?: 'https://cny.re-ya.com',
                         ],
                         'style'  => 'primary',

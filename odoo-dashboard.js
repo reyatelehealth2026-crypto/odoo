@@ -524,7 +524,7 @@ function fmtThDate(raw){
     if(!raw) return '-';
     const d = new Date(raw);
     if(isNaN(d)) return String(raw).slice(0,10) || '-';
-    return d.toLocaleDateString('th-TH', {day:'2-digit', month:'short', year:'2-digit'});
+    return d.toLocaleDateString('th-TH', {day:'2-digit', month:'short', year:'2-digit', timeZone:'Asia/Bangkok'});
 }
 function slipThumb(slip){
     if(!slip || !slip.image_full_url) return '';
@@ -665,8 +665,8 @@ async function showCustomerDetail(ref, partnerId, custName){
     }
 
     const _fmtBaht = function(v){ if(v==null||v===''||isNaN(v))return '-'; return '\u0e3f'+Number(v).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2}); };
-    const _fmtDt = function(raw){ if(!raw)return '-'; const d=new Date(raw); if(isNaN(d))return String(raw).slice(0,10)||'-'; return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'}); };
-    const _fmtDtTime = function(raw){ if(!raw)return '-'; const d=new Date(raw); if(isNaN(d))return String(raw).slice(0,16)||'-'; return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit'})+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'}); };
+    const _fmtDt = function(raw){ if(!raw)return '-'; const d=new Date(raw); if(isNaN(d))return String(raw).slice(0,10)||'-'; return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit',timeZone:'Asia/Bangkok'}); };
+    const _fmtDtTime = function(raw){ if(!raw)return '-'; const d=new Date(raw); if(isNaN(d))return String(raw).slice(0,16)||'-'; return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit',timeZone:'Asia/Bangkok'})+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}); };
 
     const PAYMENT_METHODS = {cash:'เงินสด',bank_transfer:'โอนเงิน',promptpay:'พร้อมเพย์',cheque:'เช็ค',credit_card:'บัตรเครดิต'};
 
@@ -2422,7 +2422,7 @@ async function openInvoiceDetail(invoiceId, invoiceName){
 async function sendBdoPaymentNotify(bdoId, partnerId, bdoName){
     if(!bdoId){alert('ไม่พบ BDO ID');return;}
     const displayName = bdoName || ('BDO-'+bdoId);
-    if(!confirm('ส่งแจ้งยอดชำระ '+displayName+' ให้ลูกค้าทาง LINE?\n\nระบบจะส่ง Flex Message สรุปยอด พร้อม QR พร้อมเพย์ (ถ้ามี)')){
+    if(!confirm('ส่งแจ้งยอดชำระ '+displayName+' ให้ลูกค้าทาง LINE?\n\nระบบจะส่ง Flex Message สรุปยอดพร้อมข้อมูลชำระเงิน')){
         return;
     }
     // Find and disable the button
@@ -2440,8 +2440,7 @@ async function sendBdoPaymentNotify(bdoId, partnerId, bdoName){
         }
         const d = res.data || {};
         const amtStr = d.amount ? '฿'+Number(d.amount).toLocaleString('th-TH',{minimumFractionDigits:2}) : '';
-        const qrNote = d.has_qr ? ' (พร้อม QR พร้อมเพย์)' : ' (ไม่มี QR)';
-        alert('✅ ส่งแจ้งยอดชำระ '+displayName+' สำเร็จ\n'+amtStr+qrNote);
+        alert('✅ ส่งแจ้งยอดชำระ '+displayName+' สำเร็จ\n'+amtStr);
         if(btn){btn.innerHTML='<i class="bi bi-check-lg"></i> ส่งแล้ว';btn.style.background='#dcfce7';btn.style.color='#16a34a';btn.style.borderColor='#bbf7d0';}
     }catch(e){
         alert('❌ '+e.message);
@@ -2611,7 +2610,7 @@ async function openBdoDetail(bdoId, bdoName, rawBdo){
         html+='<div style="background:var(--gray-50);border:1px solid var(--gray-200);border-radius:10px;padding:0.8rem;">';
         html+='<div style="font-size:0.75rem;color:var(--gray-500);margin-bottom:0.3rem;">Payload</div>';
         html+='<div style="font-family:JetBrains Mono,monospace;font-size:0.78rem;word-break:break-all;margin-bottom:0.5rem;">'+escapeHtml(String(qrPayloadRaw))+'</div>';
-        html+='<div style="font-size:0.72rem;color:#7c3aed;"><i class="bi bi-info-circle"></i> QR นี้จะถูกส่งพร้อม Flex Message เมื่อกดปุ่ม "ส่งแจ้งยอดผ่าน LINE"</div>';
+        html+='<div style="font-size:0.72rem;color:#7c3aed;"><i class="bi bi-info-circle"></i> QR Payload สำหรับอ้างอิง</div>';
         html+='</div>';
     }
 
