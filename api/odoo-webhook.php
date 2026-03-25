@@ -229,11 +229,81 @@ class OdooWebhookHandler {
      */
     private function handleInvoiceEvent($eventType, $data) {
         $invoiceData = $data['data'] ?? $data;
-        
+
         if ($eventType === 'invoice.paid') {
             $this->updateInvoiceState($invoiceData['invoice_id'], 'paid', $invoiceData);
+            // If this invoice belongs to a BDO, recalculate BDO financial state
+            $this->syncBdoStateFromInvoicePaid($invoiceData);
         } elseif ($eventType === 'invoice.created') {
             $this->upsertInvoice($invoiceData, null);
+        }
+    }
+
+    /**
+     * When invoice.paid fires, find any BDO that contains this invoice
+     * and update its amount_net_to_pay / payment_state accordingly.
+     */
+    private function syncBdoStateFromInvoicePaid($invoiceData) {
+        $invoiceNumber = $invoiceData['invoice_number'] ?? $invoiceData['name'] ?? null;
+        $invoiceId     = $invoiceData['invoice_id'] ?? null;
+        $paidAmount    = (float) ($invoiceData['amount_total'] ?? $invoiceData['amount_residual'] ?? 0);
+
+        if (!$invoiceNumber && !$invoiceId) return;
+
+        try {
+            // Find BDOs that reference this invoice in selected_invoices_json
+            $whereClauses = [];
+            $params = [];
+            if ($invoiceNumber) {
+                $whereClauses[] = 'selected_invoices_json LIKE ?';
+                $params[] = '%' . $invoiceNumber . '%';
+            }
+            if ($invoiceId) {
+                $whereClauses[] = 'selected_invoices_json LIKE ?';
+                $params[] = '%"invoice_id":' . (int)$invoiceId . '%';
+            }
+
+            if (empty($whereClauses)) return;
+
+            $sql = 'SELECT DISTINCT bdo_id FROM odoo_bdo_context WHERE (' . implode(' OR ', $whereClauses) . ')';
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $bdoIds = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+            foreach ($bdoIds as $bdoId) {
+                $bdoId = (int) $bdoId;
+
+                // Subtract paid invoice amount from stored net_to_pay
+                $bdoStmt = $this->db->prepare('
+                    SELECT amount_net_to_pay, financial_summary_json
+                    FROM odoo_bdos WHERE bdo_id = ? LIMIT 1
+                ');
+                $bdoStmt->execute([$bdoId]);
+                $bdoRow = $bdoStmt->fetch(\PDO::FETCH_ASSOC);
+                if (!$bdoRow) continue;
+
+                $currentNet = (float) ($bdoRow['amount_net_to_pay'] ?? 0);
+                $newNet = max(0, $currentNet - $paidAmount);
+
+                // Update amount_net_to_pay; if fully paid set payment_state = in_payment
+                $newPaymentState = ($newNet <= 0) ? 'in_payment' : null;
+
+                if ($newPaymentState) {
+                    $this->db->prepare('
+                        UPDATE odoo_bdos
+                        SET amount_net_to_pay = ?, payment_state = ?, updated_at = NOW()
+                        WHERE bdo_id = ?
+                    ')->execute([$newNet, $newPaymentState, $bdoId]);
+                } else {
+                    $this->db->prepare('
+                        UPDATE odoo_bdos
+                        SET amount_net_to_pay = ?, updated_at = NOW()
+                        WHERE bdo_id = ?
+                    ')->execute([$newNet, $bdoId]);
+                }
+            }
+        } catch (\Exception $e) {
+            error_log('[syncBdoStateFromInvoicePaid] ' . $e->getMessage());
         }
     }
     
@@ -245,9 +315,10 @@ class OdooWebhookHandler {
         
         $this->upsertPayment($paymentData);
         
-        // Update invoice state
+        // Update invoice state + propagate to linked BDO
         if (isset($paymentData['invoice_id'])) {
             $this->updateInvoiceState($paymentData['invoice_id'], 'paid', $paymentData);
+            $this->syncBdoStateFromInvoicePaid($paymentData);
         }
         
         // Update order state
