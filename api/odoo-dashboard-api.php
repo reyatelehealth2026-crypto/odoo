@@ -84,6 +84,7 @@ try {
         $cacheKey = dashboardApiBuildCacheKey($action, $input);
         $cachedResult = dashboardApiCacheGet($cacheKey, $cacheTtl);
         if ($cachedResult !== null) {
+            ob_clean();
             echo json_encode([
                 'success' => true,
                 'data' => $cachedResult,
@@ -240,6 +241,7 @@ try {
         if ($cacheKey !== null) {
             $staleResult = dashboardApiCacheGetStale($cacheKey, defined('ODOO_DASHBOARD_STALE_TTL') ? (int) ODOO_DASHBOARD_STALE_TTL : 300);
             if ($staleResult !== null) {
+                ob_clean();
                 echo json_encode([
                     'success' => true,
                     'data' => $staleResult,
