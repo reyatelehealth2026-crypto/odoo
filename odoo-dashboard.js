@@ -3013,7 +3013,7 @@ async function loadTodayOverview(){
     if(kpiOverdue)kpiOverdue.textContent=Number(overdueTotal).toLocaleString();
     if(kpiBdo){
         kpiBdo.textContent=Number(bdos.length||0).toLocaleString();
-        const pendingTotal=bdos.reduce(function(sm,b){return sm+parseFloat(b.amount_total||b.amount_net_to_pay||0);},0);
+        const pendingTotal=bdos.reduce(function(sm,b){return sm+parseFloat(b.amount_net_to_pay||b.amount_total||0);},0);
         const sub=kpiBdo.parentElement&&kpiBdo.parentElement.querySelector('.kpi-sub');
         if(sub)sub.textContent=pendingTotal>0?'฿'+pendingTotal.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0}):'ยอดรอจับคู่';
     }
@@ -3912,7 +3912,7 @@ function updateMatchSummaryBar(){
     }
 
     const slipTotal = selectedSlips.reduce(function(sum, slip){ return sum + parseFloat(slip.amount || 0); }, 0);
-    const bdoTotal = selectedBdos.reduce(function(sum, bdo){ return sum + parseFloat(bdo.amount_total || bdo.amount_net_to_pay || 0); }, 0);
+    const bdoTotal = selectedBdos.reduce(function(sum, bdo){ return sum + parseFloat(bdo.amount_net_to_pay || bdo.amount_total || 0); }, 0);
     const diff = slipTotal - bdoTotal;
     const customerState = getSelectedMatchCustomerState();
     const customerText = customerState.matched
@@ -4018,7 +4018,7 @@ function computeSmartMatches(slips, bdos){
             if(usedBdos.has(bi)) return;
             const bdoRef = normalizeMatchCustomerRef(getBdoCustomerRef(bdo));
             if(!bdoRef || slipRef !== bdoRef) return;
-            const bdoAmt = parseFloat(bdo.amount_total || bdo.amount_net_to_pay || 0);
+            const bdoAmt = parseFloat(bdo.amount_net_to_pay || bdo.amount_total || 0);
             if(Math.abs(slipAmt - bdoAmt) <= 1){
                 candidates.push({bdo:bdo, bi:bi});
             }
