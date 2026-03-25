@@ -656,7 +656,7 @@ function _custRenderBdosHtml(bdos, bdoData, slipByBdoId, invoicesAll, pidParam, 
         h += '<div style="flex:1;min-width:0;">';
         h += '<div style="font-size:0.62rem;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">เลข BDO</div>';
         h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
-        h += '<a class="ref-link" href="javascript:void(0)" onclick="openBdoDetail(''+escapeHtml(String(_bdoId))+'',''+escapeHtml(bdoName)+'', decodeURIComponent(''+encodeURIComponent(JSON.stringify(bdo))+''))" style="font-weight:600;font-size:0.9rem;">'+escapeHtml(bdoName)+'</a>';
+        h += '<a class="ref-link" href="javascript:void(0)" onclick="openBdoDetail(\'' + escapeHtml(String(_bdoId)) + '\',\'' + escapeHtml(bdoName) + '\', decodeURIComponent(\'' + encodeURIComponent(JSON.stringify(bdo)) + '\'))" style="font-weight:600;font-size:0.9rem;">' + escapeHtml(bdoName) + '</a>';
         h += '<span style="background:'+ps.bg+';color:'+ps.clr+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;"><i class="bi bi-'+ps.icon+'" style="font-size:0.68rem;"></i> '+escapeHtml(paymentState.label || ps.lbl)+'</span>';
         if(deliveryTypeLabel){ h += '<span style="background:#f0f9ff;color:#0369a1;padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;border:1px solid #bae6fd;"><i class="bi bi-truck" style="font-size:0.68rem;"></i> '+escapeHtml(deliveryTypeLabel)+'</span>'; }
         h += '</div>';
@@ -677,19 +677,19 @@ function _custRenderBdosHtml(bdos, bdoData, slipByBdoId, invoicesAll, pidParam, 
         h += '<span style="font-weight:700;font-size:1rem;color:var(--gray-800);">'+amt+'</span>';
         h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
         if(isPending){
-            h += '<button id="btnNotifyBdo'+escapeHtml(String(_bdoId))+'" onclick="sendBdoPaymentNotify(''+escapeHtml(String(_bdoId))+'',''+escapeHtml(String(pidParam||partnerId||''))+'',decodeURIComponent(''+encodeURIComponent(bdoName)+''))" style="background:#06C755;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;" title="ส่งแจ้งยอดชำระให้ลูกค้าทาง LINE"><i class="bi bi-send"></i> ส่งแจ้งยอด</button>';
+            h += '<button id="btnNotifyBdo'+escapeHtml(String(_bdoId))+'" onclick="sendBdoPaymentNotify(\'' + escapeHtml(String(_bdoId)) + '\',\'' + escapeHtml(String(pidParam||partnerId||'')) + '\',decodeURIComponent(\'' + encodeURIComponent(bdoName) + '\'))" style="background:#06C755;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;" title="ส่งแจ้งยอดชำระให้ลูกค้าทาง LINE"><i class="bi bi-send"></i> ส่งแจ้งยอด</button>';
             h += '<button onclick='openBdoSlipAttach('+escapeHtml(JSON.stringify(bdo))+','+escapeHtml(JSON.stringify((slips||[]).filter(function(s){return s.status==="pending";}))).replace(/'/g,"\\'")+' )' style="background:#059669;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;"><i class="bi bi-paperclip"></i> แนบสลิป</button>';
         }
         if(isPaid){ h += '<span style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:4px 10px;font-size:0.75rem;font-weight:600;"><i class="bi bi-lock-fill"></i> ปิดแนบสลิปแล้ว</span>'; }
         if(isMatched){
             const slipUpId = linkedSlip ? (linkedSlip.id||'') : '';
             const slipInboxId = linkedSlip ? (linkedSlip.slip_inbox_id || linkedSlip.odoo_slip_id || 0) : 0;
-            h += '<button onclick="unmatchBdoSlip(''+escapeHtml(String(slipUpId))+'',''+escapeHtml(String(slipInboxId))+'')" style="background:var(--gray-200);color:var(--gray-700);border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:inherit;" title="ยกเลิกการจับคู่"><i class="bi bi-x-circle"></i> ยกเลิก</button>';
+            h += '<button onclick="unmatchBdoSlip(\'' + escapeHtml(String(slipUpId)) + '\',\'' + escapeHtml(String(slipInboxId)) + '\')" style="background:var(--gray-200);color:var(--gray-700);border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:inherit;" title="ยกเลิกการจับคู่"><i class="bi bi-x-circle"></i> ยกเลิก</button>';
         }
         h += '</div></div>';
         if(linkedSlip && linkedSlip.image_full_url){
             h += '<div style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(16,185,129,0.06);border-radius:8px;">';
-            h += '<img src="'+escapeHtml(linkedSlip.image_full_url)+'" onclick="openSlipPreview(''+escapeHtml(linkedSlip.image_full_url)+'')" style="width:36px;height:44px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid #bbf7d0;" onerror="this.style.display='none'">';
+            h += '<img src="'+escapeHtml(linkedSlip.image_full_url)+'" onclick="openSlipPreview(\'' + escapeHtml(linkedSlip.image_full_url) + '\')" style="width:36px;height:44px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid #bbf7d0;" onerror="this.style.display=\'none\'">';
             h += '<div style="flex:1;font-size:0.78rem;"><span style="color:#16a34a;font-weight:500;">✔ สลิปแนบแล้ว</span>';
             if(linkedSlip.amount) h += '<span style="color:var(--gray-500);margin-left:6px;">฿'+Number(linkedSlip.amount).toLocaleString()+'</span>';
             if(linkedSlip.transfer_date) h += '<span style="color:var(--gray-400);margin-left:6px;">'+fmtThDate(linkedSlip.transfer_date)+'</span>';
