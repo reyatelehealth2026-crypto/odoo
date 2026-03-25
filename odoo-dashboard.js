@@ -725,7 +725,7 @@ function _custRenderActivityHtml(activityItems, _fmtDtTime){
         if(kind==='override' && it.old_status){
             detail = escapeHtml(it.old_status)+' → <strong>'+escapeHtml(it.new_status)+'</strong><br><span style="color:var(--gray-500);">'+escapeHtml(it.description)+'</span>';
         }
-        h += '<tr style="border-bottom:1px solid var(--gray-100);" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='transparent'">';
+        h += '<tr style="border-bottom:1px solid var(--gray-100);" onmouseover="this.style.background=\'var(--gray-50)\'" onmouseout="this.style.background=\'transparent\'">';
         h += '<td style="padding:0.4rem 0.5rem;">'+kindBadge+'</td>';
         h += '<td style="padding:0.4rem 0.5rem;font-weight:500;">'+escapeHtml(it.entity_type)+': '+escapeHtml(it.entity_ref)+'</td>';
         h += '<td style="padding:0.4rem 0.5rem;">'+detail+'</td>';
