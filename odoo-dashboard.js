@@ -13,6 +13,66 @@ const EVENT_ICONS={'sale.order.confirmed':'🛒','sale.order.cancelled':'❌','s
 
 function escapeHtml(s){if(s==null)return '';return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
+// Runtime fallback in case production serves an older PHP template without these modal roots.
+function ensureDashboardModalRoots(){
+    if(!document.body) return;
+    const missing=[];
+    if(!document.getElementById('bdoDetailModal')){
+        missing.push([
+            '<div id="bdoDetailModal" class="modal-backdrop-custom" onclick="if(event.target===this){this.classList.remove(\'active\');}">',
+                '<div class="detail-modal-container" style="max-width:960px;">',
+                    '<div class="detail-modal-header">',
+                        '<h5><i class="bi bi-file-earmark-check" style="color:var(--success);"></i> <span id="bdoDetailTitle">รายละเอียด BDO</span></h5>',
+                        '<button class="detail-modal-close" onclick="document.getElementById(\'bdoDetailModal\').classList.remove(\'active\')">&times;</button>',
+                    '</div>',
+                    '<div class="detail-modal-body" id="bdoDetailContent">',
+                        '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลดรายละเอียด...</div></div>',
+                    '</div>',
+                '</div>',
+            '</div>'
+        ].join(''));
+    }
+    if(!document.getElementById('paymentDetailModal')){
+        missing.push([
+            '<div id="paymentDetailModal" class="modal-backdrop-custom" onclick="if(event.target===this){this.classList.remove(\'active\');}">',
+                '<div class="detail-modal-container" style="max-width:700px;">',
+                    '<div class="detail-modal-header">',
+                        '<h5><i class="bi bi-credit-card" style="color:var(--success);"></i> <span id="paymentDetailTitle">รายละเอียดการชำระเงิน</span></h5>',
+                        '<button class="detail-modal-close" onclick="document.getElementById(\'paymentDetailModal\').classList.remove(\'active\')">&times;</button>',
+                    '</div>',
+                    '<div class="detail-modal-body" id="paymentDetailContent">',
+                        '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>',
+                    '</div>',
+                '</div>',
+            '</div>'
+        ].join(''));
+    }
+    if(!document.getElementById('pdfViewerModal')){
+        missing.push([
+            '<div id="pdfViewerModal" class="modal-backdrop-custom" onclick="if(event.target===this){closePdfViewer();}">',
+                '<div class="detail-modal-container" style="max-width:950px;">',
+                    '<div class="detail-modal-header">',
+                        '<h5><i class="bi bi-file-earmark-pdf" style="color:#dc2626;"></i> <span id="pdfViewerTitle">ดูเอกสาร PDF</span></h5>',
+                        '<div class="d-flex gap-2 align-items-center">',
+                            '<a id="pdfDownloadLink" href="#" target="_blank" class="chip" style="font-size:0.78rem;text-decoration:none;"><i class="bi bi-download"></i> ดาวน์โหลด</a>',
+                            '<button class="detail-modal-close" onclick="closePdfViewer()">&times;</button>',
+                        '</div>',
+                    '</div>',
+                    '<div class="detail-modal-body" style="padding:0;">',
+                        '<div id="pdfViewerContent" class="pdf-viewer-container">',
+                            '<div class="loading" style="color:var(--gray-400);padding:4rem;"><i class="bi bi-file-earmark-pdf" style="font-size:3rem;"></i><div>เลือกเอกสารเพื่อดู</div></div>',
+                        '</div>',
+                    '</div>',
+                '</div>',
+            '</div>'
+        ].join(''));
+    }
+    if(missing.length){
+        document.body.insertAdjacentHTML('beforeend', missing.join(''));
+        console.warn('[odoo-dashboard] Injected missing modal roots:', missing.length);
+    }
+}
+
 // ===== DEBOUNCE UTILITY =====
 function debounce(func, wait){
     let timeout;
@@ -2567,6 +2627,7 @@ async function sendBdoPaymentNotify(bdoId, partnerId, bdoName){
 
 // ===== BDO DETAIL MODAL =====
 async function openBdoDetail(bdoId, bdoName, rawBdo){
+    ensureDashboardModalRoots();
     const modal=document.getElementById('bdoDetailModal');
     const content=document.getElementById('bdoDetailContent');
     const title=document.getElementById('bdoDetailTitle');
@@ -2751,6 +2812,7 @@ async function openBdoDetail(bdoId, bdoName, rawBdo){
 
 // ===== PAYMENT DETAIL MODAL =====
 async function openPaymentDetail(webhookId){
+    ensureDashboardModalRoots();
     const modal=document.getElementById('paymentDetailModal');
     const content=document.getElementById('paymentDetailContent');
     const title=document.getElementById('paymentDetailTitle');
@@ -2831,6 +2893,7 @@ async function openPaymentDetail(webhookId){
 
 // ===== PDF VIEWER MODAL =====
 function openPdfViewer(pdfUrl, docTitle){
+    ensureDashboardModalRoots();
     const modal=document.getElementById('pdfViewerModal');
     const content=document.getElementById('pdfViewerContent');
     const title=document.getElementById('pdfViewerTitle');
@@ -4451,6 +4514,7 @@ async function unmatchBdoSlip(slipId, slipInboxId){
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded',()=>{
+    ensureDashboardModalRoots();
     restoreAdminMode();
 
     // Test API connectivity immediately (uses fast 'health' action, no DB query)
