@@ -3604,21 +3604,48 @@ function getSlipCenterCustomerDetail($db, $input)
         } catch (Exception $e) {}
 
         $contextSelect = $contextTableExists
-            ? ", ctx.delivery_type, ctx.statement_pdf_path"
-            : ", NULL AS delivery_type, NULL AS statement_pdf_path";
+            ? ", ctx.delivery_type, ctx.statement_pdf_path, ctx.financial_summary_json"
+            : ", NULL AS delivery_type, NULL AS statement_pdf_path, NULL AS financial_summary_json";
         $contextJoin = $contextTableExists
             ? "LEFT JOIN (
-                SELECT c1.bdo_id, c1.delivery_type, c1.statement_pdf_path
+                SELECT c1.bdo_id, c1.delivery_type, c1.statement_pdf_path, c1.financial_summary_json
                 FROM odoo_bdo_context c1
                 INNER JOIN (SELECT bdo_id, MAX(id) AS max_id FROM odoo_bdo_context GROUP BY bdo_id) lc ON lc.max_id = c1.id
                ) ctx ON bo.bdo_id = ctx.bdo_id"
             : "";
 
+        // Helper: enrich BDO rows with extra fields from odoo_bdos + context
+        $enrichBdoRows = function (array $rows): array {
+            foreach ($rows as &$r) {
+                $r['id']             = (int) $r['id'];
+                $r['bdo_id']         = (int) $r['bdo_id'];
+                $r['order_id']       = (int) $r['order_id'];
+                $r['partner_id']     = $r['partner_id'] !== null ? (int) $r['partner_id'] : null;
+                $r['amount_total']   = $r['amount_total'] !== null ? (float) $r['amount_total'] : null;
+                $r['slip_upload_id'] = $r['slip_upload_id'] !== null ? (int) $r['slip_upload_id'] : null;
+                $r['amount_net_to_pay'] = $r['amount_net_to_pay'] !== null ? (float) $r['amount_net_to_pay'] : null;
+                // Prefer payment_method from odoo_bdos if orders table has null
+                if (empty($r['payment_method']) && !empty($r['bdo_payment_method'])) {
+                    $r['payment_method'] = $r['bdo_payment_method'];
+                }
+                unset($r['bdo_payment_method']);
+                // Parse financial_summary_json from context
+                if (!empty($r['financial_summary_json'])) {
+                    $r['financial_summary'] = json_decode($r['financial_summary_json'], true);
+                }
+                unset($r['financial_summary_json']);
+            }
+            unset($r);
+            return $rows;
+        };
+
         // Try by partner_id first
         if ($partnerId !== '' && $partnerId !== '-') {
             try {
                 $stmt = $db->prepare("
-                    SELECT bo.*, b.state as bdo_state, b.bdo_date, b.qr_data, b.customer_ref as bdo_customer_ref{$contextSelect}
+                    SELECT bo.*, b.state as bdo_state, b.bdo_date, b.qr_data, b.customer_ref as bdo_customer_ref,
+                           b.amount_net_to_pay, b.payment_method as bdo_payment_method, b.salesperson_name,
+                           b.payment_state as bdo_payment_state, b.due_date{$contextSelect}
                     FROM odoo_bdo_orders bo
                     LEFT JOIN odoo_bdos b ON bo.bdo_id = b.bdo_id
                     {$contextJoin}
@@ -3631,16 +3658,7 @@ function getSlipCenterCustomerDetail($db, $input)
                 ");
                 $stmt->execute([(int) $partnerId, $limit]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as &$r) {
-                    $r['id']             = (int) $r['id'];
-                    $r['bdo_id']         = (int) $r['bdo_id'];
-                    $r['order_id']       = (int) $r['order_id'];
-                    $r['partner_id']     = $r['partner_id'] !== null ? (int) $r['partner_id'] : null;
-                    $r['amount_total']   = $r['amount_total'] !== null ? (float) $r['amount_total'] : null;
-                    $r['slip_upload_id'] = $r['slip_upload_id'] !== null ? (int) $r['slip_upload_id'] : null;
-                }
-                unset($r);
-                $bdoOrders = $rows;
+                $bdoOrders = $enrichBdoRows($rows);
             } catch (Exception $e) {
                 $bdoErrors[] = 'partner_id query: ' . $e->getMessage();
             }
@@ -3650,7 +3668,9 @@ function getSlipCenterCustomerDetail($db, $input)
         if (empty($bdoOrders) && $customerRef !== '') {
             try {
                 $stmt = $db->prepare("
-                    SELECT bo.*, b.state as bdo_state, b.bdo_date, b.qr_data, b.customer_ref as bdo_customer_ref{$contextSelect}
+                    SELECT bo.*, b.state as bdo_state, b.bdo_date, b.qr_data, b.customer_ref as bdo_customer_ref,
+                           b.amount_net_to_pay, b.payment_method as bdo_payment_method, b.salesperson_name,
+                           b.payment_state as bdo_payment_state, b.due_date{$contextSelect}
                     FROM odoo_bdo_orders bo
                     INNER JOIN odoo_bdos b ON bo.bdo_id = b.bdo_id AND b.customer_ref = ?
                     {$contextJoin}
@@ -3662,16 +3682,7 @@ function getSlipCenterCustomerDetail($db, $input)
                 ");
                 $stmt->execute([$customerRef, $limit]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as &$r) {
-                    $r['id']             = (int) $r['id'];
-                    $r['bdo_id']         = (int) $r['bdo_id'];
-                    $r['order_id']       = (int) $r['order_id'];
-                    $r['partner_id']     = $r['partner_id'] !== null ? (int) $r['partner_id'] : null;
-                    $r['amount_total']   = $r['amount_total'] !== null ? (float) $r['amount_total'] : null;
-                    $r['slip_upload_id'] = $r['slip_upload_id'] !== null ? (int) $r['slip_upload_id'] : null;
-                }
-                unset($r);
-                $bdoOrders = $rows;
+                $bdoOrders = $enrichBdoRows($rows);
             } catch (Exception $e) {
                 $bdoErrors[] = 'customer_ref query: ' . $e->getMessage();
             }
@@ -3681,7 +3692,9 @@ function getSlipCenterCustomerDetail($db, $input)
         if (empty($bdoOrders) && $lineUserId !== '') {
             try {
                 $stmt = $db->prepare("
-                    SELECT bo.*, b.state as bdo_state, b.bdo_date, b.qr_data, b.customer_ref as bdo_customer_ref{$contextSelect}
+                    SELECT bo.*, b.state as bdo_state, b.bdo_date, b.qr_data, b.customer_ref as bdo_customer_ref,
+                           b.amount_net_to_pay, b.payment_method as bdo_payment_method, b.salesperson_name,
+                           b.payment_state as bdo_payment_state, b.due_date{$contextSelect}
                     FROM odoo_bdo_orders bo
                     LEFT JOIN odoo_bdos b ON bo.bdo_id = b.bdo_id
                     {$contextJoin}
@@ -3694,16 +3707,7 @@ function getSlipCenterCustomerDetail($db, $input)
                 ");
                 $stmt->execute([$lineUserId, $limit]);
                 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                foreach ($rows as &$r) {
-                    $r['id']             = (int) $r['id'];
-                    $r['bdo_id']         = (int) $r['bdo_id'];
-                    $r['order_id']       = (int) $r['order_id'];
-                    $r['partner_id']     = $r['partner_id'] !== null ? (int) $r['partner_id'] : null;
-                    $r['amount_total']   = $r['amount_total'] !== null ? (float) $r['amount_total'] : null;
-                    $r['slip_upload_id'] = $r['slip_upload_id'] !== null ? (int) $r['slip_upload_id'] : null;
-                }
-                unset($r);
-                $bdoOrders = $rows;
+                $bdoOrders = $enrichBdoRows($rows);
             } catch (Exception $e) {
                 $bdoErrors[] = 'line_user_id query: ' . $e->getMessage();
             }
