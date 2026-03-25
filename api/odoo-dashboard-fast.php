@@ -46,6 +46,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $action = trim((string) ($input['action'] ?? ''));
 
+// ── APCu-first cache (skip Redis — US-East RTT ~200ms, APCu ~0.05ms) ───
+function _fastCacheGet($key, $ttl) {
+    // L1: APCu (in-process, ~0.05ms)
+    if (function_exists('apcu_fetch')) {
+        $data = apcu_fetch('fast_' . $key, $hit);
+        if ($hit && is_array($data)) return $data;
+    }
+    // L2: File fallback
+    $path = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . '/cny_fast_cache/' . md5($key) . '.json';
+    if (is_file($path)) {
+        $raw = @file_get_contents($path);
+        if ($raw !== false) {
+            $p = json_decode($raw, true);
+            if (is_array($p) && isset($p['t']) && (time() - (int)$p['t']) <= $ttl) {
+                $data = $p['d'];
+                if (function_exists('apcu_store')) apcu_store('fast_' . $key, $data, $ttl);
+                return $data;
+            }
+        }
+    }
+    return null;
+}
+function _fastCacheSet($key, $data, $ttl) {
+    if (function_exists('apcu_store')) apcu_store('fast_' . $key, $data, $ttl);
+    $dir = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . '/cny_fast_cache';
+    if (!is_dir($dir)) @mkdir($dir, 0775, true);
+    $path = $dir . '/' . md5($key) . '.json';
+    @file_put_contents($path, json_encode(['t'=>time(),'d'=>$data], JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
 // ── health: instant, no DB ──────────────────────────────────────────────
 if ($action === '' || $action === 'health') {
     // Include Redis status in health check
@@ -129,6 +159,16 @@ if ($action === 'overview_fast') {
     require_once __DIR__ . '/../config/database.php';
     require_once __DIR__ . '/odoo-dashboard-functions.php';
 
+    // Cache: 30s (มี BDO/payment KPIs ต้อง fresh)
+    $_cKey = 'overview_fast';
+    $_cached = _fastCacheGet($_cKey, 30);
+    if ($_cached !== null) {
+        $_cached['_meta']['cached'] = true;
+        $_cached['_meta']['duration_ms'] = round((microtime(true) - $_startTime) * 1000);
+        echo json_encode($_cached, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     try {
         $db = Database::getInstance()->getConnection();
     } catch (Exception $e) {
@@ -197,16 +237,28 @@ if ($action === 'overview_fast') {
         }
     } catch (Exception $e) { /* table may not exist */ }
 
-    echo json_encode([
+    $_result = [
         'success' => true,
         'data' => $r,
         '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'overview_fast'],
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    _fastCacheSet($_cKey, $_result, 30);
+    echo json_encode($_result, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 // ── orders_today_fast: ดึงจาก odoo_orders_summary (cache table) ─────────
 if ($action === 'orders_today_fast') {
+    $limit = min((int) ($input['limit'] ?? 50), 200);
+    $_cKey = 'orders_today_fast_' . $limit;
+    $_cached = _fastCacheGet($_cKey, 120);
+    if ($_cached !== null) {
+        $_cached['_meta']['cached'] = true;
+        $_cached['_meta']['duration_ms'] = round((microtime(true) - $_startTime) * 1000);
+        echo json_encode($_cached, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     require_once __DIR__ . '/../config/config.php';
     require_once __DIR__ . '/../config/database.php';
 
@@ -217,11 +269,9 @@ if ($action === 'orders_today_fast') {
         exit;
     }
 
-    header('Cache-Control: private, max-age=30');
-    header('Vary: Accept-Encoding');
+    header('Cache-Control: private, max-age=120');
 
     try {
-        $limit = min((int) ($input['limit'] ?? 50), 200);
         $stmt = $db->prepare("
             SELECT order_key, customer_name, customer_ref, amount_total,
                    state, payment_status, date_order, last_event_at
@@ -234,11 +284,13 @@ if ($action === 'orders_today_fast') {
         $stmt->execute();
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        echo json_encode([
+        $_result = [
             'success' => true,
             'data' => ['orders' => $orders],
-            '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'orders_today_fast'],
-        ], JSON_UNESCAPED_UNICODE);
+            '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'orders_today_fast'],
+        ];
+        _fastCacheSet($_cKey, $_result, 120);
+        echo json_encode($_result, JSON_UNESCAPED_UNICODE);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);
     }
@@ -247,6 +299,17 @@ if ($action === 'orders_today_fast') {
 
 // ── customers_fast: ดึงจาก odoo_customers_cache (cache table) ───────────
 if ($action === 'customers_fast') {
+    $limit  = min((int) ($input['limit'] ?? 50), 500);
+    $offset = max((int) ($input['offset'] ?? 0), 0);
+    $_cKey = 'customers_fast_' . $limit . '_' . $offset;
+    $_cached = _fastCacheGet($_cKey, 300);
+    if ($_cached !== null) {
+        $_cached['_meta']['cached'] = true;
+        $_cached['_meta']['duration_ms'] = round((microtime(true) - $_startTime) * 1000);
+        echo json_encode($_cached, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     require_once __DIR__ . '/../config/config.php';
     require_once __DIR__ . '/../config/database.php';
 
@@ -257,12 +320,9 @@ if ($action === 'customers_fast') {
         exit;
     }
 
-    header('Cache-Control: private, max-age=30');
-    header('Vary: Accept-Encoding');
+    header('Cache-Control: private, max-age=300');
 
     try {
-        $limit  = min((int) ($input['limit'] ?? 50), 500);
-        $offset = max((int) ($input['offset'] ?? 0), 0);
         $stmt = $db->prepare("
             SELECT customer_id, customer_name, customer_ref, phone,
                    total_due, overdue_amount, latest_order_at, orders_count_total
@@ -275,14 +335,16 @@ if ($action === 'customers_fast') {
         $stmt->execute();
         $customers = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        echo json_encode([
+        $_result = [
             'success' => true,
             'data' => [
                 'customers'  => $customers,
                 'pagination' => ['limit' => $limit, 'offset' => $offset, 'has_more' => count($customers) === $limit],
             ],
-            '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => true, 'action' => 'customers_fast'],
-        ], JSON_UNESCAPED_UNICODE);
+            '_meta' => ['duration_ms' => round((microtime(true) - $_startTime) * 1000), 'cached' => false, 'action' => 'customers_fast'],
+        ];
+        _fastCacheSet($_cKey, $_result, 300);
+        echo json_encode($_result, JSON_UNESCAPED_UNICODE);
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage(), 'fallback' => true]);
     }
@@ -308,6 +370,16 @@ if ($action === 'customer_profile_fast') {
 
     if ($partnerId === '' && $customerRef === '') {
         echo json_encode(['success' => false, 'error' => 'Missing partner_id or customer_ref']);
+        exit;
+    }
+
+    // Cache: 300s (5 นาที — profile เปลี่ยนไม่บ่อย)
+    $_cKey = 'cust_profile_' . md5($partnerId . '_' . $customerRef);
+    $_cached = _fastCacheGet($_cKey, 300);
+    if ($_cached !== null) {
+        $_cached['_meta']['cached'] = true;
+        $_cached['_meta']['duration_ms'] = round((microtime(true) - $_startTime) * 1000);
+        echo json_encode($_cached, JSON_UNESCAPED_UNICODE);
         exit;
     }
 
@@ -399,7 +471,7 @@ if ($action === 'customer_profile_fast') {
         }
     } catch (Exception $e) { /* table may not exist */ }
 
-    echo json_encode([
+    $_result = [
         'success' => true,
         'data' => [
             'profile'      => $profile,
@@ -416,7 +488,9 @@ if ($action === 'customer_profile_fast') {
             'action'      => 'customer_profile_fast',
             'source'      => 'odoo_customer_projection',
         ],
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    _fastCacheSet($_cKey, $_result, 300);
+    echo json_encode($_result, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -432,7 +506,17 @@ if ($action === 'customer_slip_bdo_summary') {
         exit;
     }
 
-    header('Cache-Control: private, max-age=60');
+    // Cache: 20s (BDO/payment — ต้อง fresh)
+    $_cKey = 'slip_bdo_summary';
+    $_cached = _fastCacheGet($_cKey, 20);
+    if ($_cached !== null) {
+        $_cached['_meta']['cached'] = true;
+        $_cached['_meta']['duration_ms'] = round((microtime(true) - $_startTime) * 1000);
+        echo json_encode($_cached, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    header('Cache-Control: private, max-age=20');
 
     $slipMap = [];
     $bdoMap  = [];
@@ -466,7 +550,7 @@ if ($action === 'customer_slip_bdo_summary') {
         }
     } catch (Exception $e) { /* table may not exist */ }
 
-    echo json_encode([
+    $_result = [
         'success' => true,
         'data' => [
             'slips' => $slipMap,
@@ -477,7 +561,9 @@ if ($action === 'customer_slip_bdo_summary') {
             'cached'      => false,
             'action'      => 'customer_slip_bdo_summary',
         ],
-    ], JSON_UNESCAPED_UNICODE);
+    ];
+    _fastCacheSet($_cKey, $_result, 20);
+    echo json_encode($_result, JSON_UNESCAPED_UNICODE);
     exit;
 }
 

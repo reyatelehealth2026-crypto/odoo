@@ -1211,7 +1211,7 @@
 
     <?php
     // Manual version bump — update on every code change to bust cache
-    $JS_VERSION = '20260325.3';
+    $JS_VERSION = '20260325.4';
 
     // Load minified JS if available, fallback to source
     $jsMin = __DIR__ . '/odoo-dashboard.min.js';
