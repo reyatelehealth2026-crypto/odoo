@@ -238,9 +238,71 @@ function actionBdoDetail(PDO $db, array $input): array
 
     if ($odooError === null) {
         $data = BdoSlipContract::extractOdooData($odooResult);
+        $bdo  = $data['bdo'] ?? $data ?? [];
+        $fs   = $bdo['financial_summary'] ?? $data['financial_summary'] ?? [];
+
+        // Build summary from financial_summary (same keys as odoo-dashboard)
+        $netToPay = $fs['net_to_pay'] ?? $fs['amount_net_to_pay'] ?? $bdo['amount_net_to_pay'] ?? null;
+        $summary  = [
+            'so_amount'          => $fs['amount_so_this_round'] ?? $fs['so_amount'] ?? $fs['total_so_amount'] ?? null,
+            'outstanding_amount' => $fs['amount_outstanding_invoice'] ?? $fs['outstanding_amount'] ?? $fs['total_outstanding'] ?? null,
+            'credit_note_amount' => isset($fs['amount_credit_note']) ? (float) $fs['amount_credit_note'] : ($fs['credit_note_amount'] ?? $fs['total_credit_notes'] ?? null),
+            'deposit_amount'     => isset($fs['amount_deposit']) ? (float) $fs['amount_deposit'] : ($fs['deposit_amount'] ?? $fs['total_deposits'] ?? null),
+            'net_to_pay'         => $netToPay !== null ? (float) $netToPay : null,
+        ];
+
+        // Extract sale_orders
+        $saleOrders = $data['sale_orders'] ?? $bdo['sale_orders'] ?? [];
+        if (!is_array($saleOrders)) {
+            $saleOrders = [];
+        }
+
+        // Extract outstanding invoices
+        $outInv = $data['outstanding_invoices'] ?? $data['open_invoices'] ?? $fs['selected_invoices'] ?? $bdo['selected_invoices'] ?? [];
+        if (!is_array($outInv)) {
+            $outInv = [];
+        }
+        $outInv = _bdoDetailNormalizeInvoiceRows($outInv);
+
+        // Extract credit notes
+        $creditNotes = $data['credit_notes'] ?? $fs['selected_credit_notes'] ?? $bdo['selected_credit_notes'] ?? [];
+        if (!is_array($creditNotes)) {
+            $creditNotes = [];
+        }
+        $creditNotes = _bdoDetailNormalizeCreditNoteRows($creditNotes);
+
+        // Extract deposits
+        $deposits = $data['deposits'] ?? $fs['selected_deposits'] ?? $fs['deposits'] ?? [];
+        if (!is_array($deposits)) {
+            $deposits = [];
+        }
+        $deposits = _bdoDetailNormalizeDepositRows($deposits);
+
+        // Extract matched slips
+        $slips = $data['matched_slips'] ?? $bdo['matched_slips'] ?? $data['slips'] ?? [];
+        if (!is_array($slips)) {
+            $slips = [];
+        }
+
+        // QR payment data
+        if (!isset($bdo['qr_payment_data']) || !is_array($bdo['qr_payment_data'])) {
+            $qrTop = $data['qr_payment_data'] ?? null;
+            if (is_array($qrTop)) {
+                $bdo['qr_payment_data'] = $qrTop;
+            }
+        }
+
         return [
-            'bdo'    => BdoSlipContract::normalizeBdo($data['bdo'] ?? $data ?? []),
-            'source' => 'odoo',
+            'bdo'                    => BdoSlipContract::normalizeBdo($bdo),
+            'summary'                => $summary,
+            'sale_orders'            => $saleOrders,
+            'outstanding_invoices'   => $outInv,
+            'credit_notes'           => $creditNotes,
+            'deposits'               => $deposits,
+            'slips'                  => $slips,
+            'odoo_url'               => $bdo['odoo_url'] ?? null,
+            'statement_pdf_url'      => $bdo['statement_pdf_url'] ?? null,
+            'source'                 => 'odoo',
         ];
     }
 
@@ -260,11 +322,66 @@ function actionBdoDetail(PDO $db, array $input): array
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($row) {
+            $amountTotal = (float) ($row['amount_total'] ?? 0);
+            $netToPay = $amountTotal;
+            $summary = [
+                'so_amount'          => null,
+                'outstanding_amount' => null,
+                'credit_note_amount' => null,
+                'deposit_amount'     => null,
+                'net_to_pay'         => $netToPay,
+            ];
+
+            $outInv = [];
+            $creditNotes = [];
+            $deposits = [];
+
+            if (!empty($row['financial_summary_json'])) {
+                $fs = json_decode($row['financial_summary_json'], true);
+                if (is_array($fs)) {
+                    $netToPay = (float) ($fs['net_to_pay'] ?? $fs['amount_net_to_pay'] ?? $netToPay);
+                    $summary = [
+                        'so_amount'          => $fs['amount_so_this_round'] ?? $fs['so_amount'] ?? $fs['total_so_amount'] ?? null,
+                        'outstanding_amount' => $fs['amount_outstanding_invoice'] ?? $fs['outstanding_amount'] ?? $fs['total_outstanding'] ?? null,
+                        'credit_note_amount' => $fs['amount_credit_note'] ?? $fs['credit_note_amount'] ?? $fs['total_credit_notes'] ?? null,
+                        'deposit_amount'     => $fs['amount_deposit'] ?? $fs['deposit_amount'] ?? $fs['total_deposits'] ?? null,
+                        'net_to_pay'         => $netToPay,
+                    ];
+                    // Extract deposits from financial summary
+                    $depsRaw = $fs['selected_deposits'] ?? $fs['deposits'] ?? [];
+                    if (is_array($depsRaw)) {
+                        $deposits = _bdoDetailNormalizeDepositRows($depsRaw);
+                    }
+                }
+            }
+
+            if (!empty($row['selected_invoices_json'])) {
+                $invs = json_decode($row['selected_invoices_json'], true);
+                if (is_array($invs)) {
+                    $outInv = _bdoDetailNormalizeInvoiceRows($invs);
+                }
+            }
+
+            if (!empty($row['selected_credit_notes_json'])) {
+                $cns = json_decode($row['selected_credit_notes_json'], true);
+                if (is_array($cns)) {
+                    $creditNotes = _bdoDetailNormalizeCreditNoteRows($cns);
+                }
+            }
+
             return [
-                'bdo'         => normalizeBdoRow($row),
-                'source'      => 'local_cache',
-                'odoo_error'  => $odooError,
-                'stale_warning' => 'ข้อมูลอาจไม่ใช่ล่าสุด เนื่องจากไม่สามารถเชื่อมต่อ Odoo ได้',
+                'bdo'                    => normalizeBdoRow($row),
+                'summary'               => $summary,
+                'sale_orders'           => [],
+                'outstanding_invoices'  => $outInv,
+                'credit_notes'          => $creditNotes,
+                'deposits'              => $deposits,
+                'slips'                 => [],
+                'odoo_url'              => null,
+                'statement_pdf_url'     => $row['statement_pdf_path'] ?? null,
+                'source'                => 'local_cache',
+                'odoo_error'            => $odooError,
+                'stale_warning'         => 'ข้อมูลอาจไม่ใช่ล่าสุด เนื่องจากไม่สามารถเชื่อมต่อ Odoo ได้',
             ];
         }
     } catch (Exception $e) {
@@ -775,6 +892,65 @@ function callOdooApi(string $endpoint, array $params): ?array
 
     $decoded = json_decode($response, true);
     return is_array($decoded) ? $decoded : null;
+}
+
+/**
+ * Normalize invoice rows from Odoo API response for BDO detail.
+ */
+function _bdoDetailNormalizeInvoiceRows(array $rows): array
+{
+    $out = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $out[] = [
+            'number'       => $row['number'] ?? $row['name'] ?? '-',
+            'name'         => $row['name'] ?? null,
+            'residual'     => isset($row['residual']) ? (float) $row['residual'] : (isset($row['amount_residual']) ? (float) $row['amount_residual'] : (isset($row['amount_total']) ? (float) $row['amount_total'] : null)),
+            'amount_total' => isset($row['amount_total']) ? (float) $row['amount_total'] : null,
+            'date'         => $row['date'] ?? $row['invoice_date'] ?? null,
+            'origin'       => $row['origin'] ?? null,
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Normalize credit note rows from Odoo API response for BDO detail.
+ */
+function _bdoDetailNormalizeCreditNoteRows(array $rows): array
+{
+    $out = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $out[] = [
+            'number'       => $row['number'] ?? $row['name'] ?? '-',
+            'residual'     => isset($row['residual']) ? (float) $row['residual'] : (isset($row['amount_total']) ? (float) $row['amount_total'] : null),
+            'amount_total' => isset($row['amount_total']) ? (float) $row['amount_total'] : null,
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Normalize deposit rows from Odoo API response for BDO detail.
+ */
+function _bdoDetailNormalizeDepositRows(array $rows): array
+{
+    $out = [];
+    foreach ($rows as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $out[] = [
+            'name'   => $row['name'] ?? $row['number'] ?? '-',
+            'amount' => isset($row['amount']) ? (float) $row['amount'] : (isset($row['amount_total']) ? (float) $row['amount_total'] : null),
+        ];
+    }
+    return $out;
 }
 
 /**
