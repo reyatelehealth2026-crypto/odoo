@@ -3542,13 +3542,13 @@ function getPendingBdoOrdersApi($db, $input)
         }
 
         $contextSelect = $contextTableExists
-            ? ", ctx.delivery_type, ctx.statement_pdf_path"
-            : ", NULL AS delivery_type, NULL AS statement_pdf_path";
+            ? ", ctx.delivery_type, ctx.statement_pdf_path, ctx.financial_summary_json"
+            : ", NULL AS delivery_type, NULL AS statement_pdf_path, NULL AS financial_summary_json";
 
         $contextJoin = $contextTableExists
             ? "
             LEFT JOIN (
-                SELECT c1.bdo_id, c1.delivery_type, c1.statement_pdf_path
+                SELECT c1.bdo_id, c1.delivery_type, c1.statement_pdf_path, c1.financial_summary_json
                 FROM odoo_bdo_context c1
                 INNER JOIN (
                     SELECT bdo_id, MAX(id) AS max_id
@@ -3577,6 +3577,16 @@ function getPendingBdoOrdersApi($db, $input)
             $r['bdo_id']       = (int) $r['bdo_id'];
             $r['order_id']     = (int) $r['order_id'];
             $r['partner_id']   = $r['partner_id'] !== null ? (int) $r['partner_id'] : null;
+            
+            // Prefer amount_net_to_pay from financial_summary_json to reflect real pending amount
+            if (!empty($r['financial_summary_json'])) {
+                $fin = json_decode($r['financial_summary_json'], true);
+                if (isset($fin['amount_net_to_pay'])) {
+                    $r['amount_total'] = $fin['amount_net_to_pay'];
+                }
+            }
+            unset($r['financial_summary_json']);
+
             $r['amount_total'] = $r['amount_total'] !== null ? (float) $r['amount_total'] : null;
             $r['slip_upload_id'] = $r['slip_upload_id'] !== null ? (int) $r['slip_upload_id'] : null;
         }
