@@ -152,7 +152,7 @@ function showSection(id){
     else if(id==='webhooks-raw'){if(_sectionNeedsLoad('webhooks')){loadWebhookStats();_sectionMarkLoaded('webhooks');}if(forceListMode){setWhViewMode('list');}else{if(!document.getElementById('webhookList').querySelector('table'))loadWebhooks();}}
     else if(id==='customers'){loadSalespersonDropdown();if(_sectionNeedsLoad('customers')||!document.getElementById('customerList').querySelector('table')){loadCustomers();_sectionMarkLoaded('customers');}}
     else if(id==='notifications'){if(_sectionNeedsLoad('notifications')||!document.getElementById('notifList').querySelector('table')){loadNotifications();_sectionMarkLoaded('notifications');}}
-    else if(id==='daily-summary'){if(dailySummaryData.length===0)loadDailySummary();}
+    else if(id==='daily-summary'){if(dailySummaryData.length===0)loadDailySummary();if(_sectionNeedsLoad('auto-send-settings'))loadAutoSendSettings();}
     else if(id==='health'){loadSystemHealth();}
     else if(id==='slips'){if(_sectionNeedsLoad('slips')||!document.getElementById('slipList').querySelector('table')){loadSlips();_sectionMarkLoaded('slips');}}
     else if(id==='matching'){sessionStorage.setItem('_visited_matching','1');loadSalespersonDropdown();if(_sectionNeedsLoad('matching')){loadMatchingCustomerGrid();_sectionMarkLoaded('matching');}else{loadMatchingCustomerGrid();}}
@@ -162,7 +162,7 @@ function showSection(id){
 let _lastApiDurationMs = null;
 
 // Actions supported by the lightweight fast endpoint
-const WH_FAST_ACTIONS=new Set(['health','overview_fast','orders_today_fast','customers_fast','circuit_breaker_status','circuit_breaker_reset']);
+const WH_FAST_ACTIONS=new Set(['health','overview_fast','orders_today_fast','customers_fast','circuit_breaker_status','circuit_breaker_reset','customer_profile_fast','customer_slip_bdo_summary']);
 
 // Read-only actions that benefit from Nginx fastcgi_cache (no _t cache buster)
 const WH_CACHEABLE_ACTIONS=new Set(['health','overview_fast','orders_today_fast','customers_fast']);
@@ -345,7 +345,12 @@ async function loadWebhooks(){
 }
 
 async function showWebhookDetail(id){
-    const result=await whApiCall({action:'detail',id});
+    const _wCacheKey='webhook_detail:'+String(id);
+    let result=_cacheGet(_wCacheKey);
+    if(!result){
+        result=await whApiCall({action:'detail',id});
+        if(result&&result.success) _cacheSet(_wCacheKey,result,300000);
+    }
     if(!result||!result.success){alert(String((result&&result.error)||'Error'));return;}
     const w=result.data,modal=document.getElementById('orderTimelineModal'),content=document.getElementById('orderTimelineContent');
     const payloadText=escapeHtml(safeParseWebhookPayload(w.payload_decoded,w.payload));
@@ -364,14 +369,27 @@ async function showWebhookDetail(id){
 async function showOrderTimeline(orderId,orderName){
     if(!orderId&&!orderName)return;
     const modal=document.getElementById('orderTimelineModal'),content=document.getElementById('orderTimelineContent');
-    content.innerHTML='<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>';
     modal.classList.add('active');
+    const _otCacheKey='order_timeline:'+String(orderId||'')+'_'+String(orderName||'');
+    const cached=_cacheGet(_otCacheKey);
+    if(cached){
+        if(!cached.success){content.innerHTML='<p style="color:var(--gray-500);">'+escapeHtml((cached&&cached.error)||'Error')+'</p>';return;}
+        const {events,order_name:oName}=cached.data;
+        renderOrderTimelineEvents(content,events,oName,orderId);
+        return;
+    }
+    content.innerHTML='<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>';
     const params={action:'order_timeline'};
     if(orderId&&orderId!=='null')params.order_id=orderId;
     if(orderName&&orderName!=='null'&&orderName!=='-')params.order_name=orderName;
     const result=await whApiCall(params);
+    if(result&&result.success) _cacheSet(_otCacheKey,result,60000);
     if(!result||!result.success){content.innerHTML='<p style="color:var(--gray-500);">'+escapeHtml((result&&result.error)||'Error')+'</p>';return;}
     const {events,order_name:oName}=result.data;
+    renderOrderTimelineEvents(content,events,oName,orderId);
+}
+
+function renderOrderTimelineEvents(content,events,oName,orderId){
     let html='<h5 style="margin-bottom:1rem;"><i class="bi bi-clock-history"></i> Timeline: '+escapeHtml(oName||orderId||'-')+'</h5>';
     if(!events||!events.length){html+='<p style="color:var(--gray-400);">ไม่พบข้อมูล</p>';}
     else{
@@ -532,6 +550,193 @@ function slipThumb(slip){
 }
 // ---- End helpers ----
 
+// ── Customer detail tab render helpers (extracted for lazy-load reuse) ──
+
+function _custRenderInvoicesHtml(invoicesAll, invData, slipByInvoiceId, stMap, PAYMENT_METHODS, _fmtDt){
+    let h = '';
+    if(!invoicesAll.length) return '<p style="color:var(--gray-400);text-align:center;padding:2rem;">ไม่พบใบแจ้งหนี้</p>';
+    h += '<p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.5rem;">ทั้งหมด ' + Number(invData.total||invoicesAll.length).toLocaleString() + ' รายการ</p>';
+    h += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.85rem;">';
+    h += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
+    h += '<th style="padding:0.5rem;">เลขที่</th>';
+    h += '<th style="padding:0.5rem;">ออเดอร์</th>';
+    h += '<th style="padding:0.5rem;">วันที่</th>';
+    h += '<th style="padding:0.5rem;">ครบกำหนด</th>';
+    h += '<th style="padding:0.5rem;">สถานะ</th>';
+    h += '<th style="padding:0.5rem;text-align:right;">ยอดรวม</th>';
+    h += '<th style="padding:0.5rem;text-align:right;">ค้างชำระ</th>';
+    h += '<th style="padding:0.5rem;">วิธีชำระ</th>';
+    h += '<th style="padding:0.5rem;">สลิป</th>';
+    h += '</tr></thead><tbody>';
+    invoicesAll.forEach(function(inv){
+        const rawDate  = inv.invoice_date || inv.due_date || inv.processed_at || inv.updated_at || inv.synced_at || null;
+        const dt       = _fmtDt(rawDate);
+        const dueDate  = inv.due_date || inv.invoice_date_due || null;
+        const dueDt    = _fmtDt(dueDate);
+        const stateVal = String(inv.invoice_state || inv.state || '').toLowerCase();
+        const isPaid   = stateVal === 'paid' || inv.is_paid
+            || String(inv.latest_event || '') === 'invoice.paid'
+            || String(inv.payment_state || '').toLowerCase() === 'paid'
+            || (parseFloat(inv.amount_residual) === 0 && parseFloat(inv.amount_total || 0) > 0);
+        const dueDateObj = dueDate ? new Date(dueDate) : null;
+        const isOverdue = !isPaid && !!(dueDateObj && !isNaN(dueDateObj) && stateVal !== 'cancel' && dueDateObj < new Date());
+        const effectiveState = isPaid ? 'paid' : (isOverdue ? 'overdue' : stateVal);
+        const sb       = stMap[effectiveState] || '<span style="background:var(--gray-100);padding:2px 6px;border-radius:50px;font-size:0.75rem;">'+escapeHtml(inv.invoice_state||inv.state||'-')+'</span>';
+        const amt      = inv.amount_total != null ? '฿'+Number(inv.amount_total).toLocaleString() : '-';
+        const residualRaw = inv.amount_residual != null && inv.amount_residual !== '' ? parseFloat(inv.amount_residual) : null;
+        const effectiveResidual = isPaid ? 0 : (residualRaw != null ? residualRaw : parseFloat(inv.amount_total || 0));
+        const res      = isPaid ? '<span style="color:var(--gray-400);">฿0</span>' : '฿'+Number(effectiveResidual).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2});
+        const resColor = (!isPaid && effectiveResidual > 0) ? '#dc2626' : 'inherit';
+        const invNum   = inv.invoice_number || inv.name || '-';
+        const dueDtColor = isOverdue ? '#dc2626' : 'var(--gray-500)';
+        const payMethod  = inv.payment_method || inv.payment_type || null;
+        const payMethodLabel = payMethod ? (PAYMENT_METHODS[payMethod] || payMethod) : '-';
+        const slip     = slipByInvoiceId ? slipByInvoiceId.get(String(inv.invoice_id || inv.id || '')) : null;
+        let slipCell   = '-';
+        if(slip){
+            const payDt  = fmtThDate(slip.transfer_date || slip.uploaded_at);
+            const slipAmt= slip.amount != null ? '฿'+Number(slip.amount).toLocaleString('th-TH',{minimumFractionDigits:0}) : '';
+            slipCell = '<span style="font-size:0.75rem;color:#16a34a;font-weight:500;">' + slipAmt + '<br>' + payDt + '</span>' + slipThumb(slip);
+        }
+        const rowBg = (isPaid || slip) ? '#f0fdf4' : (isOverdue ? '#fef2f2' : 'transparent');
+        h += '<tr style="border-bottom:1px solid var(--gray-100);background:'+rowBg+';">';
+        const invOrderName = inv.order_name || null;
+        const invOrderLink = invOrderName ? '<br><span style="font-size:0.7rem;color:#1d4ed8;"><i class="bi bi-bag"></i> '+escapeHtml(invOrderName)+'</span>' : '';
+        const _invId = inv.id || inv.invoice_id || '';
+        h += '<td style="padding:0.5rem;font-weight:500;"><a class="ref-link" href="javascript:void(0)" onclick="openInvoiceDetail(''+escapeHtml(String(_invId))+'',''+escapeHtml(invNum)+'')">' + escapeHtml(invNum) + '</a>' + invOrderLink + '</td>';
+        h += '<td style="padding:0.5rem;color:var(--gray-500);font-size:0.8rem;">' + dt + '</td>';
+        h += '<td style="padding:0.5rem;color:'+dueDtColor+';font-size:0.8rem;">' + dueDt + (isOverdue?' <i class="bi bi-exclamation-triangle-fill" style="color:#dc2626;font-size:0.7rem;"></i>':'') + '</td>';
+        h += '<td style="padding:0.5rem;">' + sb + '</td>';
+        h += '<td style="padding:0.5rem;text-align:right;font-weight:600;">' + amt + '</td>';
+        h += '<td style="padding:0.5rem;text-align:right;color:'+resColor+';">' + res + '</td>';
+        h += '<td style="padding:0.5rem;font-size:0.78rem;">' + escapeHtml(payMethodLabel) + '</td>';
+        h += '<td style="padding:0.5rem;">' + slipCell + '</td>';
+        h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+}
+
+function _custRenderBdosHtml(bdos, bdoData, slipByBdoId, invoicesAll, pidParam, partnerId, slips, _fmtDt){
+    if(!bdos || !bdos.length) return '<p style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-file-earmark-check" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>ไม่พบ BDO</p>';
+    let h = '<p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.75rem;">ทั้งหมด ' + Number(bdoData.total||bdos.length).toLocaleString() + ' รายการ</p>';
+    const ODOO_BASE = 'https://cny.cnyrxapp.com';
+    const BDO_PAY_STATUS = {pending:{bg:'#fef3c7',clr:'#d97706',lbl:'รอชำระ',icon:'clock'},partial:{bg:'#ffedd5',clr:'#ea580c',lbl:'ชำระบางส่วน',icon:'hourglass-split'},slip_uploaded:{bg:'#dbeafe',clr:'#1d4ed8',lbl:'อัพสลิปแล้ว',icon:'cloud-upload'},matched:{bg:'#dcfce7',clr:'#16a34a',lbl:'จับคู่แล้ว',icon:'check-circle'},paid:{bg:'#dcfce7',clr:'#16a34a',lbl:'ชำระแล้ว',icon:'check-circle-fill'}};
+    const PAYMENT_LABELS = {promptpay:'พร้อมเพย์',bank_transfer:'โอนเงิน'};
+    h += '<div style="display:flex;flex-direction:column;gap:0.75rem;">';
+    bdos.slice().sort(function(a,b){
+        const aState = normalizeBdoPaymentStatus(a);
+        const bState = normalizeBdoPaymentStatus(b);
+        const rank = {pending:0, partial:1, slip_uploaded:2, matched:3, paid:4};
+        return (rank[aState.key] ?? 99) - (rank[bState.key] ?? 99);
+    }).forEach(function(bdo){
+        const _bdoId = bdo.bdo_id || bdo.id || '';
+        const bdoName = bdo.bdo_name || ('BDO-'+_bdoId);
+        const orderName = bdo.order_name || '-';
+        const orderId = bdo.order_id || '';
+        const dt = _fmtDt(bdo.bdo_date || bdo.updated_at || bdo.synced_at || bdo.processed_at);
+        const amtNum = bdo.amount_net_to_pay != null ? bdo.amount_net_to_pay : bdo.amount_total;
+        const amt = amtNum != null ? '฿'+Number(amtNum).toLocaleString() : '-';
+        const paymentState = normalizeBdoPaymentStatus(bdo);
+        const payStatus = paymentState.key;
+        const ps = BDO_PAY_STATUS[payStatus] || BDO_PAY_STATUS.pending;
+        const payMethod = PAYMENT_LABELS[bdo.payment_method] || bdo.payment_method || '';
+        const deliveryTypeLabel = bdo.delivery_type === 'company' ? 'สายส่ง (จ่ายทีหลัง)' : (bdo.delivery_type === 'private' ? 'ขนส่งเอกชน (จ่ายก่อนส่ง)' : '');
+        const customerLabel = bdo.customer_name || bdo.customer_ref || '';
+        const statementUrl = 'api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=' + encodeURIComponent(String(_bdoId));
+        const isPending = payStatus === 'pending' || payStatus === 'partial';
+        const isMatched = payStatus === 'matched' || payStatus === 'slip_uploaded';
+        const isPaid = payStatus === 'paid';
+        const linkedSlip = slipByBdoId ? slipByBdoId.get(String(_bdoId)) : null;
+        const linkedInv = invoicesAll && invoicesAll.length ? invoicesAll.find(function(inv){ return inv.order_name && inv.order_name === bdo.order_name; }) : null;
+        const cardBg = isPending ? '#fffbeb' : (isMatched ? '#eff6ff' : (isPaid ? '#f0fdf4' : 'white'));
+        const cardBorder = isPending ? '#fde68a' : (isMatched ? '#bfdbfe' : (isPaid ? '#bbf7d0' : 'var(--gray-200)'));
+        h += '<div style="background:'+cardBg+';border:1.5px solid '+cardBorder+';border-radius:12px;padding:0.85rem 1rem;">';
+        h += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;">';
+        h += '<div style="flex:1;min-width:0;">';
+        h += '<div style="font-size:0.62rem;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">เลข BDO</div>';
+        h += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
+        h += '<a class="ref-link" href="javascript:void(0)" onclick="openBdoDetail(''+escapeHtml(String(_bdoId))+'',''+escapeHtml(bdoName)+'', decodeURIComponent(''+encodeURIComponent(JSON.stringify(bdo))+''))" style="font-weight:600;font-size:0.9rem;">'+escapeHtml(bdoName)+'</a>';
+        h += '<span style="background:'+ps.bg+';color:'+ps.clr+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;"><i class="bi bi-'+ps.icon+'" style="font-size:0.68rem;"></i> '+escapeHtml(paymentState.label || ps.lbl)+'</span>';
+        if(deliveryTypeLabel){ h += '<span style="background:#f0f9ff;color:#0369a1;padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;border:1px solid #bae6fd;"><i class="bi bi-truck" style="font-size:0.68rem;"></i> '+escapeHtml(deliveryTypeLabel)+'</span>'; }
+        h += '</div>';
+        h += '<div style="font-size:0.7rem;color:var(--gray-400);margin-top:3px;">Odoo ID: #'+escapeHtml(String(_bdoId))+'</div>';
+        if(customerLabel){ h += '<div style="font-size:0.74rem;color:var(--gray-500);margin-top:2px;">ลูกค้า: '+escapeHtml(customerLabel)+'</div>'; }
+        h += '</div>';
+        h += '<a href="'+ODOO_BASE+'/web#id='+_bdoId+'&model=cny.bill.invoice.before.delivery&view_type=form" target="_blank" title="เปิดใน Odoo" style="color:var(--gray-400);font-size:0.85rem;text-decoration:none;flex-shrink:0;margin-left:6px;"><i class="bi bi-box-arrow-up-right"></i></a>';
+        h += '</div>';
+        h += '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.8rem;color:var(--gray-500);margin-bottom:0.4rem;">';
+        if(orderId){ h += '<a href="'+ODOO_BASE+'/web#id='+orderId+'&model=sale.order&view_type=form" target="_blank" style="color:#1d4ed8;text-decoration:none;font-weight:500;">'+escapeHtml(orderName)+'</a>'; }
+        else { h += '<span>'+escapeHtml(orderName)+'</span>'; }
+        h += '<span><i class="bi bi-calendar3" style="font-size:0.7rem;"></i> '+dt+'</span>';
+        if(payMethod) h += '<span>ชำระ: '+escapeHtml(payMethod)+'</span>';
+        if(paymentState.residual > 0) h += '<span>คงเหลือ: ฿'+Number(paymentState.residual).toLocaleString()+'</span>';
+        if(bdo.statement_pdf_path){ h += '<a href="'+statementUrl+'" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:none;font-weight:500;"><i class="bi bi-file-earmark-pdf"></i> Statement PDF</a>'; }
+        h += '</div>';
+        h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.3rem;">';
+        h += '<span style="font-weight:700;font-size:1rem;color:var(--gray-800);">'+amt+'</span>';
+        h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        if(isPending){
+            h += '<button id="btnNotifyBdo'+escapeHtml(String(_bdoId))+'" onclick="sendBdoPaymentNotify(''+escapeHtml(String(_bdoId))+'',''+escapeHtml(String(pidParam||partnerId||''))+'',decodeURIComponent(''+encodeURIComponent(bdoName)+''))" style="background:#06C755;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;" title="ส่งแจ้งยอดชำระให้ลูกค้าทาง LINE"><i class="bi bi-send"></i> ส่งแจ้งยอด</button>';
+            h += '<button onclick='openBdoSlipAttach('+escapeHtml(JSON.stringify(bdo))+','+escapeHtml(JSON.stringify((slips||[]).filter(function(s){return s.status==="pending";}))).replace(/'/g,"\\'")+' )' style="background:#059669;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;"><i class="bi bi-paperclip"></i> แนบสลิป</button>';
+        }
+        if(isPaid){ h += '<span style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:4px 10px;font-size:0.75rem;font-weight:600;"><i class="bi bi-lock-fill"></i> ปิดแนบสลิปแล้ว</span>'; }
+        if(isMatched){
+            const slipUpId = linkedSlip ? (linkedSlip.id||'') : '';
+            const slipInboxId = linkedSlip ? (linkedSlip.slip_inbox_id || linkedSlip.odoo_slip_id || 0) : 0;
+            h += '<button onclick="unmatchBdoSlip(''+escapeHtml(String(slipUpId))+'',''+escapeHtml(String(slipInboxId))+'')" style="background:var(--gray-200);color:var(--gray-700);border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:inherit;" title="ยกเลิกการจับคู่"><i class="bi bi-x-circle"></i> ยกเลิก</button>';
+        }
+        h += '</div></div>';
+        if(linkedSlip && linkedSlip.image_full_url){
+            h += '<div style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(16,185,129,0.06);border-radius:8px;">';
+            h += '<img src="'+escapeHtml(linkedSlip.image_full_url)+'" onclick="openSlipPreview(''+escapeHtml(linkedSlip.image_full_url)+'')" style="width:36px;height:44px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid #bbf7d0;" onerror="this.style.display='none'">';
+            h += '<div style="flex:1;font-size:0.78rem;"><span style="color:#16a34a;font-weight:500;">✔ สลิปแนบแล้ว</span>';
+            if(linkedSlip.amount) h += '<span style="color:var(--gray-500);margin-left:6px;">฿'+Number(linkedSlip.amount).toLocaleString()+'</span>';
+            if(linkedSlip.transfer_date) h += '<span style="color:var(--gray-400);margin-left:6px;">'+fmtThDate(linkedSlip.transfer_date)+'</span>';
+            h += '</div></div>';
+        }
+        if(linkedInv){
+            const invIsPaid = String(linkedInv.invoice_state||'').toLowerCase()==='paid' || linkedInv.is_paid;
+            h += '<div style="margin-top:0.35rem;font-size:0.75rem;color:#7c3aed;"><i class="bi bi-file-text"></i> '+escapeHtml(linkedInv.invoice_number||'-')+(invIsPaid?' ✔':'')+'</div>';
+        }
+        h += '</div>';
+    });
+    h += '</div>';
+    return h;
+}
+
+function _custRenderActivityHtml(activityItems, _fmtDtTime){
+    if(!activityItems || !activityItems.length) return '<div style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-journal-text" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>ยังไม่มีประวัติ</div>';
+    let h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.84rem;">';
+    h += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
+    h += '<th style="padding:0.5rem;">ประเภท</th>';
+    h += '<th style="padding:0.5rem;">รายการ</th>';
+    h += '<th style="padding:0.5rem;">รายละเอียด</th>';
+    h += '<th style="padding:0.5rem;">ผู้ดำเนินการ</th>';
+    h += '<th style="padding:0.5rem;">วันเวลา</th>';
+    h += '</tr></thead><tbody>';
+    activityItems.forEach(function(it){
+        const kind = it.log_kind;
+        let kindBadge = '';
+        if(kind==='override') kindBadge='<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:50px;font-size:0.73rem;"><i class="bi bi-pencil-square"></i> แก้สถานะ</span>';
+        else if(kind==='note') kindBadge='<span style="background:#dbeafe;color:#1d4ed8;padding:2px 6px;border-radius:50px;font-size:0.73rem;"><i class="bi bi-chat-left-text"></i> โน้ต</span>';
+        else kindBadge='<span style="background:var(--gray-100);color:var(--gray-600);padding:2px 6px;border-radius:50px;font-size:0.73rem;">'+escapeHtml(kind)+'</span>';
+        let detail = escapeHtml(it.description||'-');
+        if(kind==='override' && it.old_status){
+            detail = escapeHtml(it.old_status)+' → <strong>'+escapeHtml(it.new_status)+'</strong><br><span style="color:var(--gray-500);">'+escapeHtml(it.description)+'</span>';
+        }
+        h += '<tr style="border-bottom:1px solid var(--gray-100);" onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background='transparent'">';
+        h += '<td style="padding:0.4rem 0.5rem;">'+kindBadge+'</td>';
+        h += '<td style="padding:0.4rem 0.5rem;font-weight:500;">'+escapeHtml(it.entity_type)+': '+escapeHtml(it.entity_ref)+'</td>';
+        h += '<td style="padding:0.4rem 0.5rem;">'+detail+'</td>';
+        h += '<td style="padding:0.4rem 0.5rem;font-size:0.8rem;">'+escapeHtml(it.admin_name||'-')+'</td>';
+        h += '<td style="padding:0.4rem 0.5rem;font-size:0.8rem;color:var(--gray-500);white-space:nowrap;">'+_fmtDtTime(it.created_at)+'</td>';
+        h += '</tr>';
+    });
+    h += '</tbody></table></div>';
+    return h;
+}
+
 async function showCustomerDetail(ref, partnerId, custName){
     const modal   = document.getElementById('customerInvoiceModal');
     const content = document.getElementById('customerInvoiceContent');
@@ -543,133 +748,93 @@ async function showCustomerDetail(ref, partnerId, custName){
 
     const pidParam = partnerId && partnerId!=='-' ? partnerId : '';
 
-    // ── Client-side cache (5 min TTL) — avoid re-fetching on repeat clicks ──
-    const _custCacheKey = 'cust_full:' + (pidParam||'_') + ':' + (ref||'_');
+    // ── Cache keys ──
+    const _custCacheKey      = 'cust_full:'     + (pidParam||'_') + ':' + (ref||'_');
+    const _profileCacheKey   = 'cust_profile:'  + (pidParam||'_') + ':' + (ref||'_');
+    const _ordersCacheKey    = 'cust_orders:'   + (pidParam||'_') + ':' + (ref||'_');
+    const _invoicesCacheKey  = 'cust_invoices:' + (pidParam||'_') + ':' + (ref||'_');
+    const _bdosCacheKey      = 'cust_bdos:'     + (pidParam||'_') + ':' + (ref||'_');
+    const _slipsCacheKey     = 'cust_slips:'    + (pidParam||'_');
+    const _activityCacheKey  = 'cust_activity:' + (pidParam||'_');
+    const _TTL = 300000; // 5 minutes
+
+    // ── Warm path: if full batch cache exists, unpack all tabs immediately ──
     let batchData = _cacheGet(_custCacheKey);
-
-    if (!batchData) {
-        // ── Single batch API call replaces 6 parallel calls ──
-        const batchRes = await whApiCall({
-            action: 'customer_full_detail',
-            partner_id: pidParam,
-            customer_ref: ref,
-            orders_limit: 100,
-            invoices_limit: 100,
-            bdo_limit: 100,
-            activity_limit: 100
-        });
-
-        if (batchRes && batchRes.success && batchRes.data) {
-            batchData = batchRes.data;
-            _cacheSet(_custCacheKey, batchData, 300000); // 5 min cache
-        } else {
-            // Fallback: try individual calls if batch endpoint fails (e.g. older API)
-            const [ordRes, invRes, slipRes, bdoRes, detailRes, activityRes] = await Promise.all([
-                whApiCall({action:'odoo_orders',   limit:100, offset:0, partner_id:pidParam, customer_ref:ref}),
-                whApiCall({action:'odoo_invoices', limit:100, offset:0, partner_id:pidParam, customer_ref:ref}),
-                whApiCall({action:'odoo_slips',    partner_id:pidParam}),
-                whApiCall({action:'odoo_bdo_list_api', limit:100, offset:0, partner_id:pidParam, customer_ref:ref}),
-                whApiCall({action:'customer_detail', partner_id:pidParam, customer_ref:ref}),
-                whApiCall({action:'activity_log_list', partner_id:pidParam, limit:100})
-            ]);
-            batchData = {
-                customer_detail: (detailRes && detailRes.success) ? detailRes.data : null,
-                orders:          (ordRes && ordRes.success) ? ordRes.data : null,
-                invoices:        (invRes && invRes.success) ? invRes.data : null,
-                slips:           (slipRes && slipRes.success) ? slipRes.data : null,
-                bdos:            (bdoRes && bdoRes.success) ? bdoRes.data : null,
-                activity_log:    (activityRes && activityRes.success) ? activityRes.data : null,
-                errors: []
-            };
-            _cacheSet(_custCacheKey, batchData, 300000);
+    if (batchData) {
+        // Populate individual tab caches from batch so lazy loaders find them
+        if (batchData.orders       && !_cacheGet(_ordersCacheKey))   _cacheSet(_ordersCacheKey,   batchData.orders,          _TTL);
+        if (batchData.invoices     && !_cacheGet(_invoicesCacheKey)) _cacheSet(_invoicesCacheKey, batchData.invoices,        _TTL);
+        if (batchData.bdos         && !_cacheGet(_bdosCacheKey))     _cacheSet(_bdosCacheKey,     batchData.bdos,            _TTL);
+        if (batchData.slips        && !_cacheGet(_slipsCacheKey))    _cacheSet(_slipsCacheKey,    batchData.slips,           _TTL);
+        if (batchData.activity_log && !_cacheGet(_activityCacheKey)) _cacheSet(_activityCacheKey, batchData.activity_log,   _TTL);
+        if (batchData.customer_detail && !_cacheGet(_profileCacheKey)) {
+            _cacheSet(_profileCacheKey, batchData.customer_detail, _TTL);
         }
     }
 
-    // ── Unpack batch response (same variable names as before) ──
-    const ordRes  = { success: true, data: batchData.orders || {} };
-    const invRes  = { success: true, data: batchData.invoices || {} };
-    const slipRes = { success: true, data: batchData.slips || {} };
-    const bdoRes  = { success: true, data: batchData.bdos || {} };
-    const detailRes = { success: true, data: batchData.customer_detail || {} };
-    const activityRes = { success: true, data: batchData.activity_log || {} };
-
-    const slips = (slipRes.data && slipRes.data.slips) || [];
-    const bdos = (bdoRes.data && bdoRes.data.bdos) || [];
-    const detailData = detailRes.data || {};
-    const profileData = detailData.profile || {};
-    const creditData = detailData.credit || {};
-    const linkData = detailData.link || {};
-    const pointsData = detailData.points || {};
-    const activityItems = (activityRes.data && activityRes.data.items) || [];
-    const slipByOrderId = new Map();
-    const slipByInvoiceId = new Map();
-    const slipByBdoId = new Map();
-    slips.forEach(function(slip){
-        if(slip.order_id != null && !slipByOrderId.has(String(slip.order_id))) slipByOrderId.set(String(slip.order_id), slip);
-        if(slip.invoice_id != null && !slipByInvoiceId.has(String(slip.invoice_id))) slipByInvoiceId.set(String(slip.invoice_id), slip);
-        if(slip.bdo_id != null && !slipByBdoId.has(String(slip.bdo_id))) slipByBdoId.set(String(slip.bdo_id), slip);
-    });
-
-    // ---- Build paid-invoice lookup by order_name ----
-    // Invoice numbers like HS26025380 often link back to SO2602-05345 via the order reference
-    // stored in the invoice payload. We also match by amount when no ref is available.
-    const paidInvByRef   = new Map(); // order_name → paid invoice
-    const paidInvByAmt   = new Map(); // amount_total → paid invoice (fallback)
-    const invoicesAll = (invRes && invRes.success ? (invRes.data.invoices || []) : []).slice().sort((a,b)=>{
-        const da = new Date(a.invoice_date || a.due_date || a.processed_at || 0);
-        const db = new Date(b.invoice_date || b.due_date || b.processed_at || 0);
-        return db - da;
-    });
-    const paidInvByOrder = new Map(); // order_name → paid invoice
-    invoicesAll.forEach(function(inv){
-        const state = String(inv.invoice_state || '').toLowerCase();
-        const isPaid = state === 'paid'
-            || inv.is_paid
-            || String(inv.latest_event || '') === 'invoice.paid'
-            || String(inv.payment_state || '').toLowerCase() === 'paid'
-            || (parseFloat(inv.amount_residual) === 0 && parseFloat(inv.amount_total || 0) > 0);
-        if(!isPaid) return;
-        const amt = parseFloat(inv.amount_total || 0);
-        if(amt > 0 && !paidInvByAmt.has(amt)) paidInvByAmt.set(amt, inv);
-        if(inv.invoice_number) paidInvByRef.set(inv.invoice_number, inv);
-        if(inv.order_name && !paidInvByOrder.has(inv.order_name)) paidInvByOrder.set(inv.order_name, inv);
-    });
-
-    // Compute totals from loaded data — always compute from orders/invoices as primary source
-    const ordersArr = (ordRes && ordRes.success ? (ordRes.data.orders || []) : []);
-    let totalSpend = null;
-    // Sum from orders first (MAX per order to avoid duplication)
-    if(ordersArr.length){
-        totalSpend = 0;
-        ordersArr.forEach(function(o){ totalSpend += parseFloat(o.amount_total || 0); });
-    }
-    // If orders gave 0, try invoices as fallback
-    if((totalSpend === null || totalSpend === 0) && invoicesAll.length){
-        let invSpend = 0;
-        invoicesAll.forEach(function(inv){ invSpend += parseFloat(inv.amount_total || 0); });
-        if(invSpend > 0) totalSpend = invSpend;
-    }
-    // Finally use credit data if available and higher
-    const creditSpend = parseFloat(creditData.credit_used || creditData.total_spend || 0);
-    if(creditSpend > 0 && (totalSpend === null || creditSpend > totalSpend)) totalSpend = creditSpend;
-
-    let totalDue = creditData.total_due || null;
-    if(totalDue == null && invoicesAll.length){
-        totalDue = 0;
-        invoicesAll.forEach(function(inv){
-            const st = String(inv.invoice_state || inv.state || '').toLowerCase();
-            if(st !== 'paid' && st !== 'cancel' && st !== 'cancelled'){
-                totalDue += parseFloat(inv.amount_residual || inv.amount_total || 0);
-            }
+    // ── Step 1: Load profile/credit fast (DB-only via customer_profile_fast) ──
+    let profileRes = _cacheGet(_profileCacheKey);
+    if (!profileRes) {
+        const fastRes = await whApiCall({
+            action: 'customer_profile_fast',
+            partner_id: pidParam,
+            customer_ref: ref
         });
+        if (fastRes && fastRes.success && fastRes.data) {
+            profileRes = fastRes.data;
+            _cacheSet(_profileCacheKey, profileRes, _TTL);
+        } else {
+            // Fallback: use customer_detail from heavy endpoint
+            const detailFallback = await whApiCall({action:'customer_detail', partner_id:pidParam, customer_ref:ref});
+            profileRes = (detailFallback && detailFallback.success) ? detailFallback.data : {};
+            if (profileRes) _cacheSet(_profileCacheKey, profileRes, _TTL);
+        }
     }
 
+    const detailData  = profileRes || {};
+    const profileData = detailData.profile || {};
+    const creditData  = detailData.credit  || {};
+    const linkData    = detailData.link    || {};
+    const pointsData  = detailData.points  || {};
+
+    // ── Determine totals from credit data (orders/invoices loaded lazily) ──
+    const creditSpend = parseFloat(creditData.credit_used || creditData.total_spend || 0);
+    let totalSpend = creditSpend > 0 ? creditSpend : null;
+    let totalDue   = creditData.total_due != null ? creditData.total_due : null;
+
+    // If warm batch data exists, compute accurate totals from it
+    if (batchData) {
+        const ordersArr = (batchData.orders && batchData.orders.orders) || [];
+        if (ordersArr.length) {
+            let s = 0;
+            ordersArr.forEach(function(o){ s += parseFloat(o.amount_total || 0); });
+            if (s > 0) totalSpend = s;
+        }
+        const invoicesAll = (batchData.invoices && batchData.invoices.invoices) || [];
+        if ((totalSpend === null || totalSpend === 0) && invoicesAll.length) {
+            let s = 0;
+            invoicesAll.forEach(function(inv){ s += parseFloat(inv.amount_total || 0); });
+            if (s > 0) totalSpend = s;
+        }
+        if (totalDue == null && invoicesAll.length) {
+            totalDue = 0;
+            invoicesAll.forEach(function(inv){
+                const st = String(inv.invoice_state || inv.state || '').toLowerCase();
+                if (st !== 'paid' && st !== 'cancel' && st !== 'cancelled') {
+                    totalDue += parseFloat(inv.amount_residual || inv.amount_total || 0);
+                }
+            });
+        }
+    }
+
+    // Re-apply credit override for total spend
+    if (creditSpend > 0 && (totalSpend === null || creditSpend > totalSpend)) totalSpend = creditSpend;
+
+    // ── Shared rendering helpers ──
     const _fmtBaht = function(v){ if(v==null||v===''||isNaN(v))return '-'; return '\u0e3f'+Number(v).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2}); };
     const _fmtDt = function(raw){ if(!raw)return '-'; const d=new Date(raw); if(isNaN(d))return String(raw).slice(0,10)||'-'; return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit',timeZone:'Asia/Bangkok'}); };
     const _fmtDtTime = function(raw){ if(!raw)return '-'; const d=new Date(raw); if(isNaN(d))return String(raw).slice(0,16)||'-'; return d.toLocaleDateString('th-TH',{day:'2-digit',month:'short',year:'2-digit',timeZone:'Asia/Bangkok'})+' '+d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}); };
-
-    const PAYMENT_METHODS = {cash:'เงินสด',bank_transfer:'โอนเงิน',promptpay:'พร้อมเพย์',cheque:'เช็ค',credit_card:'บัตรเครดิต'};
-
+    const PAYMENT_METHODS = {cash:'\u0e40\u0e07\u0e34\u0e19\u0e2a\u0e14',bank_transfer:'\u0e42\u0e2d\u0e19\u0e40\u0e07\u0e34\u0e19',promptpay:'\u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e40\u0e1e\u0e22\u0e4c',cheque:'\u0e40\u0e0a\u0e47\u0e04',credit_card:'\u0e1a\u0e31\u0e15\u0e23\u0e40\u0e04\u0e23\u0e14\u0e34\u0e15'};
     const stateColor = {sale:'#16a34a', done:'#1d4ed8', cancel:'#64748b', draft:'#854d0e', to_delivery:'#7c3aed', packed:'#0891b2', confirmed:'#0369a1'};
     const stMap = {
         posted:  '<span style="background:#dcfce7;color:#16a34a;padding:2px 6px;border-radius:50px;font-size:0.75rem;">\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19</span>',
@@ -679,8 +844,84 @@ async function showCustomerDetail(ref, partnerId, custName){
         cancel:  '<span style="background:#f1f5f9;color:#64748b;padding:2px 6px;border-radius:50px;font-size:0.75rem;">\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</span>',
         draft:   '<span style="background:#fef9c3;color:#854d0e;padding:2px 6px;border-radius:50px;font-size:0.75rem;">\u0e23\u0e48\u0e32\u0e07</span>'
     };
-    const paidBadge     = '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:600;">\u2714 \u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19\u0e40\u0e23\u0e35\u0e22\u0e1a\u0e23\u0e49\u0e2d\u0e22</span>';
-    const deliveredBadge= '<span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:600;">\u2714 \u0e2a\u0e48\u0e07\u0e41\u0e25\u0e49\u0e27 / \u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27</span>';
+    const paidBadge      = '<span style="background:#dcfce7;color:#16a34a;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:600;">\u2714 \u0e0a\u0e33\u0e23\u0e30\u0e40\u0e07\u0e34\u0e19\u0e40\u0e23\u0e35\u0e22\u0e1a\u0e23\u0e49\u0e2d\u0e22</span>';
+    const deliveredBadge = '<span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:50px;font-size:0.75rem;font-weight:600;">\u2714 \u0e2a\u0e48\u0e07\u0e41\u0e25\u0e49\u0e27 / \u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27</span>';
+    // ── Preload orders + slips data now if warm batch cache available ──
+    // These are needed for the Orders tab which is active by default
+    let ordResData   = batchData ? (batchData.orders  || {}) : null;
+    let invResData   = batchData ? (batchData.invoices || {}) : null;
+    let slipsData    = batchData ? (batchData.slips    || {}) : null;
+
+    // If no warm batch, load orders + slips in parallel for the default tab
+    if (!ordResData || !slipsData) {
+        const cachedOrders = _cacheGet(_ordersCacheKey);
+        const cachedSlips  = _cacheGet(_slipsCacheKey);
+        if (cachedOrders && cachedSlips) {
+            ordResData = cachedOrders;
+            slipsData  = cachedSlips;
+        } else {
+            const [oR, sR] = await Promise.all([
+                cachedOrders ? null : whApiCall({action:'odoo_orders', limit:100, offset:0, partner_id:pidParam, customer_ref:ref}),
+                cachedSlips  ? null : whApiCall({action:'odoo_slips', partner_id:pidParam})
+            ]);
+            ordResData = cachedOrders || ((oR && oR.success) ? oR.data : {});
+            slipsData  = cachedSlips  || ((sR && sR.success) ? sR.data : {});
+            _cacheSet(_ordersCacheKey, ordResData, _TTL);
+            _cacheSet(_slipsCacheKey,  slipsData,  _TTL);
+        }
+    } else {
+        // Ensure individual caches are populated from batch
+        if (!_cacheGet(_ordersCacheKey)) _cacheSet(_ordersCacheKey, ordResData, _TTL);
+        if (!_cacheGet(_slipsCacheKey))  _cacheSet(_slipsCacheKey,  slipsData,  _TTL);
+    }
+
+    const ordRes  = { success: true, data: ordResData };
+    const slipRes = { success: true, data: slipsData  };
+    const slips = (slipRes.data && slipRes.data.slips) || [];
+
+    // Build slip lookup maps (needed by Orders tab and lazy tabs)
+    const slipByOrderId   = new Map();
+    const slipByInvoiceId = new Map();
+    const slipByBdoId     = new Map();
+    slips.forEach(function(slip){
+        if(slip.order_id   != null && !slipByOrderId.has(String(slip.order_id)))     slipByOrderId.set(String(slip.order_id),   slip);
+        if(slip.invoice_id != null && !slipByInvoiceId.has(String(slip.invoice_id))) slipByInvoiceId.set(String(slip.invoice_id), slip);
+        if(slip.bdo_id     != null && !slipByBdoId.has(String(slip.bdo_id)))         slipByBdoId.set(String(slip.bdo_id),   slip);
+    });
+
+    // Precompute paid-invoice maps from warm invoices data (if available)
+    const paidInvByAmt   = new Map();
+    const paidInvByRef   = new Map();
+    const paidInvByOrder = new Map();
+    let invoicesAllWarm  = [];
+    if (invResData) {
+        invoicesAllWarm = (invResData.invoices || []).slice().sort((a,b)=>{
+            const da = new Date(a.invoice_date || a.due_date || a.processed_at || 0);
+            const db = new Date(b.invoice_date || b.due_date || b.processed_at || 0);
+            return db - da;
+        });
+        invoicesAllWarm.forEach(function(inv){
+            const state  = String(inv.invoice_state || '').toLowerCase();
+            const isPaid = state==='paid' || inv.is_paid
+                || String(inv.latest_event||'') === 'invoice.paid'
+                || String(inv.payment_state||'').toLowerCase() === 'paid'
+                || (parseFloat(inv.amount_residual)===0 && parseFloat(inv.amount_total||0)>0);
+            if(!isPaid) return;
+            const amt = parseFloat(inv.amount_total||0);
+            if(amt>0 && !paidInvByAmt.has(amt)) paidInvByAmt.set(amt, inv);
+            if(inv.invoice_number) paidInvByRef.set(inv.invoice_number, inv);
+            if(inv.order_name && !paidInvByOrder.has(inv.order_name)) paidInvByOrder.set(inv.order_name, inv);
+        });
+    }
+
+    // ── Compute totals using orders data (now available) ──
+    const ordersArr = (ordRes && ordRes.success ? (ordRes.data.orders || []) : []);
+    if (ordersArr.length && (totalSpend === null || totalSpend === 0)) {
+        let s = 0;
+        ordersArr.forEach(function(o){ s += parseFloat(o.amount_total || 0); });
+        if (s > 0) totalSpend = s;
+    }
+    if (creditSpend > 0 && (totalSpend === null || creditSpend > totalSpend)) totalSpend = creditSpend;
 
     // ---- CREDIT/PAYMENT SUMMARY CARDS ----
     const sumBox = function(lbl,val,clr){
@@ -698,17 +939,16 @@ async function showCustomerDetail(ref, partnerId, custName){
     html += '</div>';
 
     // ---- TAB BAR ----
+    // Counts for lazy tabs (Invoices, BDOs) are shown as '…' until their data loads
     const slipCount = slips.length;
     const ordCount = ordRes&&ordRes.success?Number(ordRes.data.total||0):0;
-    const invCount = invRes&&invRes.success?Number(invRes.data.total||0):0;
-    const bdoCount = bdoRes&&bdoRes.success?Number(bdoRes.data.total||0):0;
     const tabBtn = function(id,icon,label,count,isActive){
         return '<button id="tabBtn'+id+'" onclick="custSwitchTab(\''+id.toLowerCase()+'\')" style="padding:0.4rem 0.75rem;border:none;border-bottom:2px solid '+(isActive?'var(--primary)':'transparent')+';background:none;'+(isActive?'font-weight:600;':'')+'cursor:pointer;color:'+(isActive?'var(--primary)':'var(--gray-500)')+';font-size:0.85rem;white-space:nowrap;"><i class="bi bi-'+icon+'"></i> '+label+(count!=null?' ('+count+')':'')+'</button>';
     };
     html += '<div style="display:flex;gap:0;margin-bottom:1rem;border-bottom:2px solid var(--gray-200);overflow-x:auto;">';
     html += tabBtn('Orders','bag','\u0e2d\u0e2d\u0e40\u0e14\u0e2d\u0e23\u0e4c',ordCount,true);
-    html += tabBtn('Invoices','file-text','\u0e43\u0e1a\u0e41\u0e08\u0e49\u0e07\u0e2b\u0e19\u0e35\u0e49',invCount,false);
-    html += tabBtn('Bdos','file-earmark-check','BDO',bdoCount,false);
+    html += tabBtn('Invoices','file-text','\u0e43\u0e1a\u0e41\u0e08\u0e49\u0e07\u0e2b\u0e19\u0e35\u0e49',null,false);
+    html += tabBtn('Bdos','file-earmark-check','BDO',null,false);
     html += tabBtn('Slips','receipt','\u0e2a\u0e25\u0e34\u0e1b',slipCount,false);
     html += tabBtn('Profile','person-vcard','\u0e42\u0e1b\u0e23\u0e44\u0e1f\u0e25\u0e4c Odoo',null,false);
     html += tabBtn('Timeline','clock-history','Timeline',null,false);
@@ -788,197 +1028,26 @@ async function showCustomerDetail(ref, partnerId, custName){
     }
     html += '</div>';
 
-    // ---- INVOICES TAB ----
+    // ---- INVOICES TAB (lazy-loaded on first click) ----
     html += '<div id="tabInvoices" style="display:none;">';
-    if(!invRes || !invRes.success){
-        html += '<p style="color:var(--gray-500);">' + escapeHtml((invRes&&invRes.error)||'Error') + '</p>';
-    } else {
-        if(!invoicesAll.length){
-            html += '<p style="color:var(--gray-400);text-align:center;padding:2rem;">\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e43\u0e1a\u0e41\u0e08\u0e49\u0e07\u0e2b\u0e19\u0e35\u0e49</p>';
+    if (invResData && invResData.invoices) {
+        const _invListWarm = invoicesAllWarm;
+        if(!_invListWarm.length){
+            html += '<p style="color:var(--gray-400);text-align:center;padding:2rem;">ไม่พบใบแจ้งหนี้</p>';
         } else {
-            html += '<p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.5rem;">\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14 ' + Number(invRes.data.total||0).toLocaleString() + ' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23</p>';
-            html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.85rem;">';
-            html += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
-            html += '<th style="padding:0.5rem;">\u0e40\u0e25\u0e02\u0e17\u0e35\u0e48</th>';
-            html += '<th style="padding:0.5rem;">\u0e2d\u0e2d\u0e40\u0e14\u0e2d\u0e23\u0e4c</th>';
-            html += '<th style="padding:0.5rem;">\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48</th>';
-            html += '<th style="padding:0.5rem;">\u0e04\u0e23\u0e1a\u0e01\u0e33\u0e2b\u0e19\u0e14</th>';
-            html += '<th style="padding:0.5rem;">\u0e2a\u0e16\u0e32\u0e19\u0e30</th>';
-            html += '<th style="padding:0.5rem;text-align:right;">\u0e22\u0e2d\u0e14\u0e23\u0e27\u0e21</th>';
-            html += '<th style="padding:0.5rem;text-align:right;">\u0e04\u0e49\u0e32\u0e07\u0e0a\u0e33\u0e23\u0e30</th>';
-            html += '<th style="padding:0.5rem;">\u0e27\u0e34\u0e18\u0e35\u0e0a\u0e33\u0e23\u0e30</th>';
-            html += '<th style="padding:0.5rem;">\u0e2a\u0e25\u0e34\u0e1b</th>';
-            html += '</tr></thead><tbody>';
-            invoicesAll.forEach(function(inv, idx){
-                const rawDate  = inv.invoice_date || inv.due_date || inv.processed_at || inv.updated_at || inv.synced_at || null;
-                const dt       = _fmtDt(rawDate);
-                const dueDate  = inv.due_date || inv.invoice_date_due || null;
-                const dueDt    = _fmtDt(dueDate);
-                const stateVal = String(inv.invoice_state || inv.state || '').toLowerCase();
-                // Determine paid from multiple signals
-                const isPaid   = stateVal === 'paid'
-                    || inv.is_paid
-                    || String(inv.latest_event || '') === 'invoice.paid'
-                    || String(inv.payment_state || '').toLowerCase() === 'paid'
-                    || (parseFloat(inv.amount_residual) === 0 && parseFloat(inv.amount_total || 0) > 0);
-                // isOverdue only when dueDate is a real non-null date string AND not paid
-                const dueDateObj = dueDate ? new Date(dueDate) : null;
-                const isOverdue = !isPaid && !!(dueDateObj && !isNaN(dueDateObj) && stateVal !== 'cancel' && dueDateObj < new Date());
-                const effectiveState = isPaid ? 'paid' : (isOverdue ? 'overdue' : stateVal);
-                const sb       = stMap[effectiveState] || '<span style="background:var(--gray-100);padding:2px 6px;border-radius:50px;font-size:0.75rem;">'+escapeHtml(inv.invoice_state||inv.state||'-')+'</span>';
-                const amt      = inv.amount_total != null ? '\u0e3f'+Number(inv.amount_total).toLocaleString() : '-';
-                // Fallback: if amount_residual is null/zero for unpaid invoice, use amount_total
-                const residualRaw = inv.amount_residual != null && inv.amount_residual !== '' ? parseFloat(inv.amount_residual) : null;
-                const effectiveResidual = isPaid ? 0 : (residualRaw != null ? residualRaw : parseFloat(inv.amount_total || 0));
-                const resAmt   = effectiveResidual;
-                const res      = isPaid ? '<span style="color:var(--gray-400);">\u0e3f0</span>' : '\u0e3f'+Number(effectiveResidual).toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:2});
-                const resColor = (!isPaid && resAmt > 0) ? '#dc2626' : 'inherit';
-                const invNum   = inv.invoice_number || inv.name || '-';
-                const dueDtColor = isOverdue ? '#dc2626' : 'var(--gray-500)';
-                const payMethod  = inv.payment_method || inv.payment_type || null;
-                const payMethodLabel = payMethod ? (PAYMENT_METHODS[payMethod] || payMethod) : '-';
-                const slip     = slipByInvoiceId.get(String(inv.invoice_id || inv.id || '')) || null;
-                let slipCell   = '-';
-                if(slip){
-                    const payDt  = fmtThDate(slip.transfer_date || slip.uploaded_at);
-                    const slipAmt= slip.amount != null ? '\u0e3f'+Number(slip.amount).toLocaleString('th-TH',{minimumFractionDigits:0}) : '';
-                    slipCell = '<span style="font-size:0.75rem;color:#16a34a;font-weight:500;">' + slipAmt + '<br>' + payDt + '</span>' + slipThumb(slip);
-                }
-                const rowBg = (isPaid || slip) ? '#f0fdf4' : (isOverdue ? '#fef2f2' : 'transparent');
-                html += '<tr style="border-bottom:1px solid var(--gray-100);background:'+rowBg+';">';
-                const invOrderName = inv.order_name || null;
-                const invOrderLink = invOrderName
-                    ? '<br><span style="font-size:0.7rem;color:#1d4ed8;"><i class="bi bi-bag"></i> '+escapeHtml(invOrderName)+'</span>'
-                    : '';
-                const _invId = inv.id || inv.invoice_id || '';
-                html += '<td style="padding:0.5rem;font-weight:500;"><a class="ref-link" href="javascript:void(0)" onclick="openInvoiceDetail(\''+escapeHtml(String(_invId))+'\',\''+escapeHtml(invNum)+'\')">' + escapeHtml(invNum) + '</a>' + invOrderLink + '</td>';
-                html += '<td style="padding:0.5rem;color:var(--gray-500);font-size:0.8rem;">' + dt + '</td>';
-                html += '<td style="padding:0.5rem;color:'+dueDtColor+';font-size:0.8rem;">' + dueDt + (isOverdue?' <i class="bi bi-exclamation-triangle-fill" style="color:#dc2626;font-size:0.7rem;"></i>':'') + '</td>';
-                html += '<td style="padding:0.5rem;">' + sb + '</td>';
-                html += '<td style="padding:0.5rem;text-align:right;font-weight:600;">' + amt + '</td>';
-                html += '<td style="padding:0.5rem;text-align:right;color:'+resColor+';">' + res + '</td>';
-                html += '<td style="padding:0.5rem;font-size:0.78rem;">' + escapeHtml(payMethodLabel) + '</td>';
-                html += '<td style="padding:0.5rem;">' + slipCell + '</td>';
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
+            html += _custRenderInvoicesHtml(_invListWarm, invResData, slipByInvoiceId, stMap, PAYMENT_METHODS, _fmtDt);
         }
+    } else {
+        html += '<div id="lazyInvoicesPlaceholder" style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-hourglass-split" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>คลิกเพื่อโหลด</div>';
     }
     html += '</div>';
 
-    // ---- BDO TAB (Card Layout with BDO ID, slip, attach, unmatch, Odoo link) ----
+    // ---- BDO TAB (lazy-loaded on first click) ----
     html += '<div id="tabBdos" style="display:none;">';
-    if(!bdoRes || !bdoRes.success){
-        html += '<p style="color:var(--gray-500);">' + escapeHtml((bdoRes&&bdoRes.error)||'Error') + '</p>';
+    if (batchData && batchData.bdos && batchData.bdos.bdos) {
+        html += _custRenderBdosHtml(batchData.bdos.bdos, batchData.bdos, slipByBdoId, invoicesAllWarm, pidParam, partnerId, slips, _fmtDt);
     } else {
-        if(!bdos.length){
-            html += '<p style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-file-earmark-check" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>\u0e44\u0e21\u0e48\u0e1e\u0e1a BDO</p>';
-        } else {
-            html += '<p style="font-size:0.8rem;color:var(--gray-500);margin-bottom:0.75rem;">\u0e17\u0e31\u0e49\u0e07\u0e2b\u0e21\u0e14 ' + Number(bdoRes.data.total||0).toLocaleString() + ' \u0e23\u0e32\u0e22\u0e01\u0e32\u0e23</p>';
-            const ODOO_BASE = 'https://cny.cnyrxapp.com';
-            const BDO_PAY_STATUS = {pending:{bg:'#fef3c7',clr:'#d97706',lbl:'\u0e23\u0e2d\u0e0a\u0e33\u0e23\u0e30',icon:'clock'},partial:{bg:'#ffedd5',clr:'#ea580c',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e1a\u0e32\u0e07\u0e2a\u0e48\u0e27\u0e19',icon:'hourglass-split'},slip_uploaded:{bg:'#dbeafe',clr:'#1d4ed8',lbl:'\u0e2d\u0e31\u0e1e\u0e2a\u0e25\u0e34\u0e1b\u0e41\u0e25\u0e49\u0e27',icon:'cloud-upload'},matched:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48\u0e41\u0e25\u0e49\u0e27',icon:'check-circle'},paid:{bg:'#dcfce7',clr:'#16a34a',lbl:'\u0e0a\u0e33\u0e23\u0e30\u0e41\u0e25\u0e49\u0e27',icon:'check-circle-fill'}};
-            const PAYMENT_LABELS = {promptpay:'\u0e1e\u0e23\u0e49\u0e2d\u0e21\u0e40\u0e1e\u0e22\u0e4c',bank_transfer:'\u0e42\u0e2d\u0e19\u0e40\u0e07\u0e34\u0e19'};
-            html += '<div style="display:flex;flex-direction:column;gap:0.75rem;">';
-            bdos.slice().sort(function(a, b){
-                const aState = normalizeBdoPaymentStatus(a);
-                const bState = normalizeBdoPaymentStatus(b);
-                const rank = {pending:0, partial:1, slip_uploaded:2, matched:3, paid:4};
-                return (rank[aState.key] ?? 99) - (rank[bState.key] ?? 99);
-            }).forEach(function(bdo){
-                const _bdoId = bdo.bdo_id || bdo.id || '';
-                const bdoName = bdo.bdo_name || ('BDO-'+_bdoId);
-                const orderName = bdo.order_name || '-';
-                const orderId = bdo.order_id || '';
-                const dt = _fmtDt(bdo.bdo_date || bdo.updated_at || bdo.synced_at || bdo.processed_at);
-                const amtNum = bdo.amount_net_to_pay != null ? bdo.amount_net_to_pay : bdo.amount_total;
-                const amt = amtNum != null ? '\u0e3f'+Number(amtNum).toLocaleString() : '-';
-                const paymentState = normalizeBdoPaymentStatus(bdo);
-                const payStatus = paymentState.key;
-                const ps = BDO_PAY_STATUS[payStatus] || BDO_PAY_STATUS.pending;
-                const payMethod = PAYMENT_LABELS[bdo.payment_method] || bdo.payment_method || '';
-                const deliveryTypeLabel = bdo.delivery_type === 'company' ? 'สายส่ง (จ่ายทีหลัง)' : (bdo.delivery_type === 'private' ? 'ขนส่งเอกชน (จ่ายก่อนส่ง)' : '');
-                const customerLabel = bdo.customer_name || bdo.customer_ref || '';
-                const statementUrl = 'api/odoo-dashboard-api.php?action=odoo_bdo_statement_pdf&bdo_id=' + encodeURIComponent(String(_bdoId));
-                const isPending = payStatus === 'pending' || payStatus === 'partial';
-                const isMatched = payStatus === 'matched' || payStatus === 'slip_uploaded';
-                const isPaid = payStatus === 'paid';
-                // Find linked slip for this BDO
-                const linkedSlip = slipByBdoId.get(String(_bdoId)) || null;
-                const linkedInv = invoicesAll.find(function(inv){ return inv.order_name && inv.order_name === bdo.order_name; });
-                const cardBg = isPending ? '#fffbeb' : (isMatched ? '#eff6ff' : (isPaid ? '#f0fdf4' : 'white'));
-                const cardBorder = isPending ? '#fde68a' : (isMatched ? '#bfdbfe' : (isPaid ? '#bbf7d0' : 'var(--gray-200)'));
-
-                html += '<div style="background:'+cardBg+';border:1.5px solid '+cardBorder+';border-radius:12px;padding:0.85rem 1rem;">';
-                // Row 1: BDO name + badge + ID
-                html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.4rem;">';
-                html += '<div style="flex:1;min-width:0;">';
-                html += '<div style="font-size:0.62rem;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px;">เลข BDO</div>';
-                html += '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">';
-                html += '<a class="ref-link" href="javascript:void(0)" onclick="openBdoDetail(\''+escapeHtml(String(_bdoId))+'\',\''+escapeHtml(bdoName)+'\', decodeURIComponent(\''+encodeURIComponent(JSON.stringify(bdo))+'\'))" style="font-weight:600;font-size:0.9rem;">'+escapeHtml(bdoName)+'</a>';
-                html += '<span style="background:'+ps.bg+';color:'+ps.clr+';padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;"><i class="bi bi-'+ps.icon+'" style="font-size:0.68rem;"></i> '+escapeHtml(paymentState.label || ps.lbl)+'</span>';
-                if(deliveryTypeLabel){
-                    html += '<span style="background:#f0f9ff;color:#0369a1;padding:2px 8px;border-radius:50px;font-size:0.72rem;font-weight:500;border:1px solid #bae6fd;"><i class="bi bi-truck" style="font-size:0.68rem;"></i> '+escapeHtml(deliveryTypeLabel)+'</span>';
-                }
-                html += '</div>';
-                html += '<div style="font-size:0.7rem;color:var(--gray-400);margin-top:3px;">Odoo ID: #'+escapeHtml(String(_bdoId))+'</div>';
-                if(customerLabel){
-                    html += '<div style="font-size:0.74rem;color:var(--gray-500);margin-top:2px;">ลูกค้า: '+escapeHtml(customerLabel)+'</div>';
-                }
-                html += '</div>';
-                // Odoo link
-                html += '<a href="'+ODOO_BASE+'/web#id='+_bdoId+'&model=cny.bill.invoice.before.delivery&view_type=form" target="_blank" title="เปิดใน Odoo" style="color:var(--gray-400);font-size:0.85rem;text-decoration:none;flex-shrink:0;margin-left:6px;"><i class="bi bi-box-arrow-up-right"></i></a>';
-                html += '</div>';
-                // Row 2: SO + date + payment method
-                html += '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.8rem;color:var(--gray-500);margin-bottom:0.4rem;">';
-                if(orderId){
-                    html += '<a href="'+ODOO_BASE+'/web#id='+orderId+'&model=sale.order&view_type=form" target="_blank" style="color:#1d4ed8;text-decoration:none;font-weight:500;">'+escapeHtml(orderName)+'</a>';
-                } else {
-                    html += '<span>'+escapeHtml(orderName)+'</span>';
-                }
-                html += '<span><i class="bi bi-calendar3" style="font-size:0.7rem;"></i> '+dt+'</span>';
-                if(payMethod) html += '<span>\u0e0a\u0e33\u0e23\u0e30: '+escapeHtml(payMethod)+'</span>';
-                if(paymentState.residual > 0) html += '<span>คงเหลือ: \u0e3f'+Number(paymentState.residual).toLocaleString()+'</span>';
-                if(bdo.statement_pdf_path){
-                    html += '<a href="'+statementUrl+'" target="_blank" rel="noopener noreferrer" style="color:#0369a1;text-decoration:none;font-weight:500;"><i class="bi bi-file-earmark-pdf"></i> Statement PDF</a>';
-                }
-                html += '</div>';
-                // Row 3: Amount + action buttons
-                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.3rem;">';
-                html += '<span style="font-weight:700;font-size:1rem;color:var(--gray-800);">'+amt+'</span>';
-                html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-                if(isPending){
-                    html += '<button id="btnNotifyBdo'+escapeHtml(String(_bdoId))+'" onclick="sendBdoPaymentNotify(\''+escapeHtml(String(_bdoId))+'\',\''+escapeHtml(String(pidParam||partnerId||''))+'\',decodeURIComponent(\''+encodeURIComponent(bdoName)+'\'))" style="background:#06C755;color:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;" title="ส่งแจ้งยอดชำระให้ลูกค้าทาง LINE"><i class="bi bi-send"></i> ส่งแจ้งยอด</button>';
-                    html += '<button onclick=\'openBdoSlipAttach('+escapeHtml(JSON.stringify(bdo))+','+escapeHtml(JSON.stringify(slips.filter(function(s){return s.status==="pending";})))+')\' style="background:#059669;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:0.78rem;cursor:pointer;font-weight:500;font-family:inherit;"><i class="bi bi-paperclip"></i> \u0e41\u0e19\u0e1a\u0e2a\u0e25\u0e34\u0e1b</button>';
-                }
-                if(isPaid){
-                    html += '<span style="background:#ecfdf5;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:4px 10px;font-size:0.75rem;font-weight:600;"><i class="bi bi-lock-fill"></i> ปิดแนบสลิปแล้ว</span>';
-                }
-                if(isMatched){
-                    const slipUpId = linkedSlip ? (linkedSlip.id||'') : '';
-                    const slipInboxId = linkedSlip ? (linkedSlip.slip_inbox_id || linkedSlip.odoo_slip_id || 0) : 0;
-                    html += '<button onclick="unmatchBdoSlip(\''+escapeHtml(String(slipUpId))+'\',\''+escapeHtml(String(slipInboxId))+'\')" style="background:var(--gray-200);color:var(--gray-700);border:none;border-radius:6px;padding:4px 10px;font-size:0.75rem;cursor:pointer;font-family:inherit;" title="\u0e22\u0e01\u0e40\u0e25\u0e34\u0e01\u0e01\u0e32\u0e23\u0e08\u0e31\u0e1a\u0e04\u0e39\u0e48"><i class="bi bi-x-circle"></i> \u0e22\u0e01\u0e40\u0e25\u0e34\u0e01</button>';
-                }
-                html += '</div>';
-                html += '</div>';
-                // Row 4: Linked slip thumbnail + invoice info
-                if(linkedSlip && linkedSlip.image_full_url){
-                    html += '<div style="margin-top:0.5rem;display:flex;align-items:center;gap:8px;padding:6px 8px;background:rgba(16,185,129,0.06);border-radius:8px;">';
-                    html += '<img src="'+escapeHtml(linkedSlip.image_full_url)+'" onclick="openSlipPreview(\''+escapeHtml(linkedSlip.image_full_url)+'\')" style="width:36px;height:44px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid #bbf7d0;" onerror="this.style.display=\'none\'">';
-                    html += '<div style="flex:1;font-size:0.78rem;">';
-                    html += '<span style="color:#16a34a;font-weight:500;">\u2714 \u0e2a\u0e25\u0e34\u0e1b\u0e41\u0e19\u0e1a\u0e41\u0e25\u0e49\u0e27</span>';
-                    if(linkedSlip.amount) html += '<span style="color:var(--gray-500);margin-left:6px;">\u0e3f'+Number(linkedSlip.amount).toLocaleString()+'</span>';
-                    if(linkedSlip.transfer_date) html += '<span style="color:var(--gray-400);margin-left:6px;">'+fmtThDate(linkedSlip.transfer_date)+'</span>';
-                    html += '</div>';
-                    html += '</div>';
-                }
-                if(linkedInv){
-                    const invIsPaid = String(linkedInv.invoice_state||'').toLowerCase()==='paid' || linkedInv.is_paid;
-                    html += '<div style="margin-top:0.35rem;font-size:0.75rem;color:#7c3aed;"><i class="bi bi-file-text"></i> '+escapeHtml(linkedInv.invoice_number||'-')+(invIsPaid?' \u2714':'')+'</div>';
-                }
-                html += '</div>';
-            });
-            html += '</div>';
-        }
+        html += '<div id="lazyBdosPlaceholder" style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-hourglass-split" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>คลิกเพื่อโหลด</div>';
     }
     html += '</div>';
 
@@ -1099,46 +1168,92 @@ async function showCustomerDetail(ref, partnerId, custName){
     })();
     html += '</div>';
 
-    // ---- ACTIVITY LOG TAB ----
+    // ---- ACTIVITY LOG TAB (lazy-loaded on first click) ----
     html += '<div id="tabActivity" style="display:none;">';
-    (function(){
-        if(!activityItems.length){
+    if (batchData && batchData.activity_log) {
+        const _actItems = (batchData.activity_log && batchData.activity_log.items) || [];
+        if(!_actItems.length){
             html += '<div style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-journal-text" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34</div>';
         } else {
-            html += '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:0.84rem;">';
-            html += '<thead><tr style="background:var(--gray-50);border-bottom:2px solid var(--gray-200);">';
-            html += '<th style="padding:0.5rem;">\u0e1b\u0e23\u0e30\u0e40\u0e20\u0e17</th>';
-            html += '<th style="padding:0.5rem;">\u0e23\u0e32\u0e22\u0e01\u0e32\u0e23</th>';
-            html += '<th style="padding:0.5rem;">\u0e23\u0e32\u0e22\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14</th>';
-            html += '<th style="padding:0.5rem;">\u0e1c\u0e39\u0e49\u0e14\u0e33\u0e40\u0e19\u0e34\u0e19\u0e01\u0e32\u0e23</th>';
-            html += '<th style="padding:0.5rem;">\u0e27\u0e31\u0e19\u0e40\u0e27\u0e25\u0e32</th>';
-            html += '</tr></thead><tbody>';
-            activityItems.forEach(function(it){
-                const kind = it.log_kind;
-                let kindBadge = '';
-                if(kind==='override') kindBadge='<span style="background:#fef3c7;color:#92400e;padding:2px 6px;border-radius:50px;font-size:0.73rem;"><i class="bi bi-pencil-square"></i> \u0e41\u0e01\u0e49\u0e2a\u0e16\u0e32\u0e19\u0e30</span>';
-                else if(kind==='note') kindBadge='<span style="background:#dbeafe;color:#1d4ed8;padding:2px 6px;border-radius:50px;font-size:0.73rem;"><i class="bi bi-chat-left-text"></i> \u0e42\u0e19\u0e49\u0e15</span>';
-                else kindBadge='<span style="background:var(--gray-100);color:var(--gray-600);padding:2px 6px;border-radius:50px;font-size:0.73rem;">'+escapeHtml(kind)+'</span>';
-
-                let detail = escapeHtml(it.description||'-');
-                if(kind==='override' && it.old_status){
-                    detail = escapeHtml(it.old_status)+' \u2192 <strong>'+escapeHtml(it.new_status)+'</strong><br><span style="color:var(--gray-500);">'+escapeHtml(it.description)+'</span>';
-                }
-
-                html += '<tr style="border-bottom:1px solid var(--gray-100);" onmouseover="this.style.background=\'var(--gray-50)\'" onmouseout="this.style.background=\'transparent\'">';
-                html += '<td style="padding:0.4rem 0.5rem;">'+kindBadge+'</td>';
-                html += '<td style="padding:0.4rem 0.5rem;font-weight:500;">'+escapeHtml(it.entity_type)+': '+escapeHtml(it.entity_ref)+'</td>';
-                html += '<td style="padding:0.4rem 0.5rem;">'+detail+'</td>';
-                html += '<td style="padding:0.4rem 0.5rem;font-size:0.8rem;">'+escapeHtml(it.admin_name||'-')+'</td>';
-                html += '<td style="padding:0.4rem 0.5rem;font-size:0.8rem;color:var(--gray-500);white-space:nowrap;">'+_fmtDtTime(it.created_at)+'</td>';
-                html += '</tr>';
-            });
-            html += '</tbody></table></div>';
+            html += _custRenderActivityHtml(_actItems, _fmtDtTime);
         }
-    })();
+    } else {
+        html += '<div id="lazyActivityPlaceholder" style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-hourglass-split" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>\u0e04\u0e25\u0e34\u0e04\u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e42\u0e2b\u0e25\u0e14</div>';
+    }
     html += '</div>';
 
     content.innerHTML = html;
+
+    // ── Attach lazy-load click handlers for tabs rendered with placeholders ──
+    (function(){
+        function _updateTabCount(btnId, count){
+            const btn = document.getElementById(btnId);
+            if(!btn) return;
+            btn.textContent = btn.textContent.replace(/\s*\(\d+\)$/, '') + (count != null ? ' (' + count + ')' : '');
+        }
+
+        // Invoices lazy handler
+        if(document.getElementById('lazyInvoicesPlaceholder')){
+            const _invBtn = document.getElementById('tabBtnInvoices');
+            const _invTab = document.getElementById('tabInvoices');
+            if(_invBtn && _invTab){
+                _invBtn.addEventListener('click', function _invLazy(){
+                    if(!document.getElementById('lazyInvoicesPlaceholder')) return;
+                    _invBtn.removeEventListener('click', _invLazy);
+                    _invTab.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-arrow-repeat spin"></i> \u0e01\u0e33\u0e25\u0e31\u0e07\u0e42\u0e2b\u0e25\u0e14...</div>';
+                    const _invCk = _cacheGet(_invoicesCacheKey);
+                    Promise.resolve(_invCk ? {success:true,data:_invCk} : whApiCall({action:'odoo_invoices',limit:100,offset:0,partner_id:pidParam,customer_ref:ref})).then(function(r){
+                        const d = (r && r.success) ? r.data : {};
+                        if(!_invCk) _cacheSet(_invoicesCacheKey, d, _TTL);
+                        const invs = (d.invoices || []).slice().sort(function(a,b){ return new Date(b.invoice_date||b.due_date||b.processed_at||0)-new Date(a.invoice_date||a.due_date||a.processed_at||0); });
+                        _invTab.innerHTML = invs.length ? _custRenderInvoicesHtml(invs, d, slipByInvoiceId, stMap, PAYMENT_METHODS, _fmtDt) : '<p style="color:var(--gray-400);text-align:center;padding:2rem;">\u0e44\u0e21\u0e48\u0e1e\u0e1a\u0e43\u0e1a\u0e41\u0e08\u0e49\u0e07\u0e2b\u0e19\u0e35\u0e49</p>';
+                        _updateTabCount('tabBtnInvoices', d.total || invs.length);
+                    }).catch(function(){ _invTab.innerHTML = '<p style="color:#dc2626;text-align:center;padding:2rem;">\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08</p>'; });
+                });
+            }
+        }
+
+        // BDOs lazy handler
+        if(document.getElementById('lazyBdosPlaceholder')){
+            const _bdoBtn = document.getElementById('tabBtnBdos');
+            const _bdoTab = document.getElementById('tabBdos');
+            if(_bdoBtn && _bdoTab){
+                _bdoBtn.addEventListener('click', function _bdoLazy(){
+                    if(!document.getElementById('lazyBdosPlaceholder')) return;
+                    _bdoBtn.removeEventListener('click', _bdoLazy);
+                    _bdoTab.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-arrow-repeat spin"></i> \u0e01\u0e33\u0e25\u0e31\u0e07\u0e42\u0e2b\u0e25\u0e14...</div>';
+                    const _bdoCk = _cacheGet(_bdosCacheKey);
+                    Promise.resolve(_bdoCk ? {success:true,data:_bdoCk} : whApiCall({action:'odoo_bdo_list_api',limit:100,offset:0,partner_id:pidParam,customer_ref:ref})).then(function(r){
+                        const d = (r && r.success) ? r.data : {};
+                        if(!_bdoCk) _cacheSet(_bdosCacheKey, d, _TTL);
+                        const bdoList = d.bdos || [];
+                        _bdoTab.innerHTML = bdoList.length ? _custRenderBdosHtml(bdoList, d, slipByBdoId, [], pidParam, partnerId, slips, _fmtDt) : '<p style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-file-earmark-check" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>\u0e44\u0e21\u0e48\u0e1e\u0e1a BDO</p>';
+                        _updateTabCount('tabBtnBdos', d.total || bdoList.length);
+                    }).catch(function(){ _bdoTab.innerHTML = '<p style="color:#dc2626;text-align:center;padding:2rem;">\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08</p>'; });
+                });
+            }
+        }
+
+        // Activity lazy handler
+        if(document.getElementById('lazyActivityPlaceholder')){
+            const _actBtn = document.getElementById('tabBtnActivity');
+            const _actTab = document.getElementById('tabActivity');
+            if(_actBtn && _actTab){
+                _actBtn.addEventListener('click', function _actLazy(){
+                    if(!document.getElementById('lazyActivityPlaceholder')) return;
+                    _actBtn.removeEventListener('click', _actLazy);
+                    _actTab.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--gray-400);"><i class="bi bi-arrow-repeat spin"></i> \u0e01\u0e33\u0e25\u0e31\u0e07\u0e42\u0e2b\u0e25\u0e14...</div>';
+                    const _actCk = _cacheGet(_activityCacheKey);
+                    Promise.resolve(_actCk ? {success:true,data:_actCk} : whApiCall({action:'activity_log_list',partner_id:pidParam,limit:100})).then(function(r){
+                        const d = (r && r.success) ? r.data : {};
+                        if(!_actCk) _cacheSet(_activityCacheKey, d, _TTL);
+                        const items = d.items || [];
+                        _actTab.innerHTML = items.length ? _custRenderActivityHtml(items, _fmtDtTime) : '<div style="color:var(--gray-400);text-align:center;padding:2rem;"><i class="bi bi-journal-text" style="font-size:2rem;display:block;margin-bottom:0.5rem;"></i>\u0e22\u0e31\u0e07\u0e44\u0e21\u0e48\u0e21\u0e35\u0e1b\u0e23\u0e30\u0e27\u0e31\u0e15\u0e34</div>';
+                    }).catch(function(){ _actTab.innerHTML = '<p style="color:#dc2626;text-align:center;padding:2rem;">\u0e42\u0e2b\u0e25\u0e14\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08</p>'; });
+                });
+            }
+        }
+    })();
 }
 function custSwitchTab(tab){
     ['tabOrders','tabInvoices','tabBdos','tabSlips','tabProfile','tabTimeline','tabActivity'].forEach(id=>{
@@ -1377,7 +1492,8 @@ async function autoSendApiCall(data) {
 async function loadAutoSendSettings() {
     const container = document.getElementById('autoSendSettingsContent');
     if (!container) return;
-    
+    _sectionMarkLoaded('auto-send-settings');
+
     container.innerHTML = '<div class="loading"><i class="bi bi-arrow-repeat spin"></i><div>กำลังโหลด...</div></div>';
     
     const result = await autoSendApiCall({action: 'get_settings'});
@@ -2470,12 +2586,19 @@ async function openBdoDetail(bdoId, bdoName, rawBdo){
     }
 
     const partnerId = rawBdoData && rawBdoData.partner_id ? rawBdoData.partner_id : '';
-    const detailResult = await whApiCall({
-        action:'odoo_bdo_detail_api',
-        bdo_id:bdoId,
-        partner_id:partnerId
-    });
-    const detail = detailResult && detailResult.success ? (detailResult.data || {}) : null;
+    const _bdoCacheKey='bdo_detail:'+String(bdoId);
+    let detail=null;
+    const _bdoCached=_cacheGet(_bdoCacheKey);
+    if(_bdoCached){
+        detail=_bdoCached;
+    }else{
+        const detailResult = await whApiCall({
+            action:'odoo_bdo_detail_api',
+            bdo_id:bdoId,
+            partner_id:partnerId
+        });
+        if(detailResult&&detailResult.success){ detail=detailResult.data||{}; _cacheSet(_bdoCacheKey,detail,120000); }
+    }
     const bdo = detail && detail.bdo ? detail.bdo : rawBdoData;
 
     if(!bdo){
@@ -3156,32 +3279,40 @@ async function loadMatchingCustomerGrid(forceRefresh){
     if(search) custParams.search = search;
     if(sp) custParams.salesperson_id = sp;
 
+    // ── Summary cache key for slip/BDO aggregate counts (3 min TTL) ──
+    const _summaryCacheKey = 'match_slip_bdo_summary';
+    const _summaryTTL = 180000; // 3 minutes
+
     try{
         let custRes;
         if(isFirstPage){
-            const pr = await Promise.all([
+            // Check if summary is already cached
+            const cachedSummary = _cacheGet(_summaryCacheKey);
+            const [pr0, summaryRes] = await Promise.all([
                 whApiCall(custParams),
-                fetch('api/slips-list.php?status=pending&limit=4000&offset=0').then(function(r){ return r.json(); }).catch(function(){ return {success:false}; }),
-                whApiCall({ action: 'odoo_bdo_list_api', limit: 3000, offset: 0, payment_filter: 'unpaid' })
+                cachedSummary ? Promise.resolve(null) : whApiCall({ action: 'customer_slip_bdo_summary' })
             ]);
-            custRes = pr[0];
-            const slipRes = pr[1];
-            const bdoRes = pr[2];
+            custRes = pr0;
 
+            // Use cached summary or fresh response
+            const summary = cachedSummary || ((summaryRes && summaryRes.success && summaryRes.data) ? summaryRes.data : null);
+            if(summary && !cachedSummary) _cacheSet(_summaryCacheKey, summary, _summaryTTL);
+
+            // Populate badge count maps from aggregate summary
             _matchSlipCountByRef = {};
-            const pendingSlips = (slipRes && slipRes.success && slipRes.data && slipRes.data.slips) ? slipRes.data.slips : [];
-            pendingSlips.forEach(function(s){
-                const ref = normalizeMatchCustomerRef(getSlipCustomerRef(s));
-                if(ref) _matchSlipCountByRef[ref] = (_matchSlipCountByRef[ref] || 0) + 1;
-            });
-            _matchBdoCountByRef = {};
-            const allBdos = (bdoRes && bdoRes.success && bdoRes.data && bdoRes.data.bdos) ? bdoRes.data.bdos : [];
-            allBdos.forEach(function(b){
-                if(isBdoOutstandingPayment(b)){
-                    const ref = normalizeMatchCustomerRef(getBdoCustomerRef(b));
-                    if(ref) _matchBdoCountByRef[ref] = (_matchBdoCountByRef[ref] || 0) + 1;
-                }
-            });
+            _matchBdoCountByRef  = {};
+            if(summary){
+                const slipsMap = summary.slips || {};
+                const bdosMap  = summary.bdos  || {};
+                Object.keys(slipsMap).forEach(function(rawRef){
+                    const ref = normalizeMatchCustomerRef(rawRef);
+                    if(ref) _matchSlipCountByRef[ref] = (slipsMap[rawRef] || 0);
+                });
+                Object.keys(bdosMap).forEach(function(rawRef){
+                    const ref = normalizeMatchCustomerRef(rawRef);
+                    if(ref) _matchBdoCountByRef[ref] = (bdosMap[rawRef] || 0);
+                });
+            }
         } else {
             custRes = await whApiCall(custParams);
         }
@@ -4341,8 +4472,6 @@ document.addEventListener('DOMContentLoaded',()=>{
     }else{
         setTimeout(function(){ if(_isSectionActive('overview')) loadTodayOverview(); }, 250);
     }
-    if(document.getElementById('autoSendSettingsContent'))loadAutoSendSettings();
-
     // Re-check connection every 60s — skip when tab is hidden
     setInterval(()=>{ if(!document.hidden) testConnection(); }, 60000);
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) testConnection(); });

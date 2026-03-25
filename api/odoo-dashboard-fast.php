@@ -289,6 +289,198 @@ if ($action === 'customers_fast') {
     exit;
 }
 
+// ── customer_profile_fast: profile/credit from odoo_customer_projection + odoo_line_users ──
+if ($action === 'customer_profile_fast') {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../config/database.php';
+
+    try {
+        $db = Database::getInstance()->getConnection();
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
+        exit;
+    }
+
+    header('Cache-Control: private, max-age=60');
+
+    $partnerId   = trim((string) ($input['partner_id']   ?? ''));
+    $customerRef = trim((string) ($input['customer_ref'] ?? ''));
+
+    if ($partnerId === '' && $customerRef === '') {
+        echo json_encode(['success' => false, 'error' => 'Missing partner_id or customer_ref']);
+        exit;
+    }
+
+    $profile  = null;
+    $credit   = [];
+    $link     = null;
+
+    // Query odoo_customer_projection for profile + credit fields
+    try {
+        $where  = [];
+        $params = [];
+        if ($partnerId !== '' && $partnerId !== '-') {
+            $where[]  = 'COALESCE(odoo_partner_id, customer_id) = ?';
+            $params[] = (int) $partnerId;
+        }
+        if ($customerRef !== '') {
+            $where[]  = 'COALESCE(partner_code, customer_ref) = ?';
+            $params[] = $customerRef;
+        }
+        $whereSql = $where ? ('WHERE (' . implode(' OR ', $where) . ')') : '';
+
+        $stmt = $db->prepare("
+            SELECT
+                COALESCE(partner_name, customer_name, '') AS name,
+                COALESCE(partner_code,  customer_ref, '')  AS ref,
+                COALESCE(odoo_partner_id, customer_id)     AS partner_id,
+                COALESCE(phone, '')          AS phone,
+                COALESCE(email, '')          AS email,
+                COALESCE(salesperson_name,'') AS salesperson_name,
+                COALESCE(credit_limit,  0)  AS credit_limit,
+                COALESCE(credit_used,   0)  AS credit_used,
+                COALESCE(credit_remaining,0) AS credit_remaining,
+                COALESCE(total_due,     0)  AS total_due,
+                COALESCE(overdue_amount,0)  AS overdue_amount,
+                line_user_id
+            FROM odoo_customer_projection
+            {$whereSql}
+            LIMIT 1
+        ");
+        $stmt->execute($params);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($row) {
+            $profile = [
+                'name'             => $row['name'],
+                'customer_name'    => $row['name'],
+                'ref'              => $row['ref'],
+                'customer_ref'     => $row['ref'],
+                'partner_id'       => $row['partner_id'],
+                'phone'            => $row['phone'],
+                'email'            => $row['email'],
+                'salesperson_name' => $row['salesperson_name'],
+            ];
+            $credit = [
+                'credit_limit'     => (float) $row['credit_limit'],
+                'credit_used'      => (float) $row['credit_used'],
+                'credit_remaining' => (float) $row['credit_remaining'],
+                'total_due'        => (float) $row['total_due'],
+                'overdue_amount'   => (float) $row['overdue_amount'],
+            ];
+        }
+    } catch (Exception $e) { /* table may not exist — silently continue */ }
+
+    // Query odoo_line_users for LINE link data
+    try {
+        $luWhere  = [];
+        $luParams = [];
+        if ($partnerId !== '' && $partnerId !== '-') {
+            $luWhere[]  = 'odoo_partner_id = ?';
+            $luParams[] = (int) $partnerId;
+        }
+        if ($customerRef !== '') {
+            $luWhere[]  = 'odoo_customer_code = ?';
+            $luParams[] = $customerRef;
+        }
+        if ($luWhere) {
+            $stmt = $db->prepare("
+                SELECT line_user_id, line_account_id, odoo_partner_id, odoo_customer_code,
+                       linked_at, created_at
+                FROM odoo_line_users
+                WHERE " . implode(' OR ', $luWhere) . "
+                LIMIT 1
+            ");
+            $stmt->execute($luParams);
+            $luRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($luRow) {
+                $link = $luRow;
+            }
+        }
+    } catch (Exception $e) { /* table may not exist */ }
+
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'profile'      => $profile,
+            'credit'       => $credit,
+            'link'         => $link,
+            'points'       => null,
+            'warnings'     => [],
+            'partner_id'   => $partnerId,
+            'customer_ref' => $customerRef,
+        ],
+        '_meta' => [
+            'duration_ms' => round((microtime(true) - $_startTime) * 1000),
+            'cached'      => false,
+            'action'      => 'customer_profile_fast',
+            'source'      => 'odoo_customer_projection',
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// ── customer_slip_bdo_summary: aggregate counts per customer_ref ─────────
+if ($action === 'customer_slip_bdo_summary') {
+    require_once __DIR__ . '/../config/config.php';
+    require_once __DIR__ . '/../config/database.php';
+
+    try {
+        $db = Database::getInstance()->getConnection();
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => 'Database connection failed: ' . $e->getMessage()]);
+        exit;
+    }
+
+    header('Cache-Control: private, max-age=60');
+
+    $slipMap = [];
+    $bdoMap  = [];
+
+    // Pending slip counts grouped by customer_ref
+    try {
+        $rows = $db->query("
+            SELECT customer_ref, COUNT(*) AS slip_count
+            FROM odoo_slip_uploads
+            WHERE status IN ('new','pending')
+              AND customer_ref IS NOT NULL AND customer_ref <> ''
+            GROUP BY customer_ref
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $r) {
+            $slipMap[$r['customer_ref']] = (int) $r['slip_count'];
+        }
+    } catch (Exception $e) { /* table may not exist */ }
+
+    // Outstanding BDO counts grouped by customer_ref
+    try {
+        $rows = $db->query("
+            SELECT customer_ref, COUNT(*) AS bdo_count
+            FROM odoo_bdos
+            WHERE payment_state NOT IN ('paid','reversed','in_payment')
+              AND state != 'cancel'
+              AND customer_ref IS NOT NULL AND customer_ref <> ''
+            GROUP BY customer_ref
+        ")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as $r) {
+            $bdoMap[$r['customer_ref']] = (int) $r['bdo_count'];
+        }
+    } catch (Exception $e) { /* table may not exist */ }
+
+    echo json_encode([
+        'success' => true,
+        'data' => [
+            'slips' => $slipMap,
+            'bdos'  => $bdoMap,
+        ],
+        '_meta' => [
+            'duration_ms' => round((microtime(true) - $_startTime) * 1000),
+            'cached'      => false,
+            'action'      => 'customer_slip_bdo_summary',
+        ],
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ── Unknown action: redirect to heavy API ───────────────────────────────
 // Return a specific error so the JS client knows to try the heavy endpoint
 http_response_code(200);
