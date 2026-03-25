@@ -603,7 +603,7 @@ function _custRenderInvoicesHtml(invoicesAll, invData, slipByInvoiceId, stMap, P
         const invOrderName = inv.order_name || null;
         const invOrderLink = invOrderName ? '<br><span style="font-size:0.7rem;color:#1d4ed8;"><i class="bi bi-bag"></i> '+escapeHtml(invOrderName)+'</span>' : '';
         const _invId = inv.id || inv.invoice_id || '';
-        h += '<td style="padding:0.5rem;font-weight:500;"><a class="ref-link" href="javascript:void(0)" onclick="openInvoiceDetail(''+escapeHtml(String(_invId))+'',''+escapeHtml(invNum)+'')">' + escapeHtml(invNum) + '</a>' + invOrderLink + '</td>';
+        h += '<td style="padding:0.5rem;font-weight:500;"><a class="ref-link" href="javascript:void(0)" onclick="openInvoiceDetail(\'' + escapeHtml(String(_invId)) + '\',\'' + escapeHtml(invNum) + '\')">' + escapeHtml(invNum) + '</a>' + invOrderLink + '</td>';
         h += '<td style="padding:0.5rem;color:var(--gray-500);font-size:0.8rem;">' + dt + '</td>';
         h += '<td style="padding:0.5rem;color:'+dueDtColor+';font-size:0.8rem;">' + dueDt + (isOverdue?' <i class="bi bi-exclamation-triangle-fill" style="color:#dc2626;font-size:0.7rem;"></i>':'') + '</td>';
         h += '<td style="padding:0.5rem;">' + sb + '</td>';
