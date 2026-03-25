@@ -3164,9 +3164,9 @@ function activityLogList($db, $input)
 function getSalespersonList($db)
 {
     $processedAtColumn = resolveWebhookTimeColumn($db);
-    $spIdExpr   = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.salesperson.id')), '')";
-    $spNameExpr = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.salesperson.name')), '')";
-    $customerKeyExpr = "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.partner_id')), ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.id')), ''))";
+    $spIdExpr   = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.salesperson.id')) COLLATE utf8mb4_unicode_ci, '')";
+    $spNameExpr = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.salesperson.name')) COLLATE utf8mb4_unicode_ci, '')";
+    $customerKeyExpr = "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.partner_id')) COLLATE utf8mb4_unicode_ci, ''), NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.customer.id')) COLLATE utf8mb4_unicode_ci, ''))";
 
     // Limit scan scope to keep dropdown API responsive on large logs.
     $windowWhere = $processedAtColumn
