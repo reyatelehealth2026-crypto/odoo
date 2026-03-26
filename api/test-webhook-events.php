@@ -23,8 +23,29 @@ error_reporting(E_ALL);
 require_once __DIR__ . '/../config/config.php';
 
 // ── Config ──────────────────────────────────────────────────────────────────
-$webhookUrl     = (defined('APP_URL') ? APP_URL : 'https://cny.re-ya.com') . '/api/odoo-webhook.php';
+// ใช้ new handler ที่ใช้งานจริง (api/webhook/odoo.php) ไม่ใช่ไฟล์เก่า
+$webhookUrl     = (defined('APP_URL') ? APP_URL : 'https://cny.re-ya.com') . '/api/webhook/odoo.php';
+$webhookSecret  = defined('ODOO_WEBHOOK_SECRET') ? ODOO_WEBHOOK_SECRET : ($_ENV['ODOO_WEBHOOK_SECRET'] ?? '');
 $internalSecret = $_ENV['INTERNAL_API_SECRET'] ?? '';
+
+/**
+ * สร้าง headers ที่ new handler ต้องการ:
+ *   X-Odoo-Delivery-Id  — unique per request (idempotency key)
+ *   X-Odoo-Timestamp    — unix timestamp ปัจจุบัน
+ *   X-Odoo-Signature    — sha256=HMAC(payload, secret)  [FORMAT 1: new standard]
+ *   X-Odoo-Event        — event type string
+ */
+function buildWebhookHeaders(string $payload, string $eventType, string $deliveryId, string $secret): array {
+    $timestamp = (string) time();
+    $signature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+    return [
+        'Content-Type: application/json',
+        'X-Odoo-Delivery-Id: '  . $deliveryId,
+        'X-Odoo-Timestamp: '    . $timestamp,
+        'X-Odoo-Signature: '    . $signature,
+        'X-Odoo-Event: '        . $eventType,
+    ];
+}
 
 // ── Test customer data ──────────────────────────────────────────────────────
 $LINE_USER_ID   = 'Ua1156d646cad2237e878457833bc07b3';
