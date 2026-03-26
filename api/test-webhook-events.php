@@ -37,7 +37,8 @@ $internalSecret = $_ENV['INTERNAL_API_SECRET'] ?? '';
  */
 function buildWebhookHeaders(string $payload, string $eventType, string $deliveryId, string $secret): array {
     $timestamp = (string) time();
-    $signature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+    // ใช้ LEGACY format เหมือน Odoo จริง: HMAC(timestamp + "." + payload, secret)
+    $signature = 'sha256=' . hash_hmac('sha256', $timestamp . '.' . $payload, $secret);
     return [
         'Content-Type: application/json',
         'X-Odoo-Delivery-Id: '  . $deliveryId,
@@ -77,80 +78,11 @@ $customer = [
 ];
 $salesperson = ['id' => 29, 'name' => 'พนักงานทดสอบ', 'line_user_id' => false];
 
-// ── Event definitions ──────────────────────────────────────────────────────
+// ── Event definitions (เฉพาะ BDO + invoice.paid) ─────────────────────────
 $events = [
 
-    // ── ORDER ─────────────────────────────────────────────────────────────
-    ['label' => '1. order.validated — ยืนยันออเดอร์',
-     'event' => 'order.validated',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME, 'order_ref' => $CUSTOMER_REF,
-        'new_state' => 'validated', 'old_state' => 'sale',
-        'customer' => $customer, 'salesperson' => $salesperson,
-        'amount_total' => $AMOUNT, 'amount_untaxed' => 5140.19, 'amount_tax' => 359.81,
-        'order_date' => $today, 'payment_method' => 'bank_transfer', 'payment_state' => 'not_paid',
-    ]],
-
-    ['label' => '2. order.picking — กำลังจัดสินค้า',
-     'event' => 'order.picking',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'picking', 'old_state' => 'validated',
-        'customer' => $customer, 'amount_total' => $AMOUNT,
-        'picker' => ['id' => 5, 'name' => 'พนักงานจัดของ'],
-    ]],
-
-    ['label' => '3. order.packed — แพ็คเสร็จ',
-     'event' => 'order.packed',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'packed', 'old_state' => 'picking',
-        'customer' => $customer, 'amount_total' => $AMOUNT,
-    ]],
-
-    ['label' => '4. order.awaiting_payment — รอชำระเงิน',
-     'event' => 'order.awaiting_payment',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'awaiting_payment', 'old_state' => 'packed',
-        'customer' => $customer, 'amount_total' => $AMOUNT,
-    ]],
-
-    ['label' => '5. order.paid — ชำระแล้ว',
-     'event' => 'order.paid',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'paid', 'old_state' => 'awaiting_payment',
-        'customer' => $customer, 'amount_total' => $AMOUNT, 'payment_state' => 'paid',
-    ]],
-
-    ['label' => '6. order.to_delivery — เตรียมส่ง',
-     'event' => 'order.to_delivery',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'to_delivery', 'old_state' => 'paid',
-        'customer' => $customer, 'amount_total' => $AMOUNT,
-    ]],
-
-    ['label' => '7. order.in_delivery — กำลังจัดส่ง',
-     'event' => 'order.in_delivery',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'in_delivery', 'old_state' => 'to_delivery',
-        'customer' => $customer, 'amount_total' => $AMOUNT,
-        'driver' => ['id' => 7, 'name' => 'คนขับทดสอบ'],
-    ]],
-
-    ['label' => '8. order.delivered — จัดส่งแล้ว',
-     'event' => 'order.delivered',
-     'data'  => [
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'new_state' => 'delivered', 'old_state' => 'in_delivery',
-        'customer' => $customer, 'amount_total' => $AMOUNT,
-    ]],
-
     // ── BDO ──────────────────────────────────────────────────────────────
-    ['label' => '9. bdo.confirmed — BDO ยืนยันแล้ว',
+    ['label' => '1. bdo.confirmed — BDO ยืนยันแล้ว',
      'event' => 'bdo.confirmed',
      'data'  => [
         'bdo_id' => $BDO_ID, 'bdo_name' => $BDO_NAME, 'bdo_date' => $today,
@@ -173,7 +105,7 @@ $events = [
         'delivery_type' => 'company',
     ]],
 
-    ['label' => '10. bdo.done — BDO เสร็จสิ้น',
+    ['label' => '2. bdo.done — BDO เสร็จสิ้น',
      'event' => 'bdo.done',
      'data'  => [
         'bdo_id' => $BDO_ID, 'bdo_name' => $BDO_NAME,
@@ -183,7 +115,7 @@ $events = [
         'amount_total' => $AMOUNT,
     ]],
 
-    ['label' => '11. bdo.cancelled — BDO ยกเลิก (BDO คนละตัว)',
+    ['label' => '3. bdo.cancelled — BDO ยกเลิก',
      'event' => 'bdo.cancelled',
      'data'  => [
         'bdo_id' => $BDO_ID + 1, 'bdo_name' => 'BDO-TEST-CANCEL',
@@ -193,37 +125,8 @@ $events = [
         'amount_total' => $AMOUNT,
     ]],
 
-    // ── DELIVERY ─────────────────────────────────────────────────────────
-    ['label' => '12. delivery.departed — ออกจัดส่ง',
-     'event' => 'delivery.departed',
-     'data'  => [
-        'delivery_id' => 88901, 'delivery_name' => 'DLV-TEST-88901',
-        'driver' => ['id' => 7, 'name' => 'คนขับทดสอบ'],
-        'orders' => [['order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME]],
-    ]],
-
-    ['label' => '13. delivery.completed — ส่งถึงแล้ว',
-     'event' => 'delivery.completed',
-     'data'  => [
-        'delivery_id' => 88901, 'delivery_name' => 'DLV-TEST-88901',
-        'driver' => ['id' => 7, 'name' => 'คนขับทดสอบ'],
-        'orders' => [['order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME]],
-    ]],
-
     // ── INVOICE ───────────────────────────────────────────────────────────
-    ['label' => '14. invoice.created — สร้างใบแจ้งหนี้',
-     'event' => 'invoice.created',
-     'data'  => [
-        'invoice_id' => $INVOICE_ID2, 'invoice_number' => 'HS-TEST-97902',
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'customer' => $customer, 'salesperson' => $salesperson,
-        'amount_total' => $AMOUNT, 'amount_tax' => 359.81, 'amount_untaxed' => 5140.19,
-        'amount_residual' => $AMOUNT, 'state' => 'open',
-        'invoice_date' => $today, 'due_date' => $today,
-        'pdf_url' => "/report/pdf/account.report_invoice/{$INVOICE_ID2}",
-    ]],
-
-    ['label' => '15. invoice.paid — ชำระใบแจ้งหนี้ ✨ (จะเพิ่มแต้ม 5 pt)',
+    ['label' => '4. invoice.paid — ชำระใบแจ้งหนี้ ✨ (เพิ่มแต้ม 5 pt)',
      'event' => 'invoice.paid',
      'data'  => [
         'invoice_id' => $INVOICE_ID, 'invoice_number' => $INVOICE_NUM,
@@ -238,31 +141,6 @@ $events = [
      'message_template' => ['customer' => ['th' => "ได้รับชำระเงินใบแจ้งหนี้ {$INVOICE_NUM} เรียบร้อยแล้ว"]],
     ],
 
-    ['label' => '16. invoice.overdue — ใบแจ้งหนี้เกินกำหนด',
-     'event' => 'invoice.overdue',
-     'data'  => [
-        'invoice_id' => $INVOICE_ID3, 'invoice_number' => 'HS-TEST-97903',
-        'order_id' => $ORDER_ID, 'order_name' => $ORDER_NAME,
-        'customer' => $customer,
-        'amount_total' => 3000.00, 'amount_residual' => 3000.00,
-        'due_date' => date('Y-m-d', strtotime('-5 days')),
-        'pdf_url' => "/report/pdf/account.report_invoice/{$INVOICE_ID3}",
-    ]],
-
-    // ── PAYMENT ───────────────────────────────────────────────────────────
-    ['label' => '17. payment.confirmed — ยืนยันการชำระเงิน',
-     'event' => 'payment.confirmed',
-     'data'  => [
-        'payment_id' => $PAYMENT_ID, 'payment_name' => 'PAY-TEST-96901',
-        'invoice_id' => $INVOICE_ID, 'new_state' => 'post',
-        'customer' => $customer,
-        'payment' => [
-            'amount' => $AMOUNT, 'currency' => 'THB', 'method' => 'bank_transfer',
-            'reference' => 'REF-TEST-001', 'date' => $today,
-            'bank_name' => 'กสิกรไทย', 'bank_account' => '123-4-56789-0',
-        ],
-        'related_orders' => [$ORDER_NAME],
-    ]],
 ];
 
 // ── Run ─────────────────────────────────────────────────────────────────────
@@ -306,11 +184,13 @@ foreach ($events as $item) {
     $ok      = $httpCode === 200 && ($decoded['success'] ?? false);
 
     $row = [
-        'label'    => $item['label'],
-        'event'    => $item['event'],
-        'http'     => $httpCode,
-        'status'   => $ok ? '✅ ok' : '❌ fail',
-        'response' => $decoded ?? $response,
+        'label'       => $item['label'],
+        'event'       => $item['event'],
+        'http'        => $httpCode,
+        'delivery_id' => $deliveryId,
+        'status'      => $ok ? '✅ ok' : '❌ fail',
+        'response'    => $decoded ?? $response,
+        'raw_response' => (!$decoded && $response) ? substr($response, 0, 300) : null,
     ];
     if ($curlErr) $row['curl_error'] = $curlErr;
 
