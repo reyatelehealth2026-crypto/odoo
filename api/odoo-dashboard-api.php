@@ -1,5 +1,22 @@
 <?php
 ob_start();
+
+// Catch PHP fatal errors (memory exhaustion, uncaught Throwable) that bypass try/catch
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        if (ob_get_level() > 0) ob_clean();
+        if (!headers_sent()) {
+            header('Content-Type: application/json; charset=utf-8');
+            http_response_code(500);
+        }
+        echo json_encode([
+            'success' => false,
+            'error'   => 'PHP fatal: ' . $err['message'],
+        ]);
+    }
+});
+
 /**
  * Odoo Webhooks Dashboard API
  * 
@@ -267,7 +284,20 @@ try {
     }
 
     ob_clean();
-    echo json_encode(['success' => true, 'data' => $result], JSON_UNESCAPED_UNICODE);
+    $encoded = json_encode(['success' => true, 'data' => $result], JSON_UNESCAPED_UNICODE);
+    if ($encoded === false) {
+        // Retry with UTF-8 sanitisation in case of invalid byte sequences
+        $encoded = json_encode(
+            ['success' => true, 'data' => $result],
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+    }
+    if ($encoded === false) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'json_encode failed: ' . json_last_error_msg()]);
+    } else {
+        echo $encoded;
+    }
 
 } catch (Exception $e) {
     ob_clean();
@@ -1843,29 +1873,35 @@ function sendDailySummary($db, $userIds)
     $failedCount = 0;
     
     require_once __DIR__ . '/../classes/OdooFlexTemplates.php';
-    require_once __DIR__ . '/../classes/OdooWebhookHandler.php';
-    
-    // We need a dummy handler to use its Line API methods
-    $handler = new OdooWebhookHandler($db, null);
-    
+
     foreach ($userIds as $userId) {
         if (!isset($userRecords[$userId])) continue;
-        
+
         $record = $userRecords[$userId];
         if (empty($record['orders'])) continue;
-        
+
         // Skip if already sent today
         if ($record['sent_today']) {
             continue;
         }
-        
-        // Get user's Line access token
+
+        // Get access token directly from line_accounts
         $accessToken = null;
-        $user = $handler->findLineUserAcrossAccounts(null, $userId);
-        if ($user && !empty($user['channel_access_token'])) {
-            $accessToken = $user['channel_access_token'];
-        }
-        
+        try {
+            $tStmt = $db->prepare("
+                SELECT la.channel_access_token
+                FROM line_accounts la
+                INNER JOIN odoo_line_users olu ON olu.line_account_id = la.id
+                WHERE olu.line_user_id = ?
+                LIMIT 1
+            ");
+            $tStmt->execute([$userId]);
+            $tRow = $tStmt->fetch(PDO::FETCH_ASSOC);
+            if ($tRow && !empty($tRow['channel_access_token'])) {
+                $accessToken = $tRow['channel_access_token'];
+            }
+        } catch (Exception $e) { /* ignore */ }
+
         if (!$accessToken) {
             $failedCount++;
             continue;
@@ -2041,14 +2077,26 @@ function sendBdoPaymentNotification($db, $input)
         throw new Exception('ไม่สามารถระบุ LINE Account ได้');
     }
 
-    // Get access token
-    require_once __DIR__ . '/../classes/OdooWebhookHandler.php';
-    $handler = new OdooWebhookHandler($db, null);
-    $user = $handler->findLineUserAcrossAccounts(null, $lineUserId);
-    if (!$user || empty($user['channel_access_token'])) {
+    // Get access token — query line_accounts directly (avoids OdooWebhookHandler dependency)
+    $tokenStmt = $db->prepare("
+        SELECT la.channel_access_token
+        FROM line_accounts la
+        INNER JOIN odoo_line_users olu ON olu.line_account_id = la.id
+        WHERE olu.line_user_id = ?
+        LIMIT 1
+    ");
+    $tokenStmt->execute([$lineUserId]);
+    $tokenRow = $tokenStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$tokenRow) {
+        // Fallback: first active line_account for this line_account_id
+        $tokenStmt2 = $db->prepare("SELECT channel_access_token FROM line_accounts WHERE id = ? LIMIT 1");
+        $tokenStmt2->execute([$lineAccountId]);
+        $tokenRow = $tokenStmt2->fetch(PDO::FETCH_ASSOC);
+    }
+    if (!$tokenRow || empty($tokenRow['channel_access_token'])) {
         throw new Exception('ไม่พบ LINE access token สำหรับลูกค้านี้');
     }
-    $accessToken = $user['channel_access_token'];
+    $accessToken = $tokenRow['channel_access_token'];
 
     // ── 5. Build data for Flex template — use getBdoDetailLive for fresh Odoo data ──
     $amountTotal = (float) ($bdo['amount_total'] ?? $bdo['ctx_amount'] ?? 0);
