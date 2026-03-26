@@ -8,7 +8,7 @@ PHP 8.0+ CRM platform for Thai pharmacies integrating LINE OA, Odoo ERP, AI (Gem
 
 ## Architecture
 
-### Entry Points
+### Entry Pointds
 | Path | Purpose |
 |------|---------|
 | `webhook.php?account={id}` | LINE Messaging API webhook (multi-account) |
