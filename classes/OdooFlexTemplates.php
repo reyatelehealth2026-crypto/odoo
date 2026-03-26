@@ -327,7 +327,7 @@ class OdooFlexTemplates
                 // ── Footer note ──
                 [
                     'type'   => 'text',
-                    'text'   => '📋 แตะที่ตัวเลขเพื่อคัดลอก  •  หลังโอนกรุณาส่งสลิปใน LINE',
+                    'text'   => 'แตะที่ตัวเลขเพื่อคัดลอก  •  หลังโอนกรุณาส่งสลิปใน LINE',
                     'size'   => 'xxs',
                     'color'  => '#9ca3af',
                     'align'  => 'center',
