@@ -2159,8 +2159,17 @@ function sendBdoPaymentNotification($db, $input)
         'liff_url' => '',
     ];
 
-    // ── 6. Resolve QR payload (local DB → Odoo live API fallback) ──────
-    $qrPayload = resolveQrPayload($db, $bdoId, $bdo['qr_payload'] ?? '', $lineUserId, $partnerId);
+    // ── 6. Resolve QR payload — reuse liveDetail first to avoid second Odoo API call ──
+    $qrPayload = $bdo['qr_payload'] ?? '';
+    if (empty($qrPayload) && isset($liveDetail)) {
+        $qrPayload = $liveDetail['bdo']['qr_payment_data']['raw_payload']
+                  ?? $liveDetail['bdo']['qr_payload']
+                  ?? $liveDetail['qr_payload']
+                  ?? '';
+    }
+    if (empty($qrPayload)) {
+        $qrPayload = resolveQrPayload($db, $bdoId, '', $lineUserId, $partnerId);
+    }
 
     $qrCodeUrl = '';
     if (!empty($qrPayload)) {
