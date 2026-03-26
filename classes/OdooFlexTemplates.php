@@ -71,7 +71,7 @@ class OdooFlexTemplates
                     'contents' => [
                         [
                             'type'   => 'text',
-                            'text'   => 'ใบแจ้งยอดก่อนส่งของ',
+                            'text'   => 'ใบแจ้งชำระค่าสินค้า',
                             'weight' => 'bold',
                             'size'   => 'md',
                             'color'  => '#1d4ed8',
@@ -202,25 +202,138 @@ class OdooFlexTemplates
         $bankAccNo   = $bank['account_number'] ?? '';
         $bankAccName = $bank['account_name']   ?? '';
 
+        // Clipboard copy action (LINE Flex clipboard type — iOS/Android 13.3+)
+        $copyAction = [
+            'type'  => 'clipboard',
+            'label' => 'คัดลอกเลขบัญชี',
+            'data'  => $bankAccNo,
+        ];
+
         $bankSection = [];
         $bankSection[] = ['type' => 'separator', 'margin' => 'lg'];
         $bankSection[] = [
             'type'            => 'box',
             'layout'          => 'vertical',
             'margin'          => 'lg',
-            'backgroundColor' => '#ffffff',
-            'cornerRadius'    => '10px',
+            'backgroundColor' => '#f0fdf4',
+            'cornerRadius'    => '12px',
             'paddingAll'      => '14px',
-            'spacing'         => 'sm',
             'borderWidth'     => '1px',
-            'borderColor'     => '#e5e7eb',
+            'borderColor'     => '#86efac',
             'contents' => [
-                ['type' => 'text', 'text' => 'กรุณาชำระเงินที่', 'size' => 'sm', 'weight' => 'bold', 'color' => '#1f2937', 'align' => 'center'],
-                ['type' => 'text', 'text' => 'เลขบัญชี ' . $bankAccNo, 'size' => 'md', 'weight' => 'bold', 'color' => '#111827', 'align' => 'center', 'margin' => 'sm'],
-                ['type' => 'text', 'text' => $bankName, 'size' => 'xs', 'color' => '#6b7280', 'align' => 'center', 'margin' => 'xs'],
-                ['type' => 'text', 'text' => 'ชื่อบัญชี ' . $bankAccName, 'size' => 'xs', 'color' => '#6b7280', 'align' => 'center', 'wrap' => true, 'margin' => 'xs'],
-                ['type' => 'separator', 'margin' => 'md', 'color' => '#e5e7eb'],
-                ['type' => 'text', 'text' => 'หลังโอนเงิน กรุณาส่งหลักฐานการโอนมาที่ LINE', 'size' => 'xxs', 'color' => '#9ca3af', 'align' => 'center', 'wrap' => true, 'margin' => 'sm'],
+                // ── Header: KBank logo + label ──
+                [
+                    'type'    => 'box',
+                    'layout'  => 'horizontal',
+                    'spacing' => 'sm',
+                    'alignItems' => 'center',
+                    'contents' => [
+                        [
+                            'type'       => 'image',
+                            'url'        => 'https://www.kasikornbank.com/SiteCollectionDocuments/about/img/logo/logo.png',
+                            'size'       => '28px',
+                            'aspectMode' => 'fit',
+                            'flex'       => 0,
+                        ],
+                        [
+                            'type'   => 'box',
+                            'layout' => 'vertical',
+                            'flex'   => 1,
+                            'contents' => [
+                                [
+                                    'type'   => 'text',
+                                    'text'   => $bankName,
+                                    'size'   => 'xs',
+                                    'weight' => 'bold',
+                                    'color'  => '#15803d',
+                                ],
+                                [
+                                    'type'  => 'text',
+                                    'text'  => 'กรุณาโอนเงินมายังบัญชีนี้',
+                                    'size'  => 'xxs',
+                                    'color' => '#6b7280',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                ['type' => 'separator', 'margin' => 'sm', 'color' => '#bbf7d0'],
+                // ── Account number row (tappable → copy) ──
+                [
+                    'type'            => 'box',
+                    'layout'          => 'horizontal',
+                    'margin'          => 'sm',
+                    'backgroundColor' => '#ffffff',
+                    'cornerRadius'    => '8px',
+                    'paddingAll'      => '10px',
+                    'alignItems'      => 'center',
+                    'action'          => $copyAction,
+                    'contents' => [
+                        [
+                            'type'   => 'box',
+                            'layout' => 'vertical',
+                            'flex'   => 1,
+                            'contents' => [
+                                [
+                                    'type'  => 'text',
+                                    'text'  => 'เลขที่บัญชี',
+                                    'size'  => 'xxs',
+                                    'color' => '#9ca3af',
+                                ],
+                                [
+                                    'type'   => 'text',
+                                    'text'   => $bankAccNo,
+                                    'size'   => 'xl',
+                                    'weight' => 'bold',
+                                    'color'  => '#111827',
+                                    'margin' => 'xs',
+                                ],
+                                [
+                                    'type'  => 'text',
+                                    'text'  => $bankAccName,
+                                    'size'  => 'xs',
+                                    'color' => '#6b7280',
+                                    'wrap'  => true,
+                                ],
+                            ],
+                        ],
+                        // Copy pill button
+                        [
+                            'type'            => 'box',
+                            'layout'          => 'vertical',
+                            'flex'            => 0,
+                            'backgroundColor' => '#16a34a',
+                            'cornerRadius'    => '20px',
+                            'paddingStart'    => '10px',
+                            'paddingEnd'      => '10px',
+                            'paddingTop'      => '6px',
+                            'paddingBottom'   => '6px',
+                            'alignItems'      => 'center',
+                            'justifyContent'  => 'center',
+                            'action'          => $copyAction,
+                            'contents' => [
+                                [
+                                    'type'   => 'text',
+                                    'text'   => '⎘ คัดลอก',
+                                    'size'   => 'xs',
+                                    'color'  => '#ffffff',
+                                    'weight' => 'bold',
+                                    'align'  => 'center',
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+                // ── Footer note ──
+                [
+                    'type'   => 'text',
+                    'text'   => '📋 แตะที่ตัวเลขเพื่อคัดลอก  •  หลังโอนกรุณาส่งสลิปใน LINE',
+                    'size'   => 'xxs',
+                    'color'  => '#9ca3af',
+                    'align'  => 'center',
+                    'wrap'   => true,
+                    'margin' => 'sm',
+                ],
             ],
         ];
 
