@@ -197,10 +197,9 @@ class OdooFlexTemplates
         }
 
         // ── Bank details section ────────────────────────────────────────
-        $bank = $data['bank_account'] ?? [];
-        $bankName    = $bank['bank_name']      ?? 'ธนาคารกสิกรไทย';
-        $bankAccNo   = $bank['account_number'] ?? '';
-        $bankAccName = $bank['account_name']   ?? '';
+        $bankName    = 'ธนาคารกสิกรไทย';
+        $bankAccNo   = '068-3-84622-8';
+        $bankAccName = 'บริษัท ซี เอ็น วาย เฮลท์แคร์ จำกัด';
 
         // clipboard action — LINE spec: type=clipboard, clipboardText=<text>
         // action อยู่ได้เฉพาะที่ box/button ระดับเดียว ห้าม nested
