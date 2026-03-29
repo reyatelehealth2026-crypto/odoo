@@ -443,6 +443,68 @@ $menuGroups = [
         ]
     ],
 ];
+
+$userRole = getCurrentUserRole();
+$visibleMenuGroups = [];
+$searchableMenuItems = [];
+$currentGroupTitle = 'Workspace';
+$currentMenuLabel = $pageTitle ?? 'Dashboard';
+
+foreach ($menuGroups as $group) {
+    if (isset($group['roles']) && !in_array($userRole, $group['roles'])) {
+        continue;
+    }
+
+    $visibleMenuGroups[] = $group;
+
+    foreach ($group['menus'] as $menu) {
+        if (isset($menu['href'])) {
+            $searchableMenuItems[] = [
+                'title' => $menu['title'],
+                'href' => $menu['href'],
+                'icon' => $menu['icon'] ?? '•',
+                'group' => $group['group_title'],
+                'parent' => null,
+                'badge' => $menu['badge'] ?? 0,
+            ];
+
+            if (strpos($currentPath, $menu['href']) !== false) {
+                $currentGroupTitle = $group['group_title'];
+                $currentMenuLabel = $menu['title'];
+            }
+        } elseif (isset($menu['submenus']) && is_array($menu['submenus'])) {
+            foreach ($menu['submenus'] as $submenu) {
+                $searchableMenuItems[] = [
+                    'title' => $submenu['title'],
+                    'href' => $submenu['href'],
+                    'icon' => $menu['icon'] ?? '•',
+                    'group' => $group['group_title'],
+                    'parent' => $menu['title'],
+                    'badge' => $submenu['badge'] ?? 0,
+                ];
+
+                if (strpos($currentPath, $submenu['href']) !== false) {
+                    $currentGroupTitle = $group['group_title'];
+                    $currentMenuLabel = $submenu['title'];
+                }
+            }
+        }
+    }
+}
+
+foreach (($quickAccessItems ?? []) as $quickItem) {
+    $searchableMenuItems[] = [
+        'title' => $quickItem['label'],
+        'href' => $quickItem['url'],
+        'icon' => '⚡',
+        'group' => 'Pinned',
+        'parent' => null,
+        'badge' => $quickItem['badge'] ?? 0,
+    ];
+}
+
+$visibleGroupCount = count($visibleMenuGroups);
+$workspaceAlertCount = (int) ($unreadMessages ?? 0) + (int) ($pendingOrders ?? 0);
 ?>
 <!DOCTYPE html>
 <html lang="th">
@@ -487,12 +549,15 @@ $menuGroups = [
             --primary-light: #00C300;
             --sidebar-width: 260px;
             --sidebar-bg: #ffffff;
+            --surface-muted: #f8fafc;
+            --surface-subtle: #f1f5f9;
             --sidebar-border: #e5e7eb;
             --sidebar-text: #374151;
             --sidebar-text-muted: #6b7280;
             --sidebar-hover: #f3f4f6;
             --sidebar-active-bg: #ecfdf5;
             --sidebar-active-text: #047857;
+            --sidebar-active-border: #10b981;
         }
         
         body { 
@@ -517,10 +582,10 @@ $menuGroups = [
         
         /* Sidebar - Clean White Theme (inbox-master style) */
         .sidebar {
-            width: 220px !important;
-            min-width: 220px !important;
-            max-width: 220px !important;
-            flex: 0 0 220px !important;
+            width: 248px !important;
+            min-width: 248px !important;
+            max-width: 248px !important;
+            flex: 0 0 248px !important;
             background: var(--sidebar-bg);
             border-right: 1px solid var(--sidebar-border);
             transition: transform 0.3s ease;
@@ -530,26 +595,49 @@ $menuGroups = [
         }
         
         .sidebar-brand {
-            padding: 12px 14px;
+            padding: 14px 16px 12px;
             border-bottom: 1px solid var(--sidebar-border);
             background: var(--sidebar-bg);
+        }
+
+        .sidebar-brand-meta {
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .sidebar-brand-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: var(--surface-muted);
+            border: 1px solid #e2e8f0;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 600;
         }
         
         /* Bot Selector */
         .bot-selector {
-            padding: 8px 12px;
+            padding: 10px 14px;
             border-bottom: 1px solid var(--sidebar-border);
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
         }
         
         .bot-card {
             display: flex;
             align-items: center;
-            padding: 8px 10px;
+            padding: 10px 12px;
             background: #f9fafb;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
             transition: all 0.2s;
             border: 1px solid var(--sidebar-border);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
         }
         
         .bot-card:hover { background: var(--sidebar-hover); border-color: #d1d5db; }
@@ -571,14 +659,17 @@ $menuGroups = [
         .bot-avatar img { width: 100%; height: 100%; object-fit: cover; }
         
         /* Menu Section */
-        .menu-section { padding: 4px 6px 2px; }
+        .menu-section {
+            padding: 6px 8px 2px;
+            position: relative;
+        }
         .menu-section-title {
-            font-size: 9px;
-            font-weight: 600;
-            color: #9ca3af;
+            font-size: 10px;
+            font-weight: 700;
+            color: #94a3b8;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 8px 10px 4px;
+            letter-spacing: 0.08em;
+            padding: 0 2px 8px;
         }
         
         /* Simple Menu Item */
@@ -645,26 +736,42 @@ $menuGroups = [
         .menu-parent {
             display: flex;
             align-items: center;
-            padding: 7px 10px;
+            padding: 10px 12px;
             flex: 1;
-            border-radius: 6px;
+            border-radius: 12px;
             color: var(--sidebar-text);
-            font-size: 11px;
-            font-weight: 500;
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.15s ease;
             user-select: none;
+            border: 1px solid transparent;
+            background: transparent;
         }
         
         .menu-parent:hover { 
-            background: var(--sidebar-hover); 
+            background: var(--surface-muted); 
             color: #111827; 
+            border-color: #e5e7eb;
+        }
+
+        .menu-section.is-open .menu-parent {
+            background: #f8fafc;
+            border-color: #e5e7eb;
+        }
+
+        .menu-section.has-active .menu-parent {
+            background: #effcf6;
+            border-color: #bbf7d0;
+            color: #065f46;
+            box-shadow: inset 3px 0 0 var(--sidebar-active-border);
         }
         
         /* Sidebar Footer */
         .sidebar-footer {
-            padding: 8px 10px;
+            padding: 10px 14px;
             border-top: 1px solid var(--sidebar-border);
+            background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
         }
         
         .sidebar-footer-info {
@@ -676,16 +783,16 @@ $menuGroups = [
         }
         
         .menu-parent-icon {
-            width: 18px;
-            margin-right: 8px;
-            font-size: 12px;
+            width: 20px;
+            margin-right: 10px;
+            font-size: 14px;
             text-align: center;
         }
         
         .menu-parent-label { flex: 1; }
         
         .menu-arrow {
-            font-size: 9px;
+            font-size: 10px;
             color: #9ca3af;
             transition: transform 0.2s ease;
         }
@@ -717,26 +824,31 @@ $menuGroups = [
         
         /* Nested Menu Group - Simple Style */
         .nested-menu-group {
-            margin: 1px 0;
+            margin: 2px 0;
         }
         
         .nested-menu-parent {
             display: flex;
             align-items: center;
-            padding: 6px 10px 6px 32px;
-            margin: 1px 6px;
-            border-radius: 5px;
+            padding: 8px 12px 8px 36px;
+            margin: 2px 0;
+            border-radius: 10px;
             color: var(--sidebar-text-muted);
-            font-size: 11px;
-            font-weight: 400;
+            font-size: 12px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.15s ease;
             user-select: none;
         }
         
         .nested-menu-parent:hover { 
-            background: var(--sidebar-hover); 
+            background: var(--surface-muted); 
             color: #111827;
+        }
+
+        .nested-menu-group.has-active > .nested-menu-parent {
+            color: #0f766e;
+            background: rgba(16, 185, 129, 0.08);
         }
         
         .nested-menu-icon {
@@ -782,17 +894,18 @@ $menuGroups = [
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 6px 10px 6px 46px;
-            margin: 1px 6px;
-            border-radius: 5px;
+            padding: 8px 12px 8px 50px;
+            margin: 2px 0;
+            border-radius: 10px;
             color: var(--sidebar-text-muted);
-            font-size: 11px;
+            font-size: 12px;
             text-decoration: none;
             transition: all 0.15s ease;
+            position: relative;
         }
         
         .nested-menu-item.direct-link {
-            padding: 7px 10px 7px 34px;
+            padding: 9px 12px 9px 38px;
             gap: 8px;
             justify-content: flex-start;
         }
@@ -803,49 +916,84 @@ $menuGroups = [
         }
         
         .nested-menu-item:hover {
-            background: var(--sidebar-hover);
+            background: var(--surface-muted);
             color: #111827;
         }
         
         .nested-menu-item.active {
             background: var(--sidebar-active-bg);
             color: var(--sidebar-active-text);
-            font-weight: 500;
+            font-weight: 600;
+            box-shadow: inset 3px 0 0 var(--sidebar-active-border);
         }
         
-        /* Quick Access - Hidden for simple theme */
         .quick-access-section {
-            display: none;
+            display: block;
+            margin: 10px 12px 14px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 1px solid #e2e8f0;
+            background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+        }
+
+        .quick-access-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+        }
+
+        .quick-access-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: #64748b;
+        }
+
+        .quick-access-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
         }
         
         .quick-item {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            padding: 8px 6px;
-            border-radius: 8px;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 12px;
             text-decoration: none;
             transition: all 0.2s;
             position: relative;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
         }
         
-        .quick-item:hover { transform: translateY(-1px); }
+        .quick-item:hover {
+            transform: translateY(-1px);
+            border-color: #cbd5e1;
+            box-shadow: 0 6px 16px rgba(15, 23, 42, 0.07);
+        }
         
         .quick-icon {
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
+            width: 34px;
+            height: 34px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 18px;
+            font-size: 14px;
             color: white;
-            margin-bottom: 6px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 0;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
             transition: all 0.2s;
+            flex-shrink: 0;
         }
         
-        .quick-item:hover .quick-icon { transform: scale(1.1); }
+        .quick-item:hover .quick-icon { transform: scale(1.05); }
         
         .quick-icon.green { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
         .quick-icon.orange { background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); }
@@ -867,10 +1015,10 @@ $menuGroups = [
         .quick-icon.yellow { background: linear-gradient(135deg, #eab308 0%, #ca8a04 100%); }
         
         .quick-label {
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             color: #374151;
-            text-align: center;
+            line-height: 1.25;
         }
         
         .quick-badge {
@@ -892,6 +1040,95 @@ $menuGroups = [
         }
         
         .quick-badge.yellow { background: #f59e0b; box-shadow: 0 2px 4px rgba(245,158,11,0.4); }
+
+        .recent-nav-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .recent-nav-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .recent-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            text-decoration: none;
+            color: #475569;
+            font-size: 12px;
+            background: rgba(255, 255, 255, 0.65);
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+        }
+
+        .recent-nav-item:hover {
+            background: #ffffff;
+            border-color: #e2e8f0;
+            color: #0f172a;
+        }
+
+        .recent-nav-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 11px;
+            flex-shrink: 0;
+        }
+
+        .recent-nav-copy {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .recent-nav-title {
+            color: #1e293b;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .recent-nav-meta {
+            color: #94a3b8;
+            font-size: 10px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .group-badge {
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 999px;
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 10px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 8px;
+        }
+
+        .menu-section.has-active .group-badge {
+            background: rgba(16, 185, 129, 0.16);
+            color: #047857;
+        }
         
         /* Dropdown */
         .dropdown-menu {
@@ -937,7 +1174,7 @@ $menuGroups = [
         
         .top-header {
             background: white;
-            padding: 12px 24px;
+            padding: 14px 24px;
             border-bottom: 1px solid #e2e8f0;
             display: flex;
             align-items: center;
@@ -945,12 +1182,119 @@ $menuGroups = [
             position: sticky;
             top: 0;
             z-index: 30;
+            gap: 16px;
+        }
+
+        .header-primary {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            min-width: 0;
+            flex: 1;
+        }
+
+        .header-context {
+            min-width: 0;
+        }
+
+        .header-kicker {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            margin-bottom: 2px;
+        }
+
+        .page-title-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
         }
         
         .page-title {
-            font-size: 18px;
+            font-size: 20px;
             font-weight: 600;
             color: #1e293b;
+            line-height: 1.2;
+            margin: 0;
+        }
+
+        .page-subtitle {
+            margin-top: 4px;
+            color: #64748b;
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .workspace-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border-radius: 999px;
+            background: #eff6ff;
+            color: #1d4ed8;
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .header-command-wrap {
+            flex: 1;
+            min-width: 220px;
+            max-width: 520px;
+        }
+
+        .command-launcher {
+            width: 100%;
+            border: 1px solid #e2e8f0;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+            border-radius: 14px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 0 14px;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+        }
+
+        .command-launcher:hover {
+            border-color: #cbd5e1;
+            color: #334155;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+        }
+
+        .command-launcher-copy {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .command-launcher-text {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .command-shortcut {
+            padding: 4px 7px;
+            border-radius: 8px;
+            background: #e2e8f0;
+            color: #475569;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
         }
         
         .header-actions { display: flex; align-items: center; gap: 8px; }
@@ -1018,6 +1362,141 @@ $menuGroups = [
             flex: 1;
             overflow-y: auto;
             padding: 24px;
+        }
+
+        .command-palette {
+            position: fixed;
+            inset: 0;
+            z-index: 1200;
+        }
+
+        .command-palette.hidden {
+            display: none;
+        }
+
+        .command-palette-backdrop {
+            position: absolute;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            backdrop-filter: blur(6px);
+        }
+
+        .command-palette-dialog {
+            position: relative;
+            width: min(720px, calc(100vw - 32px));
+            margin: 72px auto 0;
+            background: #ffffff;
+            border-radius: 20px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+            overflow: hidden;
+        }
+
+        .command-palette-input {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 18px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .command-palette-input input {
+            flex: 1;
+            border: none;
+            outline: none;
+            font-size: 15px;
+            font-weight: 500;
+            color: #0f172a;
+            background: transparent;
+        }
+
+        .command-palette-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 10px 18px;
+            background: #f8fafc;
+            color: #64748b;
+            font-size: 12px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .command-palette-results {
+            max-height: min(60vh, 520px);
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .command-result {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 14px;
+            text-decoration: none;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+            color: #334155;
+        }
+
+        .command-result:hover,
+        .command-result.is-selected {
+            background: #f8fafc;
+            border-color: #e2e8f0;
+        }
+
+        .command-result-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #dcfce7 0%, #dbeafe 100%);
+            color: #0f766e;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+
+        .command-result-copy {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .command-result-title {
+            color: #0f172a;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .command-result-meta {
+            color: #64748b;
+            font-size: 11px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .command-result-badge {
+            margin-left: auto;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: #fee2e2;
+            color: #b91c1c;
+            font-size: 11px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .command-result-empty {
+            padding: 28px 16px;
+            text-align: center;
+            color: #94a3b8;
+            font-size: 13px;
         }
         
         /* Mobile */
@@ -1115,6 +1594,19 @@ $menuGroups = [
                 align-items: center !important;
                 justify-content: space-between !important;
             }
+
+            .header-command-wrap {
+                display: none !important;
+            }
+
+            .header-kicker {
+                font-size: 10px !important;
+            }
+
+            .page-subtitle,
+            .workspace-chip {
+                display: none !important;
+            }
             
             .page-title {
                 font-size: 15px !important;
@@ -1166,17 +1658,21 @@ $menuGroups = [
             /* Quick access grid on mobile */
             .quick-access-section {
                 margin: 8px !important;
-                padding: 10px 6px !important;
+                padding: 10px !important;
             }
             
+            .quick-access-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            }
+
             .quick-icon {
-                width: 38px !important;
-                height: 38px !important;
+                width: 32px !important;
+                height: 32px !important;
                 font-size: 15px !important;
             }
             
             .quick-label {
-                font-size: 10px !important;
+                font-size: 11px !important;
             }
             
             /* Menu items touch-friendly */
@@ -1231,8 +1727,8 @@ $menuGroups = [
                 gap: 4px !important;
             }
             
-            .quick-access-section .grid {
-                grid-template-columns: repeat(4, 1fr) !important;
+            .quick-access-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
                 gap: 2px !important;
             }
             
@@ -1272,18 +1768,26 @@ $menuGroups = [
         <!-- Sidebar -->
         <aside id="sidebar" class="sidebar flex flex-col">
             <!-- Brand -->
-            <div class="sidebar-brand flex items-center">
-                <div class="w-10 h-10 rounded-xl flex items-center justify-center"
-                    style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);">
-                    <i class="fab fa-line text-white text-xl"></i>
+            <div class="sidebar-brand">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 rounded-xl flex items-center justify-center"
+                        style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);">
+                        <i class="fab fa-line text-white text-xl"></i>
+                    </div>
+                    <div class="ml-3 flex-1 min-w-0">
+                        <div class="font-bold text-gray-800 text-sm truncate"><?= APP_NAME ?></div>
+                        <div class="text-xs text-gray-400">Admin Workspace</div>
+                    </div>
+                    <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
-                <div class="ml-3 flex-1">
-                    <div class="font-bold text-gray-800 text-sm"><?= APP_NAME ?></div>
-                    <div class="text-xs text-gray-400">Admin Panel v3.0</div>
+                <div class="sidebar-brand-meta">
+                    <span class="sidebar-brand-pill"><i class="fas fa-layer-group"></i><?= $visibleGroupCount ?> sections</span>
+                    <?php if ($workspaceAlertCount > 0): ?>
+                        <span class="sidebar-brand-pill"><i class="fas fa-bell"></i><?= $workspaceAlertCount > 99 ? '99+' : $workspaceAlertCount ?> alerts</span>
+                    <?php endif; ?>
                 </div>
-                <button onclick="toggleSidebar()" class="md:hidden text-gray-400 hover:text-gray-700">
-                    <i class="fas fa-times"></i>
-                </button>
             </div>
 
             <!-- Bot Selector -->
@@ -1334,22 +1838,30 @@ $menuGroups = [
                 <!-- Quick Access Section -->
                 <?php if (!empty($quickAccessItems)): ?>
                     <div class="quick-access-section">
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="menu-section-title mb-0">⚡ Quick Access</div>
+                        <div class="quick-access-header">
+                            <div>
+                                <div class="menu-section-title mb-0">Workspace</div>
+                                <div class="quick-access-meta">
+                                    <span><i class="fas fa-thumbtack"></i> Pinned shortcuts</span>
+                                </div>
+                            </div>
                             <a href="<?= $baseUrl ?>settings.php?tab=quick-access"
                                 class="text-xs text-gray-400 hover:text-green-600" title="ตั้งค่า Quick Access">
                                 <i class="fas fa-cog"></i>
                             </a>
                         </div>
-                        <div class="grid grid-cols-4 gap-1">
+                        <div class="quick-access-grid">
                             <?php foreach ($quickAccessItems as $item):
                                 $itemUrl = $baseUrl . ltrim($item['url'], '/');
                                 ?>
-                                <a href="<?= $itemUrl ?>" class="quick-item">
+                                <a href="<?= $itemUrl ?>" class="quick-item nav-track-link"
+                                    data-nav-title="<?= htmlspecialchars($item['label']) ?>"
+                                    data-nav-group="Pinned"
+                                    data-nav-icon="⚡">
                                     <div class="quick-icon <?= $item['color'] ?? 'green' ?>">
                                         <i class="fas <?= $item['icon'] ?>"></i>
                                     </div>
-                                    <span class="quick-label"><?= $item['label'] ?></span>
+                                    <span class="quick-label"><?= htmlspecialchars($item['label']) ?></span>
                                     <?php if (!empty($item['badge']) && $item['badge'] > 0): ?>
                                         <span
                                             class="quick-badge <?= $item['badgeColor'] ?? '' ?>"><?= $item['badge'] > 99 ? '99+' : $item['badge'] ?></span>
@@ -1357,23 +1869,48 @@ $menuGroups = [
                                 </a>
                             <?php endforeach; ?>
                         </div>
+                        <div id="recentNavSection" class="recent-nav-section hidden">
+                            <div class="menu-section-title mb-0">Recent</div>
+                            <div id="recentNavList" class="recent-nav-list"></div>
+                        </div>
                     </div>
                 <?php endif; ?>
 
                 <!-- Main Menu Groups -->
                 <?php
-                $userRole = getCurrentUserRole();
-                foreach ($menuGroups as $group):
-                    // ตรวจสอบ role ก่อนแสดง group
-                    if (isset($group['roles']) && !in_array($userRole, $group['roles'])) {
-                        continue; // ข้าม group นี้ถ้าไม่มีสิทธิ์
+                foreach ($visibleMenuGroups as $group):
+                    $groupHasActive = false;
+                    $groupBadgeCount = 0;
+                    foreach ($group['menus'] as $groupMenu) {
+                        if (!empty($groupMenu['badge'])) {
+                            $groupBadgeCount += (int) $groupMenu['badge'];
+                        }
+
+                        if (isset($groupMenu['href']) && strpos($currentPath, $groupMenu['href']) !== false) {
+                            $groupHasActive = true;
+                        }
+
+                        if (isset($groupMenu['submenus']) && is_array($groupMenu['submenus'])) {
+                            foreach ($groupMenu['submenus'] as $groupSubmenu) {
+                                if (!empty($groupSubmenu['badge'])) {
+                                    $groupBadgeCount += (int) $groupSubmenu['badge'];
+                                }
+
+                                if (strpos($currentPath, $groupSubmenu['href']) !== false) {
+                                    $groupHasActive = true;
+                                }
+                            }
+                        }
                     }
                     ?>
-                    <div class="menu-section">
+                    <div class="menu-section <?= $groupHasActive ? 'has-active' : '' ?>" data-group-id="<?= htmlspecialchars($group['group_id']) ?>">
                         <!-- Group Header -->
                         <div class="menu-parent" onclick="toggleSubmenu('group_<?= $group['group_id'] ?>')">
                             <span class="menu-parent-icon"><?= $group['group_icon'] ?></span>
                             <span class="menu-parent-label"><?= $group['group_title'] ?></span>
+                            <?php if ($groupBadgeCount > 0): ?>
+                                <span class="group-badge"><?= $groupBadgeCount > 99 ? '99+' : $groupBadgeCount ?></span>
+                            <?php endif; ?>
                             <i class="fas fa-chevron-down menu-arrow"></i>
                         </div>
 
@@ -1386,7 +1923,10 @@ $menuGroups = [
                                     $menuUrl = $baseUrl . ltrim($menu['href'], '/');
                                     $isActive = strpos($currentPath, $menu['href']) !== false;
                                     ?>
-                                    <a href="<?= $menuUrl ?>" class="nested-menu-item direct-link <?= $isActive ? 'active' : '' ?>">
+                                    <a href="<?= $menuUrl ?>" class="nested-menu-item direct-link nav-track-link <?= $isActive ? 'active' : '' ?>"
+                                        data-nav-title="<?= htmlspecialchars($menu['title']) ?>"
+                                        data-nav-group="<?= htmlspecialchars($group['group_title']) ?>"
+                                        data-nav-icon="<?= htmlspecialchars($menu['icon'] ?? '') ?>">
                                         <span class="nested-menu-icon"><?= $menu['icon'] ?></span>
                                         <span><?= $menu['title'] ?></span>
                                         <?php if (!empty($menu['badge']) && $menu['badge'] > 0): ?>
@@ -1412,7 +1952,11 @@ $menuGroups = [
                                                 $submenuUrl = $baseUrl . ltrim($submenu['href'], '/');
                                                 $isActive = strpos($currentPath, $submenu['href']) !== false;
                                                 ?>
-                                                <a href="<?= $submenuUrl ?>" class="nested-menu-item <?= $isActive ? 'active' : '' ?>">
+                                                <a href="<?= $submenuUrl ?>" class="nested-menu-item nav-track-link <?= $isActive ? 'active' : '' ?>"
+                                                    data-nav-title="<?= htmlspecialchars($submenu['title']) ?>"
+                                                    data-nav-group="<?= htmlspecialchars($group['group_title']) ?>"
+                                                    data-nav-parent="<?= htmlspecialchars($menu['title']) ?>"
+                                                    data-nav-icon="<?= htmlspecialchars($menu['icon'] ?? '') ?>">
                                                     <span><?= $submenu['title'] ?></span>
                                                     <?php if (!empty($submenu['badge']) && $submenu['badge'] > 0): ?>
                                                         <span
@@ -1445,11 +1989,34 @@ $menuGroups = [
         <div class="main-content">
             <!-- Top Header -->
             <header class="top-header">
-                <div class="flex items-center">
-                    <button onclick="toggleSidebar()" class="md:hidden mr-4 text-gray-500 hover:text-gray-700">
-                        <i class="fas fa-bars text-lg"></i>
-                    </button>
-                    <h1 class="page-title"><?= $pageTitle ?? 'Dashboard' ?></h1>
+                <div class="header-primary">
+                    <div class="flex items-center min-w-0">
+                        <button onclick="toggleSidebar()" class="md:hidden mr-4 text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-bars text-lg"></i>
+                        </button>
+                        <div class="header-context min-w-0">
+                            <div class="header-kicker"><?= htmlspecialchars($currentGroupTitle) ?></div>
+                            <div class="page-title-row">
+                                <h1 class="page-title"><?= $pageTitle ?? 'Dashboard' ?></h1>
+                                <?php if ($workspaceAlertCount > 0): ?>
+                                    <span class="workspace-chip"><i class="fas fa-bell"></i><?= $workspaceAlertCount > 99 ? '99+' : $workspaceAlertCount ?> pending</span>
+                                <?php endif; ?>
+                            </div>
+                            <div class="page-subtitle">
+                                <?= htmlspecialchars($currentMenuLabel) ?> · ใช้ `Ctrl + K` เพื่อค้นหาเมนูหรือกระโดดไปหน้าต่าง ๆ
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="header-command-wrap hidden md:block">
+                        <button type="button" class="command-launcher" onclick="openCommandPalette()">
+                            <span class="command-launcher-copy">
+                                <i class="fas fa-magnifying-glass"></i>
+                                <span class="command-launcher-text">ค้นหาเมนู, หน้าที่ใช้บ่อย หรือกระโดดไป workflow ถัดไป</span>
+                            </span>
+                            <span class="command-shortcut">Ctrl K</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="header-actions">
@@ -1612,6 +2179,46 @@ $menuGroups = [
                 </div>
             </header>
 
+            <div id="commandPalette" class="command-palette hidden" aria-hidden="true">
+                <div class="command-palette-backdrop" onclick="closeCommandPalette()"></div>
+                <div class="command-palette-dialog" role="dialog" aria-modal="true" aria-labelledby="commandPaletteInput">
+                    <div class="command-palette-input">
+                        <i class="fas fa-magnifying-glass text-slate-400"></i>
+                        <input id="commandPaletteInput" type="text" placeholder="พิมพ์ชื่อเมนู, กลุ่มงาน, หรือ workflow ที่ต้องการ..." autocomplete="off">
+                        <span class="command-shortcut">Esc</span>
+                    </div>
+                    <div class="command-palette-meta">
+                        <span>Jump to page</span>
+                        <span id="commandPaletteCount"><?= count($searchableMenuItems) ?> items</span>
+                    </div>
+                    <div id="commandPaletteResults" class="command-palette-results">
+                        <?php foreach ($searchableMenuItems as $menuItem):
+                            $menuItemUrl = $baseUrl . ltrim($menuItem['href'], '/');
+                            $menuMeta = $menuItem['group'] . (!empty($menuItem['parent']) ? ' · ' . $menuItem['parent'] : '');
+                            ?>
+                            <a href="<?= $menuItemUrl ?>" class="command-result nav-track-link"
+                                data-nav-title="<?= htmlspecialchars($menuItem['title']) ?>"
+                                data-nav-group="<?= htmlspecialchars($menuItem['group']) ?>"
+                                data-nav-parent="<?= htmlspecialchars($menuItem['parent'] ?? '') ?>"
+                                data-nav-icon="<?= htmlspecialchars($menuItem['icon'] ?? '') ?>"
+                                data-command-item>
+                                <span class="command-result-icon"><?= htmlspecialchars($menuItem['icon'] ?? '•') ?></span>
+                                <span class="command-result-copy">
+                                    <span class="command-result-title"><?= htmlspecialchars($menuItem['title']) ?></span>
+                                    <span class="command-result-meta"><?= htmlspecialchars($menuMeta) ?></span>
+                                </span>
+                                <?php if (!empty($menuItem['badge'])): ?>
+                                    <span class="command-result-badge"><?= $menuItem['badge'] > 99 ? '99+' : $menuItem['badge'] ?></span>
+                                <?php endif; ?>
+                            </a>
+                        <?php endforeach; ?>
+                        <div id="commandPaletteEmpty" class="command-result-empty hidden">
+                            ไม่พบเมนูที่ตรงกับคำค้น ลองพิมพ์ชื่อกลุ่ม เช่น Inbox, Dashboard, Orders
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Content Area -->
             <div class="content-area">
 
@@ -1629,13 +2236,120 @@ $menuGroups = [
                     const currentUserId = '<?= $adminUserId ?? "guest" ?>';
                     const menuStorageKey = `openMenus_${currentUserId}`;
                     const nestedMenuStorageKey = `openNestedMenus_${currentUserId}`;
+                    const recentNavStorageKey = `recentNav_${currentUserId}`;
+
+                    function updateMenuVisualStates() {
+                        document.querySelectorAll('.menu-section').forEach(section => {
+                            const submenu = section.querySelector('.menu-submenu');
+                            const hasActiveItem = section.querySelector('.nested-menu-item.active') !== null;
+                            section.classList.toggle('has-active', hasActiveItem);
+                            section.classList.toggle('is-open', submenu?.classList.contains('open'));
+                        });
+
+                        document.querySelectorAll('.nested-menu-group').forEach(group => {
+                            const nestedSubmenu = group.querySelector('.nested-submenu');
+                            const hasActiveItem = group.querySelector('.nested-menu-item.active') !== null;
+                            group.classList.toggle('has-active', hasActiveItem || nestedSubmenu?.classList.contains('open'));
+                        });
+                    }
+
+                    function renderRecentNav() {
+                        const section = document.getElementById('recentNavSection');
+                        const list = document.getElementById('recentNavList');
+
+                        if (!section || !list) {
+                            return;
+                        }
+
+                        const items = JSON.parse(localStorage.getItem(recentNavStorageKey) || '[]');
+                        list.innerHTML = '';
+
+                        if (!items.length) {
+                            section.classList.add('hidden');
+                            return;
+                        }
+
+                        const getIconMarkup = (icon) => {
+                            if (!icon) {
+                                return '•';
+                            }
+
+                            if (icon.startsWith('fa')) {
+                                return `<i class="fas ${icon}"></i>`;
+                            }
+
+                            return icon;
+                        };
+
+                        items.slice(0, 4).forEach(item => {
+                            const link = document.createElement('a');
+                            link.href = item.url;
+                            link.className = 'recent-nav-item nav-track-link';
+                            link.dataset.navTitle = item.title || '';
+                            link.dataset.navGroup = item.group || '';
+                            link.dataset.navParent = item.parent || '';
+                            link.dataset.navIcon = item.icon || '';
+                            link.innerHTML = `
+                                <span class="recent-nav-icon">${getIconMarkup(item.icon)}</span>
+                                <span class="recent-nav-copy">
+                                    <span class="recent-nav-title">${item.title || ''}</span>
+                                    <span class="recent-nav-meta">${item.group || 'Recent'}</span>
+                                </span>
+                            `;
+                            list.appendChild(link);
+                        });
+
+                        section.classList.remove('hidden');
+                    }
+
+                    function recordRecentNav(link) {
+                        if (!link || !link.href) {
+                            return;
+                        }
+
+                        const recentItems = JSON.parse(localStorage.getItem(recentNavStorageKey) || '[]');
+                        const navEntry = {
+                            title: link.dataset.navTitle || link.textContent.trim(),
+                            url: link.href,
+                            group: link.dataset.navGroup || 'Navigation',
+                            parent: link.dataset.navParent || '',
+                            icon: link.dataset.navIcon || '•'
+                        };
+
+                        const nextItems = [navEntry, ...recentItems.filter(item => item.url !== navEntry.url)].slice(0, 6);
+                        localStorage.setItem(recentNavStorageKey, JSON.stringify(nextItems));
+                    }
+
+                    function closeOtherDesktopGroups(currentId, openMenus) {
+                        if (window.innerWidth <= 768) {
+                            return;
+                        }
+
+                        document.querySelectorAll('.menu-submenu').forEach(otherSubmenu => {
+                            if (otherSubmenu.id === currentId) {
+                                return;
+                            }
+
+                            otherSubmenu.classList.remove('open');
+                            const otherArrow = otherSubmenu.previousElementSibling?.querySelector('.menu-arrow');
+                            if (otherArrow) {
+                                otherArrow.classList.remove('rotate');
+                            }
+                            openMenus[otherSubmenu.id] = false;
+                        });
+                    }
 
                     function toggleSubmenu(id) {
                         const submenu = document.getElementById(id);
                         const parent = submenu.previousElementSibling;
                         const arrow = parent?.querySelector('.menu-arrow');
+                        const openMenus = JSON.parse(localStorage.getItem(menuStorageKey) || '{}');
 
                         if (submenu) {
+                            const willOpen = !submenu.classList.contains('open');
+                            if (willOpen) {
+                                closeOtherDesktopGroups(id, openMenus);
+                            }
                             submenu.classList.toggle('open');
                             if (arrow) {
                                 arrow.classList.toggle('rotate');
@@ -1643,9 +2357,9 @@ $menuGroups = [
                         }
 
                         // Save state to localStorage (per user)
-                        const openMenus = JSON.parse(localStorage.getItem(menuStorageKey) || '{}');
                         openMenus[id] = submenu.classList.contains('open');
                         localStorage.setItem(menuStorageKey, JSON.stringify(openMenus));
+                        updateMenuVisualStates();
                     }
 
                     function toggleNestedSubmenu(id) {
@@ -1664,6 +2378,65 @@ $menuGroups = [
                         const openNestedMenus = JSON.parse(localStorage.getItem(nestedMenuStorageKey) || '{}');
                         openNestedMenus[id] = submenu.classList.contains('open');
                         localStorage.setItem(nestedMenuStorageKey, JSON.stringify(openNestedMenus));
+                        updateMenuVisualStates();
+                    }
+
+                    function openCommandPalette() {
+                        const palette = document.getElementById('commandPalette');
+                        const input = document.getElementById('commandPaletteInput');
+
+                        if (!palette || !input) {
+                            return;
+                        }
+
+                        palette.classList.remove('hidden');
+                        palette.setAttribute('aria-hidden', 'false');
+                        input.value = '';
+                        filterCommandPalette();
+                        window.requestAnimationFrame(() => input.focus());
+                    }
+
+                    function closeCommandPalette() {
+                        const palette = document.getElementById('commandPalette');
+                        if (!palette) {
+                            return;
+                        }
+
+                        palette.classList.add('hidden');
+                        palette.setAttribute('aria-hidden', 'true');
+                    }
+
+                    function filterCommandPalette() {
+                        const input = document.getElementById('commandPaletteInput');
+                        const items = Array.from(document.querySelectorAll('[data-command-item]'));
+                        const emptyState = document.getElementById('commandPaletteEmpty');
+                        const count = document.getElementById('commandPaletteCount');
+                        const query = (input?.value || '').trim().toLowerCase();
+                        let visibleCount = 0;
+
+                        items.forEach((item, index) => {
+                            const haystack = [
+                                item.dataset.navTitle || '',
+                                item.dataset.navGroup || '',
+                                item.dataset.navParent || '',
+                                item.textContent || ''
+                            ].join(' ').toLowerCase();
+                            const isVisible = query === '' || haystack.includes(query);
+                            item.classList.toggle('hidden', !isVisible);
+                            item.classList.toggle('is-selected', isVisible && visibleCount === 0);
+
+                            if (isVisible) {
+                                visibleCount += 1;
+                            }
+                        });
+
+                        if (count) {
+                            count.textContent = `${visibleCount} items`;
+                        }
+
+                        if (emptyState) {
+                            emptyState.classList.toggle('hidden', visibleCount !== 0);
+                        }
                     }
 
                     // Restore menu state on page load
@@ -1727,6 +2500,17 @@ $menuGroups = [
                                 }
                             }
                         });
+
+                        updateMenuVisualStates();
+                        renderRecentNav();
+
+                        document.querySelectorAll('.nav-track-link').forEach(link => {
+                            link.addEventListener('click', function () {
+                                recordRecentNav(this);
+                            });
+                        });
+
+                        document.getElementById('commandPaletteInput')?.addEventListener('input', filterCommandPalette);
                     });
 
                     function toggleUserMenu() {
@@ -1755,11 +2539,26 @@ $menuGroups = [
 
                     // Keyboard shortcuts
                     document.addEventListener('keydown', function (e) {
+                        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                            e.preventDefault();
+                            openCommandPalette();
+                            return;
+                        }
+
                         if (e.key === 'Escape') {
                             document.getElementById('botDropdown')?.classList.remove('open');
                             document.getElementById('userMenu')?.classList.add('hidden');
                             document.getElementById('sidebar')?.classList.remove('open');
                             document.getElementById('mobileOverlay')?.classList.remove('open');
+                            closeCommandPalette();
+                            toggleSidebarScroll(false);
+                        }
+
+                        if (e.key === 'Enter' && !document.getElementById('commandPalette')?.classList.contains('hidden')) {
+                            const firstVisibleResult = document.querySelector('[data-command-item]:not(.hidden)');
+                            if (firstVisibleResult) {
+                                firstVisibleResult.click();
+                            }
                         }
                     });
 
