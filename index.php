@@ -132,8 +132,8 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
     <!-- Fonts - Preload for performance (Requirements: 6.3) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" as="style">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" as="style">
+    <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@400;500;600;700&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -145,6 +145,11 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             --primary-dark: <?= htmlspecialchars($primaryColor) ?>dd;
             --primary-light: <?= htmlspecialchars($secondaryColor) ?>;
             --primary-rgb: <?= hexdec(substr($primaryColor, 1, 2)) ?>, <?= hexdec(substr($primaryColor, 3, 2)) ?>, <?= hexdec(substr($primaryColor, 5, 2)) ?>;
+            --line-green: #06C755;
+            --line-green-hover: #05B04C;
+            --surface: #F8FAFC;
+            --text: #0F172A;
+            --text-muted: #64748B;
         }
     </style>
 
@@ -203,26 +208,42 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             padding: 0 16px;
         }
         
-        /* ==================== Header ==================== */
+        /* ==================== Header / Navbar ==================== */
         .landing-header {
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             position: sticky;
             top: 0;
-            z-index: 100;
-            padding: 12px 0;
+            z-index: 200;
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+            transition: background 0.25s ease, box-shadow 0.25s ease;
         }
         
-        .header-content {
+        .landing-header.is-scrolled {
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 8px 32px rgba(15, 23, 42, 0.08);
+        }
+        
+        .header-inner {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
+            padding: 10px 0;
+            min-height: 56px;
         }
         
         .logo-section {
             display: flex;
             align-items: center;
             gap: 12px;
+            min-width: 0;
+            flex-shrink: 0;
+        }
+        
+        .logo-section:hover .shop-name {
+            color: var(--primary);
         }
         
         .logo-img {
@@ -231,6 +252,7 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             border-radius: 12px;
             object-fit: cover;
             background: var(--primary-light);
+            flex-shrink: 0;
         }
         
         .logo-placeholder {
@@ -243,66 +265,309 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             justify-content: center;
             color: white;
             font-size: 20px;
+            flex-shrink: 0;
         }
         
         .shop-name {
-            font-size: 1.25rem;
+            font-family: 'Lexend', 'Sarabun', sans-serif;
+            font-size: 1.15rem;
             font-weight: 700;
-            color: #1F2937;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 42vw;
         }
         
-        .header-cta {
+        @media (min-width: 768px) {
+            .shop-name { max-width: 280px; }
+        }
+        
+        .nav-desktop {
             display: none;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            flex: 1;
         }
         
-        /* ==================== Hero Section ==================== */
-        .hero-section {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        .nav-desktop a {
+            padding: 10px 16px;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #374151;
+            cursor: pointer;
+            transition: color 0.2s, background 0.2s;
+        }
+        
+        .nav-desktop a:hover {
+            color: var(--primary);
+            background: rgba(var(--primary-rgb), 0.08);
+        }
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        
+        .btn-admin {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            min-height: 44px;
+            min-width: 44px;
+            padding: 10px 14px;
+            border-radius: 12px;
+            background: #6B7280;
             color: white;
-            padding: 48px 0 64px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .btn-admin:hover {
+            background: #4B5563;
+            color: white;
+        }
+        
+        .header-actions .btn-line {
+            min-width: auto;
+            padding: 10px 18px;
+            font-size: 0.95rem;
+        }
+        
+        .nav-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border: none;
+            border-radius: 12px;
+            background: #F3F4F6;
+            color: #1F2937;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+        
+        .nav-toggle:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+        
+        .nav-mobile {
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            padding: 8px 0 16px;
+            border-top: 1px solid #E5E7EB;
+        }
+        
+        .nav-mobile.is-open {
+            display: flex;
+        }
+        
+        .nav-mobile a {
+            padding: 14px 12px;
+            border-radius: 10px;
+            font-weight: 600;
+            color: #374151;
+            cursor: pointer;
+        }
+        
+        .nav-mobile a:hover {
+            background: #F9FAFB;
+            color: var(--primary);
+        }
+        
+        @media (min-width: 768px) {
+            .nav-desktop { display: flex; }
+            .nav-toggle { display: none; }
+            .nav-mobile { display: none !important; }
+        }
+        
+        /* ==================== PharmCare Hero (below banner) ==================== */
+        .pharm-hero {
             position: relative;
             overflow: hidden;
+            padding: 44px 0 52px;
+            background: linear-gradient(155deg,
+                rgba(var(--primary-rgb), 0.14) 0%,
+                #ffffff 42%,
+                rgba(var(--primary-rgb), 0.07) 100%);
         }
         
-        .hero-section::before {
+        .pharm-hero::before,
+        .pharm-hero::after {
             content: '';
             position: absolute;
-            top: -50%;
-            right: -20%;
-            width: 60%;
-            height: 200%;
-            background: rgba(255,255,255,0.05);
             border-radius: 50%;
-            transform: rotate(-15deg);
+            pointer-events: none;
         }
         
-        .hero-content {
+        .pharm-hero::before {
+            width: min(320px, 90vw);
+            height: min(320px, 90vw);
+            top: -140px;
+            right: -100px;
+            background: radial-gradient(circle, rgba(var(--primary-rgb), 0.22) 0%, transparent 68%);
+        }
+        
+        .pharm-hero::after {
+            width: 220px;
+            height: 220px;
+            bottom: -90px;
+            left: -70px;
+            background: radial-gradient(circle, rgba(var(--primary-rgb), 0.14) 0%, transparent 70%);
+        }
+        
+        .pharm-hero-inner {
             position: relative;
             z-index: 1;
             text-align: center;
+            max-width: 720px;
+            margin: 0 auto;
         }
         
-        .hero-title {
-            font-size: 1.75rem;
+        .pharm-hero__title {
+            font-family: 'Lexend', 'Sarabun', sans-serif;
+            font-size: 1.6rem;
             font-weight: 700;
-            margin-bottom: 16px;
-            color: white;
+            color: var(--text);
+            line-height: 1.28;
+            margin-bottom: 12px;
         }
         
-        .hero-subtitle {
-            font-size: 1rem;
-            opacity: 0.9;
-            margin-bottom: 32px;
-            max-width: 500px;
-            margin-left: auto;
-            margin-right: auto;
+        .pharm-hero__subtitle {
+            font-size: 1.05rem;
+            color: var(--text-muted);
+            margin-bottom: 28px;
+            line-height: 1.55;
         }
         
-        .hero-cta {
+        .pharm-hero__cta {
             display: flex;
             flex-direction: column;
             gap: 12px;
+            align-items: stretch;
+        }
+        
+        .pharm-hero__cta .btn {
+            min-width: min(100%, 260px);
+        }
+        
+        /* ==================== About intro ==================== */
+        .about-intro-section {
+            padding: 48px 0;
+            background: #fff;
+        }
+        
+        .about-intro-grid {
+            display: grid;
+            gap: 32px;
             align-items: center;
+        }
+        
+        .about-intro-text p {
+            margin-bottom: 16px;
+            color: #475569;
+            line-height: 1.75;
+            font-size: 1rem;
+        }
+        
+        .about-intro-text p:last-of-type {
+            margin-bottom: 20px;
+        }
+        
+        .about-intro-visual {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 220px;
+            border-radius: 24px;
+            background: linear-gradient(145deg, rgba(var(--primary-rgb), 0.12) 0%, rgba(var(--primary-rgb), 0.04) 100%);
+            border: 1px solid rgba(var(--primary-rgb), 0.18);
+        }
+        
+        .about-intro-visual i {
+            font-size: clamp(3.5rem, 12vw, 5rem);
+            color: var(--primary);
+            opacity: 0.88;
+        }
+        
+        @media (min-width: 900px) {
+            .about-intro-grid {
+                grid-template-columns: 1.15fr 1fr;
+            }
+        }
+        
+        /* ==================== Features grid ==================== */
+        .features-section {
+            padding: 48px 0;
+            background: var(--surface);
+        }
+        
+        .features-grid-landing {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+        }
+        
+        .feature-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 22px 20px;
+            border: 1px solid #E5E7EB;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+        }
+        
+        .feature-card__icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: linear-gradient(145deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            margin-bottom: 14px;
+        }
+        
+        .feature-card h3 {
+            font-family: 'Lexend', 'Sarabun', sans-serif;
+            font-size: 1.05rem;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+        
+        .feature-card p {
+            font-size: 0.92rem;
+            color: var(--text-muted);
+            line-height: 1.55;
+        }
+        
+        @media (min-width: 640px) {
+            .features-grid-landing {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (min-width: 1024px) {
+            .features-grid-landing {
+                grid-template-columns: repeat(3, 1fr);
+                gap: 20px;
+            }
         }
         
         /* ==================== Buttons ==================== */
@@ -350,9 +615,49 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         }
         
         .btn-line:hover {
-            background: #05B04C;
+            background: var(--line-green-hover);
             transform: translateY(-2px);
             box-shadow: 0 8px 20px rgba(6,199,85,0.3);
+        }
+        
+        .btn-outline-primary {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+        
+        .btn-outline-primary:hover {
+            background: rgba(var(--primary-rgb), 0.1);
+            transform: translateY(-2px);
+        }
+        
+        .btn-solid-primary {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+        }
+        
+        .btn-solid-primary:hover {
+            filter: brightness(1.06);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.35);
+        }
+        
+        .btn-admin-text {
+            display: inline;
+        }
+        
+        @media (max-width: 767px) {
+            .btn-admin {
+                padding: 10px 12px;
+            }
+            .btn-admin-text {
+                display: none;
+            }
+        }
+        
+        .section-title h2 {
+            font-family: 'Lexend', 'Sarabun', sans-serif;
         }
         
         /* ==================== Services Section ==================== */
@@ -383,31 +688,34 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         }
         
         .service-card {
-            background: #F8FAFC;
-            border-radius: 16px;
-            padding: 24px;
+            background: #fff;
+            border-radius: 18px;
+            padding: 28px 22px;
             text-align: center;
-            transition: all 0.3s ease;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
             border: 1px solid #E5E7EB;
+            cursor: pointer;
+            display: block;
         }
         
         .service-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 12px 24px rgba(0,0,0,0.08);
-            border-color: var(--primary);
+            transform: translateY(-6px);
+            box-shadow: 0 20px 40px rgba(15, 23, 42, 0.1);
+            border-color: rgba(var(--primary-rgb), 0.35);
         }
         
         .service-icon {
-            width: 64px;
-            height: 64px;
-            border-radius: 16px;
-            background: var(--primary-light);
-            color: var(--primary);
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: #fff;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 28px;
-            margin: 0 auto 16px;
+            margin: 0 auto 18px;
+            box-shadow: 0 8px 24px rgba(var(--primary-rgb), 0.25);
         }
         
         .service-card h3 {
@@ -557,88 +865,167 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
 
         /* ==================== CTA Section ==================== */
         .cta-section {
-            padding: 48px 0;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 52px 0;
+            background: linear-gradient(135deg, var(--primary) 0%, #1e293b 55%, var(--primary-dark) 100%);
             color: white;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse 80% 60% at 80% 20%, rgba(255,255,255,0.12) 0%, transparent 55%);
+            pointer-events: none;
+        }
+        
+        .cta-section .container {
+            position: relative;
+            z-index: 1;
         }
         
         .cta-section h2 {
+            font-family: 'Lexend', 'Sarabun', sans-serif;
             color: white;
             margin-bottom: 16px;
         }
         
         .cta-section p {
-            opacity: 0.9;
+            opacity: 0.92;
             margin-bottom: 24px;
+            max-width: 520px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .cta-section .btn-primary {
+            background: var(--line-green);
+            color: #fff;
+            border: none;
+        }
+        
+        .cta-section .btn-primary:hover {
+            background: var(--line-green-hover);
+            color: #fff;
         }
         
         /* ==================== Footer ==================== */
         .landing-footer {
-            background: #1F2937;
-            color: white;
-            padding: 32px 0 24px;
+            background: #0f172a;
+            color: #e2e8f0;
+            padding: 40px 0 20px;
         }
         
-        .footer-content {
-            text-align: center;
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 32px;
         }
         
-        .footer-logo {
+        .footer-brand .footer-logo {
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 12px;
-            margin-bottom: 16px;
+            margin-bottom: 12px;
         }
         
         .footer-logo img {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
         }
         
         .footer-logo span {
-            font-size: 1.1rem;
+            font-family: 'Lexend', 'Sarabun', sans-serif;
+            font-size: 1.15rem;
             font-weight: 600;
+            color: #fff;
         }
         
-        .footer-links {
+        .footer-desc {
+            font-size: 0.92rem;
+            color: #94a3b8;
+            line-height: 1.65;
+            max-width: 320px;
+        }
+        
+        .footer-col h4 {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: #64748b;
+            margin-bottom: 14px;
+        }
+        
+        .footer-links-col {
             display: flex;
-            justify-content: center;
-            gap: 24px;
-            margin-bottom: 24px;
-            flex-wrap: wrap;
+            flex-direction: column;
+            gap: 10px;
         }
         
-        .footer-links a {
-            color: #9CA3AF;
-            font-size: 0.9rem;
+        .footer-links-col a {
+            color: #cbd5e1;
+            font-size: 0.92rem;
             transition: color 0.2s;
+            cursor: pointer;
         }
         
-        .footer-links a:hover {
-            color: white;
+        .footer-links-col a:hover {
+            color: #fff;
+        }
+        
+        .footer-contact-lines {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            font-size: 0.92rem;
+            color: #94a3b8;
+        }
+        
+        .footer-contact-lines a {
+            color: #cbd5e1;
+            word-break: break-word;
+        }
+        
+        .footer-contact-lines a:hover {
+            color: #fff;
+        }
+        
+        .footer-contact-lines i {
+            width: 1.1em;
+            color: var(--primary-light);
         }
         
         .footer-social {
             display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+        }
+        
+        @media (min-width: 768px) {
+            .footer-grid {
+                grid-template-columns: 1.25fr 1fr 1.1fr;
+                gap: 40px;
+                align-items: start;
+            }
         }
         
         .social-link {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            background: rgba(255,255,255,0.1);
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.08);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             font-size: 18px;
-            transition: all 0.2s;
+            transition: background 0.2s, transform 0.2s;
+            cursor: pointer;
         }
         
         .social-link:hover {
@@ -646,11 +1033,17 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             transform: translateY(-2px);
         }
         
+        .footer-bottom {
+            grid-column: 1 / -1;
+            margin-top: 8px;
+        }
+        
         .footer-copyright {
-            color: #6B7280;
+            color: #64748b;
             font-size: 0.85rem;
-            padding-top: 24px;
+            padding-top: 28px;
             border-top: 1px solid rgba(255,255,255,0.1);
+            text-align: center;
         }
         
         /* Admin Link (Requirements: 3.1, 3.2) */
@@ -701,31 +1094,31 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             h1 { font-size: 2.5rem; }
             h2 { font-size: 1.75rem; }
             
-            .header-cta {
-                display: block;
+            .pharm-hero {
+                padding: 64px 0 72px;
             }
             
-            .header-cta .btn {
-                min-width: auto;
-                padding: 10px 20px;
-                min-height: 44px;
+            .pharm-hero__title {
+                font-size: 2.45rem;
             }
             
-            .hero-section {
-                padding: 80px 0 100px;
+            .pharm-hero__subtitle {
+                font-size: 1.12rem;
             }
             
-            .hero-title {
-                font-size: 2.5rem;
-            }
-            
-            .hero-subtitle {
-                font-size: 1.1rem;
-            }
-            
-            .hero-cta {
+            .pharm-hero__cta {
                 flex-direction: row;
                 justify-content: center;
+                align-items: center;
+            }
+            
+            .pharm-hero__cta .btn {
+                min-width: 200px;
+            }
+            
+            .about-intro-section,
+            .features-section {
+                padding: 64px 0;
             }
             
             .services-grid {
@@ -768,12 +1161,12 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         
         /* Desktop (1024px+) */
         @media (min-width: 1024px) {
-            .hero-section {
-                padding: 100px 0 120px;
+            .pharm-hero {
+                padding: 72px 0 88px;
             }
             
-            .hero-title {
-                font-size: 3rem;
+            .pharm-hero__title {
+                font-size: 2.85rem;
             }
             
             .promotions-grid {
@@ -828,7 +1221,8 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         /* Print Styles */
         @media print {
             .mobile-cta,
-            .header-cta {
+            .header-actions .btn-line,
+            .nav-toggle {
                 display: none !important;
             }
         }
@@ -840,48 +1234,139 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
 <body>
 
     <!-- Header -->
-    <header class="landing-header">
+    <header class="landing-header" id="top">
         <div class="container">
-            <div class="header-content">
-                <div class="logo-section">
+            <div class="header-inner">
+                <a href="#top" class="logo-section">
                     <?php if ($shopLogo): ?>
-                    <img src="<?= htmlspecialchars($shopLogo) ?>" alt="<?= htmlspecialchars($shopName) ?>" class="logo-img">
+                    <img src="<?= htmlspecialchars($shopLogo) ?>" alt="<?= htmlspecialchars($shopName) ?>" class="logo-img" width="48" height="48">
                     <?php else: ?>
                     <div class="logo-placeholder">
-                        <i class="fas fa-clinic-medical"></i>
+                        <i class="fas fa-clinic-medical" aria-hidden="true"></i>
                     </div>
                     <?php endif; ?>
                     <span class="shop-name"><?= htmlspecialchars($shopName) ?></span>
-                </div>
-                
-                <?php if ($liffUrl): ?>
-                <div class="header-cta">
-                    <a href="admin/" class="btn" style="background:#6B7280;color:white;margin-right:8px;min-width:auto;padding:10px 16px;">
-                        <i class="fas fa-cog"></i>
-                        Admin
+                </a>
+                <nav class="nav-desktop" aria-label="เมนูหลัก">
+                    <a href="#services">บริการ</a>
+                    <a href="#about">แนะนำ</a>
+                    <a href="#health-articles">บทความ</a>
+                    <a href="#contact">ติดต่อ</a>
+                </nav>
+                <div class="header-actions">
+                    <a href="admin/" class="btn-admin" aria-label="จัดการระบบ Admin">
+                        <i class="fas fa-cog" aria-hidden="true"></i>
+                        <span class="btn-admin-text">Admin</span>
                     </a>
+                    <?php if ($liffUrl): ?>
                     <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
-                        <i class="fab fa-line"></i>
+                        <i class="fab fa-line" aria-hidden="true"></i>
                         เปิดแอป
                     </a>
+                    <?php endif; ?>
                 </div>
-                <?php else: ?>
-                <div class="header-cta">
-                    <a href="admin/" class="btn" style="background:#6B7280;color:white;min-width:auto;padding:10px 16px;">
-                        <i class="fas fa-cog"></i>
-                        Admin
-                    </a>
-                </div>
-                <?php endif; ?>
+                <button type="button" class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="navMobile" aria-label="เปิดเมนู">
+                    <i class="fas fa-bars" aria-hidden="true"></i>
+                </button>
             </div>
+            <nav class="nav-mobile" id="navMobile" aria-label="เมนูมือถือ">
+                <a href="#services">บริการ</a>
+                <a href="#about">แนะนำ</a>
+                <a href="#health-articles">บทความ</a>
+                <a href="#contact">ติดต่อ</a>
+                <?php if ($liffUrl): ?>
+                <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line" style="margin-top:8px;text-align:center;justify-content:center;">
+                    <i class="fab fa-line" aria-hidden="true"></i>
+                    เปิดแอป
+                </a>
+                <?php endif; ?>
+            </nav>
         </div>
     </header>
     
-    <!-- Banner Slider Section (moved to top) -->
     <?php include 'includes/landing/banner-slider.php'; ?>
     
-    <!-- Featured Products Section (แทน Hero Section) -->
-    <?php include 'includes/landing/featured-products.php'; ?>
+    <section class="pharm-hero" aria-labelledby="pharm-hero-title">
+        <div class="container pharm-hero-inner">
+            <h1 class="pharm-hero__title" id="pharm-hero-title">ปรึกษาบุคลากรทางการแพทย์ออนไลน์ตอนนี้</h1>
+            <p class="pharm-hero__subtitle"><?= htmlspecialchars($shopName) ?> ยกร้านยาใกล้บ้าน มาไว้ใกล้คุณ</p>
+            <div class="pharm-hero__cta">
+                <?php if ($liffUrl): ?>
+                <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
+                    <i class="fab fa-line" aria-hidden="true"></i>
+                    เปิดแอปเลย
+                </a>
+                <?php endif; ?>
+                <a href="#services" class="btn btn-outline-primary">
+                    <i class="fas fa-briefcase-medical" aria-hidden="true"></i>
+                    ดูบริการของเรา
+                </a>
+            </div>
+        </div>
+    </section>
+    
+    <section class="about-intro-section" id="about">
+        <div class="container">
+            <div class="about-intro-grid">
+                <div class="about-intro-text">
+                    <div class="section-title" style="text-align:left;margin-bottom:1.25rem;">
+                        <h2>แนะนำบริการของ <?= htmlspecialchars($shopName) ?></h2>
+                    </div>
+                    <p><?= htmlspecialchars($shopName) ?> คือแพลตฟอร์มเครือข่ายร้านขายยาออนไลน์ ซึ่งเป็นทางเลือกในการดูแลสุขภาพแบบเข้าถึงง่ายและรวดเร็ว เพราะคุณสามารถปรึกษาเภสัชกรออนไลน์ได้ทันทีผ่านแชต โทร หรือวิดีโอคอล ไม่ว่าจะเป็นอาการเจ็บป่วยเล็กน้อย คำถามเกี่ยวกับการใช้ยา หรือข้อสงสัยด้านสุขภาพอื่นๆ ทีมเภสัชกรร้านยาของเราพร้อมให้คำแนะนำที่เหมาะสมเฉพาะบุคคล</p>
+                    <p>เราให้บริการครอบคลุมทั้งยาสามัญประจำบ้าน ยาที่จำหน่ายในร้านยาโดยเภสัชกร ยาตามใบสั่งแพทย์ และผลิตภัณฑ์เสริมอาหาร โดยทุกรายการผ่านการดูแลจากทีมเภสัชกร เพื่อประสิทธิภาพในการรักษาอาการเจ็บป่วยของแต่ละบุคคล สามารถสั่งยาออนไลน์ได้เลย พร้อมมีบริการส่ง Delivery ให้ถึงหน้าบ้านของคุณ</p>
+                    <p>นอกจากนี้ ยังมีบริการทางการแพทย์ออนไลน์อีกมากมาย ไม่ว่าจะเป็นการปรึกษาแพทย์ ปรึกษาจิตแพทย์ รวมถึงค้นหาร้านขายยาใกล้ฉัน สนใจใช้บริการรูปแบบใด อ่านรายละเอียดเพิ่มเติมจากทางด้านล่างนี้ได้เลย</p>
+                    <a href="#services" class="btn btn-outline-primary" style="min-width:180px;margin-top:4px;">
+                        <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                        อ่านต่อ
+                    </a>
+                </div>
+                <div class="about-intro-visual" aria-hidden="true">
+                    <i class="fas fa-hand-holding-medical"></i>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <section class="features-section" id="features">
+        <div class="container">
+            <div class="section-title">
+                <h2>คุณสมบัติเด่นของแพลตฟอร์ม</h2>
+                <p><?= htmlspecialchars($shopName) ?> เป็นแพลตฟอร์มร้านยาออนไลน์ที่มีความโดดเด่นด้านการให้บริการ ช่วยยกระดับคุณภาพชีวิตในหลากหลายประการ</p>
+            </div>
+            <div class="features-grid-landing">
+                <div class="feature-card">
+                    <div class="feature-card__icon"><i class="fas fa-bolt" aria-hidden="true"></i></div>
+                    <h3>สะดวกและรวดเร็ว</h3>
+                    <p>สั่งซื้อยาออนไลน์ได้ทุกที่ ไม่ต้องเสียเวลาเดินทางไปร้านขายยา</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-card__icon"><i class="fas fa-truck" aria-hidden="true"></i></div>
+                    <h3>บริการจัดส่งทั่วประเทศ</h3>
+                    <p>ภายในพื้นที่กรุงเทพฯ และปริมณฑลรับยาได้ภายใน 1 ชั่วโมง</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-card__icon"><i class="fas fa-user-md" aria-hidden="true"></i></div>
+                    <h3>เภสัชกรผู้ชำนาญการ</h3>
+                    <p>ให้คำปรึกษาและแนะนำการใช้ยาที่ถูกต้องและปลอดภัย</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-card__icon"><i class="fas fa-pills" aria-hidden="true"></i></div>
+                    <h3>สินค้าหลากหลาย</h3>
+                    <p>มีให้เลือกมากมาย ทั้งผลิตภัณฑ์ยา อาหารเสริม ครบทุกความต้องการด้านสุขภาพ</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-card__icon"><i class="fas fa-shield-alt" aria-hidden="true"></i></div>
+                    <h3>ระบบรักษาความปลอดภัย</h3>
+                    <p>มั่นใจได้ในความปลอดภัยของข้อมูลส่วนตัวและการสั่งซื้อยา</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-card__icon"><i class="fas fa-circle-check" aria-hidden="true"></i></div>
+                    <h3>บริการครบวงจร</h3>
+                    <p>ทั้งการปรึกษา การสั่งซื้อ และการจัดส่ง ในแพลตฟอร์มเดียว</p>
+                </div>
+            </div>
+        </div>
+    </section>
     
     <!-- Services Section (Requirements: 1.4, 5.1) -->
     <section class="services-section" id="services">
@@ -919,77 +1404,95 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         </div>
     </section>
     
+    <?php include 'includes/landing/featured-products.php'; ?>
+    
     <!-- Contact Section with Operating Hours, Phone/LINE Links, and Map (Requirements: 7.1, 7.2, 7.3, 7.4, 7.5) -->
     <?php include 'includes/landing/contact-section.php'; ?>
     
     <!-- Health Articles Section -->
     <?php include 'includes/landing/health-articles.php'; ?>
     
+    <?php include 'includes/landing/testimonials.php'; ?>
+    
+    <!-- FAQ Section (Requirements: 4.1, 4.3, 4.4, 4.5) -->
+    <?php include 'includes/landing/faq-section.php'; ?>
+    
+    <?php include 'includes/landing/trust-badges.php'; ?>
+    
     <!-- CTA Section -->
     <?php if ($liffUrl): ?>
     <section class="cta-section">
         <div class="container">
             <h2>พร้อมเริ่มต้นแล้วหรือยัง?</h2>
-            <p>เปิดแอปผ่าน LINE เพื่อเริ่มใช้บริการได้เลย</p>
+            <p>ไม่ว่าคุณจะอยู่ในกรุงเทพฯ หรือต่างจังหวัด <?= htmlspecialchars($shopName) ?> พร้อมเป็นร้านขายยาออนไลน์ที่อยู่เคียงข้างคุณ โดยสามารถเข้าถึงยาและคำแนะนำด้านสุขภาพที่มีคุณภาพได้อย่างทันท่วงที</p>
             <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-primary">
-                <i class="fab fa-line"></i>
+                <i class="fab fa-line" aria-hidden="true"></i>
                 เปิดแอปเลย
             </a>
         </div>
     </section>
     <?php endif; ?>
     
-    <!-- FAQ Section (Requirements: 4.1, 4.3, 4.4, 4.5) -->
-    <?php include 'includes/landing/faq-section.php'; ?>
-    
-    <!-- Trust Badges Section (moved after FAQ) -->
-    <?php include 'includes/landing/trust-badges.php'; ?>
-    
-    <!-- Testimonials Section (moved after Trust Badges) -->
-    <?php include 'includes/landing/testimonials.php'; ?>
-    
     <!-- Footer (Requirements: 3.1, 3.2) -->
     <footer class="landing-footer">
         <div class="container">
-            <div class="footer-content">
-                <div class="footer-logo">
-                    <?php if ($shopLogo): ?>
-                    <img src="<?= htmlspecialchars($shopLogo) ?>" alt="<?= htmlspecialchars($shopName) ?>" loading="lazy">
-                    <?php endif; ?>
-                    <span><?= htmlspecialchars($shopName) ?></span>
+            <div class="footer-grid">
+                <div class="footer-brand footer-col">
+                    <div class="footer-logo">
+                        <?php if ($shopLogo): ?>
+                        <img src="<?= htmlspecialchars($shopLogo) ?>" alt="<?= htmlspecialchars($shopName) ?>" width="44" height="44" loading="lazy">
+                        <?php endif; ?>
+                        <span><?= htmlspecialchars($shopName) ?></span>
+                    </div>
+                    <p class="footer-desc"><?= htmlspecialchars($shopDescription) ?></p>
                 </div>
-                
-                <div class="footer-links">
-                    <a href="#services">บริการ</a>
-                    <a href="articles.php">บทความ</a>
-                    <a href="#contact">ติดต่อ</a>
-                    <a href="privacy-policy.php">นโยบายความเป็นส่วนตัว</a>
-                    <a href="terms-of-service.php">ข้อกำหนดการใช้งาน</a>
+                <div class="footer-col">
+                    <h4>เมนู</h4>
+                    <div class="footer-links-col">
+                        <a href="#services">บริการของเรา</a>
+                        <a href="#about">แนะนำแพลตฟอร์ม</a>
+                        <a href="#features">คุณสมบัติเด่น</a>
+                        <a href="#health-articles">บทความสุขภาพ</a>
+                        <a href="#contact">ติดต่อเรา</a>
+                        <a href="privacy-policy.php">นโยบายความเป็นส่วนตัว</a>
+                        <a href="terms-of-service.php">ข้อกำหนดการใช้งาน</a>
+                    </div>
                 </div>
-                
-                <div class="footer-social">
-                    <?php if ($lineId): ?>
-                    <a href="https://line.me/R/ti/p/<?= htmlspecialchars(ltrim($lineId, '@')) ?>" class="social-link" target="_blank" title="LINE">
-                        <i class="fab fa-line"></i>
-                    </a>
-                    <?php endif; ?>
-                    <?php if (!empty($shopSettings['facebook_url'])): ?>
-                    <a href="<?= htmlspecialchars($shopSettings['facebook_url']) ?>" class="social-link" target="_blank" title="Facebook">
-                        <i class="fab fa-facebook-f"></i>
-                    </a>
-                    <?php endif; ?>
-                    <?php if (!empty($shopSettings['instagram_url'])): ?>
-                    <a href="<?= htmlspecialchars($shopSettings['instagram_url']) ?>" class="social-link" target="_blank" title="Instagram">
-                        <i class="fab fa-instagram"></i>
-                    </a>
-                    <?php endif; ?>
+                <div class="footer-col footer-col--contact">
+                    <h4>ติดต่อ</h4>
+                    <div class="footer-contact-lines">
+                        <?php if ($contactPhone): ?>
+                        <span><i class="fas fa-phone" aria-hidden="true"></i> <a href="tel:<?= htmlspecialchars(preg_replace('/\s+/', '', $contactPhone)) ?>"><?= htmlspecialchars($contactPhone) ?></a></span>
+                        <?php endif; ?>
+                        <?php if ($shopEmail): ?>
+                        <span><i class="fas fa-envelope" aria-hidden="true"></i> <a href="mailto:<?= htmlspecialchars($shopEmail) ?>"><?= htmlspecialchars($shopEmail) ?></a></span>
+                        <?php endif; ?>
+                        <?php if ($shopAddress): ?>
+                        <span><i class="fas fa-location-dot" aria-hidden="true"></i> <?= htmlspecialchars($shopAddress) ?></span>
+                        <?php endif; ?>
+                    </div>
+                    <div class="footer-social">
+                        <?php if ($lineId): ?>
+                        <a href="https://line.me/R/ti/p/<?= htmlspecialchars(ltrim($lineId, '@')) ?>" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="LINE OA">
+                            <i class="fab fa-line" aria-hidden="true"></i>
+                        </a>
+                        <?php endif; ?>
+                        <?php if (!empty($shopSettings['facebook_url'])): ?>
+                        <a href="<?= htmlspecialchars($shopSettings['facebook_url']) ?>" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
+                            <i class="fab fa-facebook-f" aria-hidden="true"></i>
+                        </a>
+                        <?php endif; ?>
+                        <?php if (!empty($shopSettings['instagram_url'])): ?>
+                        <a href="<?= htmlspecialchars($shopSettings['instagram_url']) ?>" class="social-link" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
+                            <i class="fab fa-instagram" aria-hidden="true"></i>
+                        </a>
+                        <?php endif; ?>
+                    </div>
                 </div>
-                
-                <div class="footer-copyright">
+                <div class="footer-bottom footer-copyright">
                     <p>&copy; <?= date('Y') ?> <?= htmlspecialchars($shopName) ?>. All rights reserved.</p>
-                    <!-- Admin Login Link (Requirements: 3.1, 3.2) -->
                     <a href="admin/" class="admin-link">
-                        <i class="fas fa-lock"></i> Admin
+                        <i class="fas fa-lock" aria-hidden="true"></i> Admin
                     </a>
                 </div>
             </div>
@@ -999,8 +1502,8 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
     <!-- Mobile Fixed CTA (Requirements: 2.4) -->
     <?php if ($liffUrl): ?>
     <div class="mobile-cta">
-        <a href="admin/" class="btn" style="background:#6B7280;color:white;flex:0.5;">
-            <i class="fas fa-cog"></i>
+        <a href="admin/" class="btn" style="background:#6B7280;color:white;flex:0.5;" aria-label="จัดการระบบ Admin">
+            <i class="fas fa-cog" aria-hidden="true"></i>
         </a>
         <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
             <i class="fab fa-line"></i>
@@ -1166,6 +1669,39 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
     })();
     </script>
     <?php endif; ?>
+
+    <script>
+    (function() {
+        var header = document.querySelector('.landing-header');
+        var toggle = document.getElementById('navToggle');
+        var mobile = document.getElementById('navMobile');
+        if (header) {
+            function onScroll() {
+                header.classList.toggle('is-scrolled', (window.scrollY || window.pageYOffset) > 12);
+            }
+            onScroll();
+            window.addEventListener('scroll', onScroll, { passive: true });
+        }
+        if (toggle && mobile) {
+            toggle.addEventListener('click', function() {
+                var open = mobile.classList.toggle('is-open');
+                toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+                var icon = toggle.querySelector('i');
+                if (icon) {
+                    icon.className = open ? 'fas fa-times' : 'fas fa-bars';
+                }
+            });
+            mobile.querySelectorAll('a').forEach(function(a) {
+                a.addEventListener('click', function() {
+                    mobile.classList.remove('is-open');
+                    toggle.setAttribute('aria-expanded', 'false');
+                    var icon = toggle.querySelector('i');
+                    if (icon) { icon.className = 'fas fa-bars'; }
+                });
+            });
+        }
+    })();
+    </script>
 
 </body>
 </html>
