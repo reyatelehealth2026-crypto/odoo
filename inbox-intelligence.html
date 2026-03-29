@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inbox Intelligence — รายงานประจำวัน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Base ── */
+    *, *::before, *::after { box-sizing: border-box; }
+    * { font-family: 'Noto Sans Thai', sans-serif; }
+    body {
+      background: #080d18;
+      color: #cbd5e1;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Layout ── */
+    .page { max-width: 1440px; margin: 0 auto; padding: 0 16px; }
+    @media(min-width:640px) { .page { padding: 0 24px; } }
+
+    .two-col { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:768px) { .two-col { grid-template-columns: 1fr 1fr; } }
+    .two-col-3-1 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:1024px) { .two-col-3-1 { grid-template-columns: 3fr 1fr; } }
+    .two-col-2-1 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:1024px) { .two-col-2-1 { grid-template-columns: 2fr 1fr; } }
+    .two-col-1-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:1024px) { .two-col-1-2 { grid-template-columns: 1fr 2fr; } }
+
+    /* ── Card ── */
+    .card {
+      background: #0f1829;
+      border: 1px solid #1e293b;
+      border-radius: 14px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: #334155; }
+    .p-5 { padding: 20px; }
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    /* ── Section heading ── */
+    .sec-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #475569;
+      margin: 32px 0 16px;
+    }
+    .sec-head::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, #1e293b, transparent);
+    }
+
+    /* ── KPI grid ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    @media(min-width:640px)  { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media(min-width:1024px) { .kpi-grid { grid-template-columns: repeat(6, 1fr); gap: 12px; } }
+
+    .kpi-card {
+      background: #0f1829;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 14px;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .kpi-card:hover { border-color: #334155; transform: translateY(-1px); }
+    .kpi-emoji { font-size: 18px; margin-bottom: 6px; }
+    .kpi-label { font-size: 10px; color: #64748b; font-weight: 500; letter-spacing: 0.02em; }
+    .kpi-value { font-size: 20px; font-weight: 700; line-height: 1.15; font-family: 'JetBrains Mono', monospace; margin: 3px 0; }
+    .kpi-sub   { font-size: 10px; color: #475569; }
+
+    /* ── Traffic stat rows ── */
+    .stat-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(30,41,59,0.7); }
+    .stat-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .stat-row-icon { font-size: 16px; width: 24px; flex-shrink: 0; text-align: center; }
+
+    /* ── SLA ── */
+    .sla-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .sla-box {
+      background: #0a111d;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+    .sla-num   { font-size: 30px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
+    .sla-label { font-size: 10px; color: #64748b; margin-top: 5px; }
+
+    /* ── Workload bars ── */
+    .wl-track { height: 7px; background: #0a1020; border-radius: 4px; overflow: hidden; margin-top: 4px; }
+    .wl-fill  { height: 100%; border-radius: 4px; transition: width 0.7s ease; }
+
+    /* ── Badges ── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid;
+      line-height: 1.5;
+      white-space: nowrap;
+    }
+    .badge-green  { background: rgba(16,185,129,0.1);   color: #34d399; border-color: rgba(16,185,129,0.2); }
+    .badge-yellow { background: rgba(245,158,11,0.1);   color: #fbbf24; border-color: rgba(245,158,11,0.2); }
+    .badge-red    { background: rgba(239,68,68,0.1);    color: #f87171; border-color: rgba(239,68,68,0.2); }
+    .badge-blue   { background: rgba(99,102,241,0.1);   color: #818cf8; border-color: rgba(99,102,241,0.2); }
+    .badge-purple { background: rgba(168,85,247,0.1);   color: #c084fc; border-color: rgba(168,85,247,0.2); }
+    .badge-gray   { background: rgba(100,116,139,0.08); color: #94a3b8; border-color: rgba(100,116,139,0.15); }
+
+    /* ── Tables ── */
+    .dt { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .dt thead th {
+      padding: 8px 7px;
+      text-align: left;
+      color: #475569;
+      font-weight: 500;
+      border-bottom: 1px solid #1e293b;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .dt tbody td { padding: 8px 7px; border-bottom: 1px solid rgba(30,41,59,0.5); vertical-align: middle; }
+    .dt tbody tr:last-child td { border-bottom: none; }
+    .dt tbody tr:hover td { background: rgba(255,255,255,0.02); }
+    .row-critical td { background: rgba(239,68,68,0.04) !important; }
+
+    /* ── Alert banners ── */
+    .alert { border-radius: 10px; padding: 12px 16px; }
+    .alert-red   { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); }
+    .alert-green { background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.18);
+                   display: flex; align-items: center; gap: 10px; color: #34d399; font-size: 13px; }
+    .alert-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #fca5a5; font-size: 13px; margin-bottom: 10px; }
+
+    /* ── Journey ── */
+    .conv-row { display: flex; align-items: center; justify-content: space-around;
+                background: #0a111d; border: 1px solid #1e293b; border-radius: 10px; padding: 14px; }
+    .conv-cell { text-align: center; }
+    .conv-num { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+    .conv-label { font-size: 10px; color: #64748b; margin-top: 3px; }
+    .conv-arrow { color: #334155; font-size: 16px; }
+    .conv-rate { display: flex; align-items: center; justify-content: space-between;
+                 margin-top: 12px; padding: 9px 12px;
+                 background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.15); border-radius: 8px; }
+
+    /* ── Sentiment tags ── */
+    .stag { display: inline-block; padding: 3px 9px; border-radius: 9999px; font-size: 11px; }
+
+    /* ── Skeleton shimmer ── */
+    @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+    .sk { background: linear-gradient(90deg, #111d2e 25%, #1a2840 50%, #111d2e 75%);
+          background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+
+    /* ── Spinner ── */
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { animation: spin 0.8s linear infinite; }
+
+    /* ── Color utilities ── */
+    .c-green  { color: #34d399; }
+    .c-amber  { color: #fbbf24; }
+    .c-red    { color: #f87171; }
+    .c-blue   { color: #60a5fa; }
+    .c-indigo { color: #818cf8; }
+    .c-purple { color: #c084fc; }
+    .c-slate3 { color: #cbd5e1; }
+    .c-slate4 { color: #94a3b8; }
+    .c-slate5 { color: #64748b; }
+    .c-slate6 { color: #475569; }
+    .c-slate7 { color: #334155; }
+    .c-white  { color: #f1f5f9; }
+
+    .fw7 { font-weight: 700; }
+    .fw6 { font-weight: 600; }
+    .fw5 { font-weight: 500; }
+    .fs11 { font-size: 11px; }
+    .fs12 { font-size: 12px; }
+    .fs10 { font-size: 10px; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ── SLA input ── */
+    .sla-inp {
+      background: #0a111d; border: 1px solid #1e293b; border-radius: 6px;
+      color: #94a3b8; padding: 3px 8px; font-size: 12px; width: 58px;
+    }
+    .sla-inp:focus { outline: none; border-color: #6366f1; color: #e2e8f0; }
+
+    /* ── Strip dots ── */
+    .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+    /* ── Gap helpers ── */
+    .gap-4 { gap: 16px; }
+    .mt-3  { margin-top: 12px; }
+    .mt-4  { margin-top: 16px; }
+    .mb-3  { margin-bottom: 12px; }
+    .mb-4  { margin-bottom: 16px; }
+  
+  /* Custom scrollbar for dark theme */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+  /* Hide scrollbar until hover */
+  .card:hover::-webkit-scrollbar-thumb,
+  [style*="overflow"]::-webkit-scrollbar-thumb {
+    background: #334155;
+  }
+</style>
+</head>
+<body>
+
+<!-- ════ HEADER ════════════════════════════════════════════════ -->
+<header style="position:sticky;top:0;z-index:50;background:rgba(8,13,24,0.96);backdrop-filter:blur(14px);border-bottom:1px solid #1e293b;">
+  <div class="page" style="padding-top:14px;padding-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.18);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📊</div>
+      <div>
+        <div style="font-size:15px;font-weight:700;color:#f1f5f9;display:flex;align-items:center;gap:8px;">
+          Inbox Intelligence
+          <span style="font-size:10px;background:#6366f1;color:white;padding:1px 7px;border-radius:20px;font-weight:500;">v6</span>
+        </div>
+        <div id="last-updated" style="font-size:11px;color:#64748b;margin-top:1px;">กำลังโหลด...</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div id="header-stats" style="display:none;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap;"></div>
+      <button id="refresh-btn" onclick="refreshAll()"
+        style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid #1e293b;cursor:pointer;font-size:12px;color:#94a3b8;white-space:nowrap;"
+        onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
+        <svg id="refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        Reload
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ════ MAIN ════════════════════════════════════════════════ -->
+<main class="page" style="padding-top:28px;padding-bottom:60px;">
+
+<!-- ─── รายงานประจำวัน ─────────────────── -->
+  <div class="sec-head" style="margin-top:0;">📋 &nbsp;รายงานประจำวัน</div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+    <div id="exec-date" style="font-size:17px;font-weight:700;color:#f1f5f9;"></div>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;">
+      <div id="exec-msg-strip" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"></div>
+      <div id="today-snapshot" style="color:#64748b;font-size:11px;"></div>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div id="exec-kpi" class="kpi-grid">
+    <div class="kpi-card"><div class="sk" style="height:64px;"></div></div>
+    <div class="kpi-card"><div class="sk" style="height:64px;"></div></div>
+    <div class="kpi-card"><div class="sk" style="height:64px;"></div></div>
+    <div class="kpi-card"><div class="sk" style="height:64px;"></div></div>
+    <div class="kpi-card"><div class="sk" style="height:64px;"></div></div>
+    <div class="kpi-card"><div class="sk" style="height:64px;"></div></div>
+  </div>
+
+  <!-- 7-day trend + hourly today -->
+  <div class="two-col mt-4">
+    <div class="card p-5">
+      <div class="card-title">📈 ออเดอร์ 7 วันที่ผ่านมา</div>
+      <div id="exec-trend-chart" style="height:220px;"></div>
+    </div>
+    <div class="card p-5">
+      <div class="card-title">⏱ Traffic วันนี้ รายชั่วโมง</div>
+      <div id="exec-hourly-chart" style="height:140px;"></div>
+    </div>
+  </div>
+
+
+
+  <!-- ─── FOCUS ZONE ─────────────────── -->
+  <div class="sec-head" style="color:#fbbf24;">🚨 &nbsp;จุดโฟกัส — ต้องติดตาม & Admin Workload</div>
+
+  <!-- Flagged (moved up) -->
+  <div class="two-col">
+    <div class="card p-5">
+      <div class="card-title" style="color:#fbbf24;">⚠️ ข้อความที่อาจเป็นปัญหา <span id="flagged-count" style="font-size:11px;color:#94a3b8;font-weight:400;"></span></div>
+      <div id="flagged-list" style="max-height:260px;overflow-y:auto;"></div>
+    </div>
+    <div class="card p-5">
+      <div class="card-title" style="color:#f87171;">🚫 ข้อความเซลที่ไม่เหมาะสม <span id="unprof-count" style="font-size:11px;color:#94a3b8;font-weight:400;"></span></div>
+      <div id="unprofessional-list" style="max-height:260px;overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <!-- Admin Workload (moved up) -->
+  <div class="card p-5 mt-4">
+    <div class="card-title">⚙️ Admin Workload — ปริมาณข้อความ 7 วัน</div>
+    <div id="admin-workload-bars"></div>
+  </div>
+
+  <!-- ─── Trending & Stock Alerts ─────────────────── -->
+  <div class="sec-head">🔥 &nbsp;Trending Products (7 วัน)</div>
+  <div id="low-stock-banner" style="margin-bottom:16px;"></div>
+  <div class="card p-5">
+    <div class="card-title">สินค้าที่ถูกถามมากที่สุด</div>
+    <div id="trending-table"></div>
+  </div>
+
+<!-- ─── Traffic Overview ─────────────────── -->
+  <div class="sec-head">📡 &nbsp;Traffic Overview — 7 วัน</div>
+
+  <div class="two-col-1-2">
+    <div class="card p-5">
+      <div class="card-title">วันนี้ vs เมื่อวาน</div>
+      <div id="traffic-stats"></div>
+    </div>
+    <div class="card p-5">
+      <div class="card-title">ปริมาณข้อความ 7 วัน</div>
+      <div id="traffic-volume-chart" style="height:180px;"></div>
+    </div>
+  </div>
+
+<!-- ─── SLA & Admin ─────────────────── -->
+  <div class="sec-head">🎯 &nbsp;SLA & Admin Performance</div>
+
+  <div class="two-col">
+
+    <!-- SLA -->
+    <div class="card p-5">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div class="card-title" style="margin-bottom:0;">SLA Real-time</div>
+        <div style="display:flex;align-items:center;gap:5px;">
+          <span style="font-size:11px;color:#64748b;">เกณฑ์:</span>
+          <input id="sla-threshold-val" type="number" value="30" min="5" max="120" class="sla-inp" onchange="onSLAThresholdChange()">
+          <span style="font-size:11px;color:#64748b;">น.</span>
+        </div>
+      </div>
+      <div id="sla-content"></div>
+    </div>
+
+    <!-- Admin response + workload -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card p-5" style="flex:1;">
+        <div class="card-title">👤 Response Time (7 วัน)</div>
+        <div id="admin-perf-table"></div>
+      </div>
+    </div>
+
+  </div>
+
+
+
+  <!-- ─── Customer Journey & Sentiment ─────────────────── -->
+  <div class="sec-head">🧭 &nbsp;Customer Journey & Sentiment</div>
+  <div class="two-col-3-1">
+    <div class="card p-5">
+      <div class="card-title">🧭 Customer Journey</div>
+      <div id="journey-content"></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="card p-5">
+        <div class="card-title">💬 Sentiment Tags (7 วัน)</div>
+        <div id="sentiment-canvas-wrap" style="height:180px;"></div>
+        <div id="sentiment-tags" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;"></div>
+      </div>
+    </div>
+  </div>
+
+
+</main></main>
+
+<!-- ════ FOOTER ════ -->
+<footer style="border-top:1px solid #1e293b;padding:24px;text-align:center;font-size:11px;color:#334155;">
+  REYA Inbox Intelligence · v6 · รายงานประจำวัน
+</footer>
+
+<!-- ── Stubs for backward compat ── -->
+<div style="display:none;">
+  <div id="admin-workload-content"></div>
+  <div id="daily-trend-area"></div>
+  <div id="hourly-traffic-area"></div>
+  <div id="msg-type-chart-area"></div>
+  <div id="msg-type-legend"></div>
+  <div id="product-categories-area"></div>
+  <div id="response-time-chart-area"></div>
+  <div id="response-time-table"></div>
+  <div id="sentiment-chart-area"></div>
+  <div id="unread-badge"></div>
+  <div id="unread-table"></div>
+  <div id="summary-cards"></div>
+  <div id="daily-kpi-cards"></div>
+  <div id="daily-report-date"></div>
+  <div id="daily-tables-row"></div>
+  <div id="daily-msgs-today"></div>
+  <div id="traffic-comparison-content"></div>
+  <div id="admin-performance-table"></div>
+  <div id="sla-summary"></div>
+  <div id="sla-table"></div>
+  <div id="peak-hours-content"></div>
+  <div id="trending-products-content"></div>
+  <div id="customer-journey-content"></div>
+  <div id="flagged-section" style="margin-bottom:16px;"><h3 style="color:#fbbf24;font-size:14px;margin-bottom:8px;">&#x26A0;&#xFE0F; ข้อความที่อาจเป็นปัญหา <span id="flagged-count" style="font-size:11px;color:#94a3b8;font-weight:400;"></span></h3><div id="flagged-list" style="max-height:300px;overflow-y:auto;"></div></div><div id="unprofessional-section" style="margin-bottom:16px;"><h3 style="color:#f87171;font-size:14px;margin-bottom:8px;">&#x1F6AB; ข้อความเซลที่ไม่เหมาะสม <span id="unprof-count" style="font-size:11px;color:#94a3b8;font-weight:400;"></span></h3><div id="unprofessional-list" style="max-height:200px;overflow-y:auto;"></div></div>
+  <div id="ai-insights-content"></div>
+  <input id="sla-threshold" type="hidden" value="30">
+  <div id="sla-alert-bar"></div>
+</div>
+
+<script src="/inbox-intelligence-v6.js?v=6"></script>
+<script src="/ai-chat.js?t=20260329091654"></script>
+</body>
+</html>

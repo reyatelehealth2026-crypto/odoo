@@ -763,8 +763,15 @@
                             <option value="failed">ไม่สำเร็จ</option>
                         </select>
                         <input type="date" class="form-control" id="slipDateFilter" onchange="loadSlips()" style="max-width:160px;">
+                        <select class="form-control" id="slipDaysFilter" onchange="document.getElementById('slipDateFilter').value='';loadSlips();" style="max-width:130px;" title="ช่วงเวลา">
+                            <option value="7">7 วันย้อนหลัง</option>
+                            <option value="14">14 วัน</option>
+                            <option value="30">30 วัน</option>
+                            <option value="90">ทั้งเดือน (90 วัน)</option>
+                            <option value="365">ทั้งหมด (1 ปี)</option>
+                        </select>
                         <button class="btn-primary" onclick="loadSlips()"><i class="bi bi-search"></i> ค้นหา</button>
-                        <button class="chip" onclick="document.getElementById('slipSearch').value='';document.getElementById('slipStatusFilter').value='';document.getElementById('slipDateFilter').value='';loadSlips();"><i class="bi bi-x-circle"></i> ล้าง</button>
+                        <button class="chip" onclick="document.getElementById('slipSearch').value='';document.getElementById('slipStatusFilter').value='';document.getElementById('slipDateFilter').value='';document.getElementById('slipDaysFilter').value='7';loadSlips();"><i class="bi bi-x-circle"></i> ล้าง</button>
                         <button class="chip" onclick="loadSlips()"><i class="bi bi-arrow-repeat"></i> รีเฟรช</button>
                         <button class="btn-primary" id="sendAllOdooBtn" onclick="sendAllSlipsToOdoo()" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);"><i class="bi bi-cloud-upload"></i> ส่งทั้งหมดไปยัง Odoo</button>
                     </div>

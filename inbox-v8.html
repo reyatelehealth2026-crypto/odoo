@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inbox Intelligence Dashboard v8</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { font-family: 'Noto Sans Thai', sans-serif; }
+    body { background: #0a0f1a; color: #e2e8f0; }
+
+    .glass { background: rgba(26, 34, 54, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.05); }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 16px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .card:hover { border-color: #3b82f6; transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); }
+    
+    .stat-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { animation: spin 0.8s linear infinite; }
+    @keyframes pulse-red { 0%, 100% { background: rgba(220, 38, 38, 0.8); } 50% { background: rgba(220, 38, 38, 0.4); } }
+    .pulsing { animation: pulse-red 2s infinite; }
+
+    .badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; border: 1px solid; }
+    .badge-green  { background: rgba(16,185,129,0.1); color: #10b981; border-color: rgba(16,185,129,0.2); }
+    .badge-yellow { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: rgba(245,158,11,0.2); }
+    .badge-red    { background: rgba(239,68,68,0.1);  color: #ef4444; border-color: rgba(239,68,68,0.2); }
+    .badge-blue   { background: rgba(59,130,246,0.1); color: #60a5fa; border-color: rgba(59,130,246,0.2); }
+
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.data-table thead th { color: #94a3b8; font-weight: 500; padding: 12px 8px; text-align: left; border-bottom: 1px solid #1f2937; }
+    table.data-table tbody td { padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.02); }
+    
+    .section-divider {
+      display: flex; align-items: center; gap: 12px;
+      color: #4b5563; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.15em; text-transform: uppercase; margin: 32px 0 16px;
+    }
+    .section-divider::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, #1f2937, transparent); }
+  </style>
+</head>
+<body class="min-h-screen">
+
+  <div id="sla-alert-bar" class="hidden sticky top-0 z-[60]"></div>
+
+  <header class="glass sticky top-0 z-50 px-6 py-4 border-b border-white/5">
+    <div class="max-w-screen-2xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-4">
+        <div class="stat-icon bg-blue-500/20 text-blue-400">
+          <svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="7.5 19.79 7.5 14.6 3 12"/><polyline points="21 12 16.5 14.6 16.5 19.79"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold text-white flex items-center gap-2">Inbox Intelligence <span class="text-xs bg-blue-600 px-2 py-0.5 rounded-full font-normal">v8 AI</span></h1>
+          <p class="text-xs text-slate-500" id="last-updated">Synchronizing Brain...</p>
+        </div>
+      </div>
+      <button class="refresh-btn flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all" id="refresh-btn" onclick="refreshAll()">
+        <svg id="refresh-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        <span class="text-sm font-medium">Reload</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-screen-2xl mx-auto px-6 py-8">
+    <div class="section-divider">AI Intelligence Hub</div>
+    <div id="ai-insights-content" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8"></div>
+
+    <div class="section-divider">Inbox Operations</div>
+    <div id="summary-cards" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6"></div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="card p-6 lg:col-span-2">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="font-semibold text-white">Traffic Analysis (7 Days)</h3>
+          <div id="daily-msgs-today" class="flex gap-2"></div>
+        </div>
+        <div id="traffic-comparison-content" class="mb-6"></div>
+        <div style="height: 250px;"><canvas id="dailyTrendChart"></canvas></div>
+      </div>
+      <div class="card p-6">
+        <h3 class="font-semibold text-white mb-4">SLA Real-time</h3>
+        <div id="sla-summary" class="grid grid-cols-2 gap-3 mb-6"></div>
+        <div id="sla-table" class="max-h-[300px] overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      <div class="card p-6">
+        <h3 class="font-semibold text-white mb-4">Activity Heatmap</h3>
+        <div id="peak-hours-content"></div>
+      </div>
+      <div class="card p-6">
+        <h3 class="font-semibold text-white mb-4">Admin Response</h3>
+        <div id="admin-performance-table"></div>
+      </div>
+    </div>
+
+    <div class="section-divider">Business Intelligence</div>
+    <div id="low-stock-banner" class="mb-6"></div>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="card p-6 lg:col-span-2"><h3 class="font-semibold text-white mb-4">Trending Products</h3><div id="trending-products-content"></div></div>
+      <div class="card p-6">
+        <h3 class="font-semibold text-white mb-4">Customer Journey</h3>
+        <div id="customer-journey-content"></div>
+        <div class="mt-8">
+          <h4 class="text-xs font-bold text-slate-500 uppercase mb-4 tracking-widest">Sentiment</h4>
+          <div style="height: 180px;"><canvas id="sentimentChart"></canvas></div>
+          <div id="sentiment-tags" class="mt-4 flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-divider">Executive Snapshot</div>
+    <div class="card p-6 bg-gradient-to-br from-slate-900 to-slate-950">
+      <h2 class="text-2xl font-bold text-white mb-8" id="daily-report-date">Snapshot</h2>
+      <div id="daily-kpi-cards" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8"></div>
+      <div id="daily-tables-row" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+    </div>
+  </main>
+
+  <footer class="py-12 text-center text-slate-600 text-xs border-t border-white/5 mt-12">
+    <p>REYA Neural Dashboard · Intelligence Engine v8.0.0</p>
+  </footer>
+
+  <script src="/inbox-intelligence-v8.js?t=202603290615"></script>
+</body>
+</html>

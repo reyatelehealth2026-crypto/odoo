@@ -220,6 +220,46 @@ try {
     }
 
     // ========================================================================
+    // Duplicate guard — ถ้า image นี้อัปโหลดไปแล้ว return row เดิมทันที (idempotent)
+    // ========================================================================
+    $existingSlip = null;
+    try {
+        // Check by message_id (LINE message ID) — strongest signal
+        if ($messageId) {
+            $dupStmt = $db->prepare("SELECT * FROM odoo_slip_uploads WHERE message_id = ? LIMIT 1");
+            $dupStmt->execute([$messageId]);
+            $existingSlip = $dupStmt->fetch(PDO::FETCH_ASSOC);
+        }
+        // Fallback: check by image_url if no message_id match
+        if (!$existingSlip && $imageUrl) {
+            $dupStmt = $db->prepare("SELECT * FROM odoo_slip_uploads WHERE image_url = ? AND line_user_id = ? ORDER BY id DESC LIMIT 1");
+            $dupStmt->execute([$imageUrl, $lineUserId]);
+            $existingSlip = $dupStmt->fetch(PDO::FETCH_ASSOC);
+        }
+    } catch (\Exception $e) {
+        error_log('[odoo-slip-upload] Duplicate check failed: ' . $e->getMessage());
+    }
+
+    if ($existingSlip) {
+        error_log('[odoo-slip-upload] Duplicate slip id=' . $existingSlip['id'] . ' returning existing');
+        $baseUrl = rtrim(defined('SITE_URL') ? SITE_URL : 'https://cny.re-ya.com', '/');
+        ob_clean();
+        echo json_encode([
+            'success'   => true,
+            'slip_id'   => (int) $existingSlip['id'],
+            'status'    => $existingSlip['status'],
+            'duplicate' => true,
+            'message'   => 'Slip already uploaded',
+            'image_url' => $existingSlip['image_path']
+                ? $baseUrl . '/' . ltrim($existingSlip['image_path'], '/')
+                : $existingSlip['image_url'],
+            'bdo_id'    => $existingSlip['bdo_id'] ? (int)$existingSlip['bdo_id'] : null,
+            'amount'    => $existingSlip['amount'] ? (float)$existingSlip['amount'] : null,
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // ========================================================================
     // Save record to odoo_slip_uploads table (local — not sent to Odoo yet)
     // ========================================================================
     $status = BdoSlipContract::SLIP_STATUS_NEW;

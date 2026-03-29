@@ -276,7 +276,7 @@ if ($isOdooMode) {
     }
     $offset = ($page - 1) * $perPage;
 
-    $baseWhere = " FROM {$cacheTable} WHERE line_account_id = ?";
+    $baseWhere = " FROM {$cacheTable} oc LEFT JOIN cny_products cp ON cp.sku = oc.product_code WHERE oc.line_account_id = ?";
     $queryParams = [(int) $currentBotId];
 
     if ($categoryFilter !== '') {
@@ -505,6 +505,7 @@ if ($isOdooMode) {
                     <table class="w-full text-sm">
                     <thead class="bg-gray-50 text-gray-600">
                     <tr>
+                        <th class="px-3 py-3 text-center w-12">รูป</th>
                         <th class="px-3 py-3 text-left"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'sku', 'dir' => ($sortBy === 'sku' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">SKU</a></th>
                         <th class="px-3 py-3 text-left"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'product_code', 'dir' => ($sortBy === 'product_code' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">รหัสสินค้า</a></th>
                         <th class="px-3 py-3 text-left"><a class="hover:text-blue-600" href="?<?= buildOdooCacheQuery(['sort' => 'name', 'dir' => ($sortBy === 'name' && $sortDir === 'ASC') ? 'DESC' : 'ASC', 'page' => 1]) ?>">ชื่อสินค้า</a></th>
@@ -523,6 +524,13 @@ if ($isOdooMode) {
                     <?php else: ?>
                         <?php foreach ($odooProducts as $product): ?>
                             <tr class="hover:bg-gray-50">
+                                <td class="px-3 py-2 text-center">
+                                    <?php $ph = $product['photo_path'] ?? ''; if ($ph): ?>
+                                        <img src="<?= htmlspecialchars($ph) ?>" class="w-10 h-10 object-contain rounded" loading="lazy" onerror="this.outerHTML='<span class=\'text-gray-300\'><i class=\'fas fa-capsules\'></i></span>'">
+                                    <?php else: ?>
+                                        <span class="text-gray-300"><i class="fas fa-capsules"></i></span>
+                                    <?php endif; ?>
+                                </td>
                                 <td class="px-3 py-2 font-mono text-xs"><?= htmlspecialchars((string) ($product['sku'] ?? '-')) ?></td>
                                 <td class="px-3 py-2"><?= htmlspecialchars((string) ($product['product_code'] ?? '-')) ?></td>
                                 <td class="px-3 py-2"><?= htmlspecialchars((string) ($product['name'] ?? '-')) ?></td>

@@ -1,198 +1,111 @@
 <?php
 /**
- * API: AI Chat
- * General AI Chat endpoint using Gemini API
+ * REYA AI Chat API — context-aware chat using Google Gemini
  */
+header('Content-Type: text/event-stream; charset=utf-8');
+header('Cache-Control: no-cache');
+header('X-Accel-Buffering: no');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
 
-header('Content-Type: application/json; charset=utf-8');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
+session_write_close();
 
-// Start session
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+$geminiKey = defined('GEMINI_API_KEY') ? GEMINI_API_KEY : (getenv('GEMINI_API_KEY') ?: '');
+if (!$geminiKey) { echo "data: " . json_encode(['error' => 'GEMINI_API_KEY not configured']) . "\n\n"; flush(); exit; }
 
-// Check authentication
-if (!isset($_SESSION['admin_user']['id'])) {
-    http_response_code(401);
-    echo json_encode(['success' => false, 'error' => 'Unauthorized']);
-    exit;
-}
+$input = json_decode(file_get_contents('php://input'), true);
+$userMessage = trim($input['message'] ?? '');
+$history = $input['history'] ?? [];
 
-$lineAccountId = $_SESSION['current_bot_id'] ?? null;
+if (!$userMessage && empty($_SERVER['argv'])) { echo "data: " . json_encode(['error' => 'No message']) . "\n\n"; flush(); exit; }
+if (empty($userMessage)) $userMessage = "test"; // for CLI testing
+
 $db = Database::getInstance()->getConnection();
 
-// Get Gemini API Key
-$geminiApiKey = getGeminiApiKey($db, $lineAccountId);
+// --- FAST CONTEXT ---
+$oy = $db->query("SELECT COUNT(*) as total, COALESCE(SUM(amount_total),0) as amount, COUNT(DISTINCT partner_id) as customers FROM odoo_orders WHERE DATE(date_order) = DATE_SUB(CURDATE(),INTERVAL 1 DAY) AND state NOT IN ('cancel')")->fetch();
+$ot = $db->query("SELECT COUNT(*) as total, COALESCE(SUM(amount_total),0) as amount FROM odoo_orders WHERE DATE(date_order) = CURDATE() AND state NOT IN ('cancel')")->fetch();
+$bdoY = $db->query("SELECT COUNT(*) as total, COALESCE(SUM(amount_total),0) as amount, SUM(CASE WHEN state='done' THEN 1 ELSE 0 END) as done FROM odoo_bdos WHERE DATE(created_at)=DATE_SUB(CURDATE(),INTERVAL 1 DAY)")->fetch();
+$admins = $db->query("SELECT COALESCE(au.display_name, CONCAT('Admin ',ma.admin_id)) as name, COUNT(*) as replies, ROUND(AVG(ma.response_time_seconds)/60) as avg_min FROM message_analytics ma LEFT JOIN admin_users au ON au.id = ma.admin_id WHERE ma.admin_id IS NOT NULL AND ma.created_at >= DATE_SUB(NOW(),INTERVAL 7 DAY) GROUP BY ma.admin_id ORDER BY avg_min ASC LIMIT 5")->fetchAll();
 
-// Get request
-$method = $_SERVER['REQUEST_METHOD'];
-$action = $_GET['action'] ?? 'chat';
-
-switch ($action) {
-    case 'status':
-        echo json_encode([
-            'success' => true,
-            'ai_available' => !empty($geminiApiKey)
-        ]);
-        break;
-        
-    case 'chat':
-        if ($method !== 'POST') {
-            http_response_code(405);
-            echo json_encode(['success' => false, 'error' => 'Method not allowed']);
-            exit;
+// Top products - use the JSON that the dashboard uses if available, to avoid slow queries
+$prodCache = '/www/wwwroot/cny.re-ya.com/cache/inbox_products_7.json';
+$topProductsStr = "ยังไม่มีข้อมูลสินค้าขายดีในขณะนี้";
+if (file_exists($prodCache)) {
+    $jd = json_decode(file_get_contents($prodCache), true);
+    if (!empty($jd['products'])) {
+        $list = [];
+        foreach (array_slice($jd['products'], 0, 5) as $i => $p) {
+            $list[] = ($i + 1) . ". {$p['name']} (ลูกค้าถาม: {$p['mention_count']} ราย, stock: {$p['live_qty']})";
         }
-        
-        $input = json_decode(file_get_contents('php://input'), true);
-        $message = $input['message'] ?? '';
-        $history = $input['history'] ?? [];
-        
-        if (empty($message)) {
-            echo json_encode(['success' => false, 'error' => 'Message is required']);
-            exit;
-        }
-        
-        if (empty($geminiApiKey)) {
-            echo json_encode([
-                'success' => false, 
-                'error' => 'กรุณาตั้งค่า Gemini API Key ที่หน้า AI Settings ก่อนใช้งาน'
-            ]);
-            exit;
-        }
-        
-        $response = callGeminiAI($geminiApiKey, $message, $history);
-        echo json_encode($response);
-        break;
-        
-    default:
-        http_response_code(400);
-        echo json_encode(['success' => false, 'error' => 'Invalid action']);
+        $topProductsStr = implode("
+", $list);
+    }
 }
 
-/**
- * Get Gemini API Key from settings
- */
-function getGeminiApiKey($db, $lineAccountId) {
-    try {
-        // Try line account specific key first
-        if ($lineAccountId) {
-            $stmt = $db->prepare("SELECT gemini_api_key FROM ai_settings WHERE line_account_id = ?");
-            $stmt->execute([$lineAccountId]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            if (!empty($result['gemini_api_key'])) {
-                return $result['gemini_api_key'];
+$ctxJson = json_encode([
+    'report_date' => date('Y-m-d', strtotime('-1 day')),
+    'orders_yesterday' => ['total' => (int)$oy['total'], 'amount_thb' => number_format((float)$oy['amount'], 0)],
+    'orders_today_live' => ['total' => (int)$ot['total'], 'amount_thb' => number_format((float)$ot['amount'], 0)],
+    'bdo_yesterday' => ['total' => (int)$bdoY['total'], 'amount_thb' => number_format((float)$bdoY['amount'], 0)],
+    'top_admins_response_time' => $admins,
+], JSON_UNESCAPED_UNICODE);
+
+$systemPrompt = "คุณเป็น REYA Intelligence AI — ผู้ช่วยบริหารธุรกิจของ REYA ร้านยาส่ง B2B\n" .
+    "คุณมีความรู้เชิง ontology: ลูกค้าเป็นร้านขายยา/เภสัชชุมชน, สินค้าหลักคือยาและอุปกรณ์การแพทย์, ช่องทางขายผ่าน LINE, admin ตอบลูกค้า\n" .
+    "ตอบภาษาไทยเท่านั้น กระชับ ชัดเจน ใช้ข้อมูลจาก context ด้านล่าง\n\n" .
+    "=== ข้อมูล real-time ===\n" .
+    $ctxJson . "\n" .
+    "สินค้าที่ถูกถามเยอะสุด 5 อันดับ (ใช้แทนสินค้าขายดี):\n" . $topProductsStr . "\n" .
+    "===================\n\n" .
+    "กฎเด็ดขาด:\n1. ตอบภาษาไทยเท่านั้น\n2. ตอบทีละคำถาม สั้น 1-4 ประโยค ตรงประเด็น\n3. ห้ามแนะนำตัว ไม่ต้องทวนคำถาม\n4. ถ้าวิเคราะห์ ให้เชื่อมโยงกับ pattern ธุรกิจ B2B (ontology)\n5. ถ้าถามสินค้าขายดี ให้ตอบตามรายชื่อที่ให้ไป\n6. ใช้ตัวเลขจริงจาก context ห้ามแต่งเอง\n7. emoji 1-2 ตัวสูงสุด";
+
+$contents = [];
+foreach (array_slice($history, -10) as $h) {
+    if (!isset($h['role'], $h['content'])) continue;
+    $contents[] = ['role' => $h['role'] === 'assistant' ? 'model' : 'user', 'parts' => [['text' => $h['content']]]];
+}
+$contents[] = ['role' => 'user', 'parts' => [['text' => $userMessage]]];
+
+$payload = json_encode([
+    'system_instruction' => ['parts' => [['text' => $systemPrompt]]],
+    'contents' => $contents,
+    'generationConfig' => ['maxOutputTokens' => 512, 'temperature' => 0.3],
+], JSON_UNESCAPED_UNICODE);
+
+$url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:streamGenerateContent?alt=sse&key=" . urlencode($geminiKey);
+$ch = curl_init($url);
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+    CURLOPT_RETURNTRANSFER => false,
+    CURLOPT_FOLLOWLOCATION => true,
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_WRITEFUNCTION => function($ch, $data) {
+        $lines = explode("\n", $data);
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if (!$line || $line === 'data: [DONE]') continue;
+            if (strpos($line, 'data: ') === 0) {
+                $json = json_decode(substr($line, 6), true);
+                if (isset($json['candidates'][0]['content']['parts'][0]['text'])) {
+                    $text = $json['candidates'][0]['content']['parts'][0]['text'];
+                    echo "data: " . json_encode(['token' => $text], JSON_UNESCAPED_UNICODE) . "\n\n";
+                    ob_flush(); flush();
+                }
             }
         }
-        
-        // Try global config
-        if (defined('GEMINI_API_KEY') && !empty(GEMINI_API_KEY)) {
-            return GEMINI_API_KEY;
-        }
-    } catch (Exception $e) {
-        // Ignore
-    }
-    
-    return null;
-}
+        return strlen($data);
+    },
+]);
 
-/**
- * Call Gemini AI API
- */
-function callGeminiAI($apiKey, $message, $history = []) {
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' . $apiKey;
-    
-    // Build system prompt
-    $systemPrompt = "คุณคือ AI Assistant ที่ช่วยเหลือผู้ใช้งานระบบ LINE CRM สำหรับร้านค้า/ร้านขายยา
-คุณสามารถช่วย:
-- เขียนข้อความต้อนรับลูกค้า
-- คิดโปรโมชั่นและแคมเปญการตลาด
-- เขียน caption สำหรับโพสต์ขายสินค้า
-- ตอบคำถามเกี่ยวกับการใช้งานระบบ
-- ให้คำแนะนำเรื่องการขายและการตลาด
-- ช่วยเขียนข้อความตอบกลับลูกค้า
-
-ตอบเป็นภาษาไทย กระชับ เข้าใจง่าย และเป็นมิตร";
-
-    // Build conversation contents
-    $contents = [];
-    
-    // Add history
-    foreach ($history as $msg) {
-        $role = $msg['role'] === 'user' ? 'user' : 'model';
-        $contents[] = [
-            'role' => $role,
-            'parts' => [['text' => $msg['content']]]
-        ];
-    }
-    
-    // Add current message with system prompt (if first message)
-    if (empty($contents)) {
-        $contents[] = [
-            'role' => 'user',
-            'parts' => [['text' => $systemPrompt . "\n\n---\n\nUser: " . $message]]
-        ];
-    } else {
-        $contents[] = [
-            'role' => 'user',
-            'parts' => [['text' => $message]]
-        ];
-    }
-    
-    $data = [
-        'contents' => $contents,
-        'generationConfig' => [
-            'temperature' => 0.7,
-            'maxOutputTokens' => 2048,
-            'topP' => 0.9
-        ],
-        'safetySettings' => [
-            ['category' => 'HARM_CATEGORY_HARASSMENT', 'threshold' => 'BLOCK_ONLY_HIGH'],
-            ['category' => 'HARM_CATEGORY_HATE_SPEECH', 'threshold' => 'BLOCK_ONLY_HIGH'],
-            ['category' => 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'threshold' => 'BLOCK_ONLY_HIGH'],
-            ['category' => 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold' => 'BLOCK_ONLY_HIGH']
-        ]
-    ];
-    
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode($data),
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        CURLOPT_TIMEOUT => 60
-    ]);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    
-    if ($error) {
-        return ['success' => false, 'error' => 'Connection error: ' . $error];
-    }
-    
-    if ($httpCode !== 200) {
-        $errorData = json_decode($response, true);
-        $errorMsg = $errorData['error']['message'] ?? 'API Error';
-        return ['success' => false, 'error' => $errorMsg];
-    }
-    
-    $result = json_decode($response, true);
-    
-    if (isset($result['candidates'][0]['content']['parts'][0]['text'])) {
-        return [
-            'success' => true,
-            'message' => $result['candidates'][0]['content']['parts'][0]['text']
-        ];
-    }
-    
-    // Check for blocked content
-    if (isset($result['candidates'][0]['finishReason']) && $result['candidates'][0]['finishReason'] === 'SAFETY') {
-        return ['success' => false, 'error' => 'ขออภัย ไม่สามารถตอบคำถามนี้ได้'];
-    }
-    
-    return ['success' => false, 'error' => 'ไม่สามารถประมวลผลได้'];
-}
+curl_exec($ch);
+if ($err = curl_error($ch)) echo "data: " . json_encode(['error' => $err]) . "\n\n";
+echo "data: [DONE]\n\n";
+flush();

@@ -110,3 +110,5 @@ database/*.sql
 *.png
 DB_CONNECTION.md
 *.md
+*.bak*
+*.bak-*

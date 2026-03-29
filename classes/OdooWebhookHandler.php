@@ -2059,25 +2059,64 @@ class OdooWebhookHandler
 
     public function handlePaymentConfirmed($data, $notify, $template)
     {
-        $message = "💰 ยืนยันการชำระเงินแล้ว\n\n";
-        $message .= "ออเดอร์: {$data['order_ref']}\n";
-        $message .= "จำนวนเงิน: ฿" . number_format($data['amount'] ?? 0, 2) . "\n";
-        $message .= "วิธีชำระ: " . ($data['payment_method'] ?? ($data['payment']['method'] ?? '-')) . "\n";
-        $message .= "วันที่: " . ($data['payment_date'] ?? ($data['payment']['date'] ?? '-')) . "\n";
-        if (!empty($data['reference']) || !empty($data['payment']['reference'])) {
-            $ref = $data['reference'] ?? $data['payment']['reference'];
+        $message  = "💰 ยืนยันการชำระเงินแล้ว\n\n";
+        $message .= "ออเดอร์: " . ($data['order_ref'] ?? '-') . "\n";
+        $message .= "จำนวนเงิน: ฿" . number_format($data['payment']['amount'] ?? ($data['amount'] ?? 0), 2) . "\n";
+        $message .= "วิธีชำระ: " . ($data['payment']['method'] ?? ($data['payment_method'] ?? '-')) . "\n";
+        $message .= "วันที่: " . ($data['payment']['date'] ?? ($data['payment_date'] ?? '-')) . "\n";
+        if (!empty($data['payment']['reference']) || !empty($data['reference'])) {
+            $ref = $data['payment']['reference'] ?? $data['reference'];
             $message .= "เลขที่อ้างอิง: {$ref}\n";
         }
 
-        // Update order projection to state=paid so dashboard reflects payment
-        // without requiring a separate invoice.paid webhook from Odoo
-        $orderId   = $data['order_id']   ?? ($data['data']['payment_id']  ?? null);
-        $orderName = $data['order_ref']  ?? ($data['order_name']          ?? null);
-        if (empty($orderId) && !empty($data['related_orders'][0])) {
-            $orderName = $data['related_orders'][0];
+        // --- Resolve order identifiers from all possible payload locations ---
+        // payment.confirmed payload: data.order_id (may be absent), data.related_orders (array of order names)
+        $orderId       = $data['order_id'] ?? null;
+        $orderName     = $data['order_ref'] ?? ($data['order_name'] ?? null);
+        $relatedOrders = $data['related_orders'] ?? [];
+        if (!is_array($relatedOrders)) {
+            $relatedOrders = [];
         }
-        $lineUserId = $data['customer']['line_user_id'] ?? ($data['line_user_id'] ?? null);
+        if (empty($orderName) && !empty($relatedOrders[0])) {
+            $orderName = $relatedOrders[0];
+        }
+        $paymentDate = $data['payment']['date'] ?? ($data['payment_date'] ?? null);
 
+        // --- Update odoo_orders: is_paid=1 for all related orders ---
+        $allOrderNames = array_filter(array_unique(array_merge(
+            $orderName ? [$orderName] : [],
+            $relatedOrders
+        )));
+        if (!empty($orderId) || !empty($allOrderNames)) {
+            try {
+                $where  = [];
+                $params = [$paymentDate]; // first param for COALESCE(payment_date, ?)
+                if (!empty($orderId)) {
+                    $where[]  = 'order_id = ?';
+                    $params[] = (int) $orderId;
+                }
+                if (!empty($allOrderNames)) {
+                    $placeholders = implode(',', array_fill(0, count($allOrderNames), '?'));
+                    $where[]  = "order_name IN ({$placeholders})";
+                    $params   = array_merge($params, array_values($allOrderNames));
+                }
+                $whereClause = implode(' OR ', $where);
+                $updateStmt  = $this->db->prepare(
+                    "UPDATE odoo_orders
+                     SET is_paid = 1, payment_status = 'paid',
+                         payment_date = COALESCE(payment_date, ?),
+                         latest_event = 'payment.confirmed',
+                         updated_at = NOW()
+                     WHERE ({$whereClause}) AND (is_paid = 0 OR is_paid IS NULL)"
+                );
+                $updateStmt->execute($params);
+                error_log("[handlePaymentConfirmed] updated " . $updateStmt->rowCount() . " orders as paid");
+            } catch (\Exception $e) {
+                error_log('handlePaymentConfirmed orders update error: ' . $e->getMessage());
+            }
+        }
+
+        // --- Update odoo_order_projection ---
         if ($this->tableExists('odoo_order_projection') && ($orderId || $orderName)) {
             try {
                 $where  = [];
@@ -2106,7 +2145,7 @@ class OdooWebhookHandler
         return $this->sendNotifications($data, $notify, $message);
     }
 
-    public function handleInvoicePaid($data, $notify, $template)
+        public function handleInvoicePaid($data, $notify, $template)
     {
         $orderRef = $data['order_ref'] ?? ($data['order_name'] ?? '-');
         $customerName = $data['customer']['name'] ?? ($data['customer_name'] ?? '-');

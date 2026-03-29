@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inbox Intelligence — รายงานประจำวัน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@300;400;500;600;700&family=SF+Pro+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── iOS Design System ── */
+    *, *::before, *::after { box-sizing: border-box; }
+    
+    :root {
+      --ios-bg: linear-gradient(180deg, #f2f2f7 0%, #e5e5ea 100%);
+      --ios-card-bg: rgba(255,255,255,0.72);
+      --ios-card-border: rgba(60,60,67,0.12);
+      --ios-card-shadow: 0 2px 16px rgba(0,0,0,0.08);
+      --ios-blue: #007aff;
+      --ios-green: #34c759;
+      --ios-red: #ff3b30;
+      --ios-orange: #ff9500;
+      --ios-purple: #af52de;
+      --ios-indigo: #5856d6;
+      --ios-primary: #1c1c1e;
+      --ios-secondary: #8e8e93;
+      --ios-tertiary: #636366;
+      --ios-quaternary: #aeaeb2;
+      --ios-separator: rgba(60,60,67,0.12);
+      --ios-font: -apple-system, 'SF Pro Display', 'Noto Sans Thai', sans-serif;
+    }
+    
+    * { font-family: var(--ios-font); }
+    
+    body {
+      background: var(--ios-bg);
+      color: var(--ios-primary);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      margin: 0;
+    }
+
+    /* ── Layout ── */
+    .ios-page { max-width: 1200px; margin: 0 auto; padding: 0 16px; }
+    @media(min-width:640px) { .ios-page { padding: 0 24px; } }
+
+    .ios-two-col { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:768px) { .ios-two-col { grid-template-columns: 1fr 1fr; } }
+    
+    .ios-two-col-3-1 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:1024px) { .ios-two-col-3-1 { grid-template-columns: 3fr 1fr; } }
+    
+    .ios-two-col-2-1 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:1024px) { .ios-two-col-2-1 { grid-template-columns: 2fr 1fr; } }
+    
+    .ios-two-col-1-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media(min-width:1024px) { .ios-two-col-1-2 { grid-template-columns: 1fr 2fr; } }
+
+    /* ── Card ── */
+    .ios-card {
+      background: var(--ios-card-bg);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid var(--ios-card-border);
+      border-radius: 16px;
+      box-shadow: var(--ios-card-shadow);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .ios-card:hover { 
+      transform: translateY(-1px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+    }
+    .ios-p-5 { padding: 20px; }
+    .ios-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--ios-primary);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Section heading ── */
+    .ios-sec-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ios-secondary);
+      margin: 32px 0 16px;
+    }
+    .ios-sec-head::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--ios-separator);
+    }
+
+    /* ── KPI grid ── */
+    .ios-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    @media(min-width:640px)  { .ios-kpi-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media(min-width:1024px) { .ios-kpi-grid { grid-template-columns: repeat(6, 1fr); gap: 14px; } }
+
+    .ios-kpi-card {
+      background: var(--ios-card-bg);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border: 1px solid var(--ios-card-border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: var(--ios-card-shadow);
+      transition: transform 0.15s, box-shadow 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .ios-kpi-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--ios-blue), var(--ios-purple));
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .ios-kpi-card:hover { 
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+    }
+    .ios-kpi-card:hover::before { opacity: 1; }
+    .ios-kpi-emoji { font-size: 20px; margin-bottom: 8px; }
+    .ios-kpi-label { font-size: 11px; color: var(--ios-secondary); font-weight: 500; letter-spacing: 0.02em; }
+    .ios-kpi-value { font-size: 22px; font-weight: 700; line-height: 1.15; margin: 4px 0; }
+    .ios-kpi-sub   { font-size: 11px; color: var(--ios-tertiary); }
+
+    /* ── Stat rows ── */
+    .ios-stat-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--ios-separator); }
+    .ios-stat-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .ios-stat-row-icon { font-size: 18px; width: 28px; flex-shrink: 0; text-align: center; }
+
+    /* ── SLA ── */
+    .ios-sla-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .ios-sla-box {
+      background: rgba(255,255,255,0.5);
+      border: 1px solid var(--ios-card-border);
+      border-radius: 14px;
+      padding: 18px;
+      text-align: center;
+    }
+    .ios-sla-num   { font-size: 32px; font-weight: 700; line-height: 1; }
+    .ios-sla-label { font-size: 11px; color: var(--ios-secondary); margin-top: 6px; }
+
+    /* ── Workload bars ── */
+    .ios-workload-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+    .ios-workload-row { display: flex; align-items: center; justify-content: space-between; font-size: 11px; margin-bottom: 3px; gap: 6px; }
+    .ios-wl-track { height: 8px; background: rgba(0,0,0,0.06); border-radius: 4px; overflow: hidden; margin-top: 5px; }
+    .ios-wl-fill  { height: 100%; border-radius: 4px; transition: width 0.7s ease; }
+
+    /* ── Badges ── */
+    .ios-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      line-height: 1.5;
+      white-space: nowrap;
+    }
+    .ios-badge-green  { background: rgba(52,199,89,0.12);  color: var(--ios-green); }
+    .ios-badge-yellow { background: rgba(255,149,0,0.12);  color: var(--ios-orange); }
+    .ios-badge-red    { background: rgba(255,59,48,0.12);   color: var(--ios-red); }
+    .ios-badge-blue   { background: rgba(0,122,255,0.12);  color: var(--ios-blue); }
+    .ios-badge-purple { background: rgba(175,82,222,0.12);  color: var(--ios-purple); }
+    .ios-badge-gray   { background: rgba(142,142,147,0.12); color: var(--ios-secondary); }
+
+    /* ── Tables ── */
+    .ios-table-wrap { overflow-x: auto; }
+    .ios-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .ios-table thead th {
+      padding: 10px 8px;
+      text-align: left;
+      color: var(--ios-secondary);
+      font-weight: 600;
+      border-bottom: 1px solid var(--ios-separator);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .ios-table tbody td { padding: 10px 8px; border-bottom: 1px solid var(--ios-separator); vertical-align: middle; }
+    .ios-table tbody tr:last-child td { border-bottom: none; }
+    .ios-table tbody tr:hover td { background: rgba(0,122,255,0.04); }
+    .ios-row-critical td { background: rgba(255,59,48,0.06) !important; }
+
+    /* ── Alerts ── */
+    .ios-alert { border-radius: 14px; padding: 14px 16px; }
+    .ios-alert-danger { background: rgba(255,59,48,0.08); border: 1px solid rgba(255,59,48,0.2); }
+    .ios-alert-success { background: rgba(52,199,89,0.08); border: 1px solid rgba(52,199,89,0.2); display: flex; align-items: center; gap: 12px; color: var(--ios-green); font-size: 13px; }
+    .ios-alert-title { display: flex; align-items: center; gap: 10px; font-weight: 600; color: var(--ios-red); font-size: 13px; margin-bottom: 12px; }
+
+    /* ── Journey ── */
+    .ios-conv-row { display: flex; align-items: center; justify-content: space-around;
+                background: rgba(255,255,255,0.5); border: 1px solid var(--ios-card-border); border-radius: 14px; padding: 16px; }
+    .ios-conv-cell { text-align: center; }
+    .ios-conv-num { font-size: 26px; font-weight: 700; }
+    .ios-conv-label { font-size: 11px; color: var(--ios-secondary); margin-top: 4px; }
+    .ios-conv-arrow { color: var(--ios-quaternary); font-size: 18px; }
+    .ios-conv-rate { display: flex; align-items: center; justify-content: space-between;
+                 margin-top: 14px; padding: 10px 14px;
+                 background: rgba(52,199,89,0.08); border: 1px solid rgba(52,199,89,0.2); border-radius: 12px; }
+
+    /* ── Sentiment tags ── */
+    .ios-stag { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 11px; margin: 2px; }
+
+    /* ── Skeleton shimmer ── */
+    @keyframes ios-shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+    .ios-skeleton { background: linear-gradient(90deg, rgba(0,0,0,0.04) 25%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 75%);
+          background-size: 200% 100%; animation: ios-shimmer 1.5s infinite; border-radius: 12px; }
+
+    /* ── Spinner ── */
+    @keyframes ios-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .spinning { animation: ios-spin 0.8s linear infinite; }
+
+    /* ── Color utilities ── */
+    .ios-success { color: var(--ios-green); }
+    .ios-warning { color: var(--ios-orange); }
+    .ios-danger  { color: var(--ios-red); }
+    .ios-blue    { color: var(--ios-blue); }
+    .ios-purple  { color: var(--ios-purple); }
+    .ios-indigo  { color: var(--ios-indigo); }
+    .ios-primary   { color: var(--ios-primary); }
+    .ios-secondary { color: var(--ios-secondary); }
+    .ios-tertiary  { color: var(--ios-tertiary); }
+    .ios-quaternary{ color: var(--ios-quaternary); }
+
+    .ios-fw7 { font-weight: 700; }
+    .ios-fw6 { font-weight: 600; }
+    .ios-fw5 { font-weight: 500; }
+    .ios-fs11 { font-size: 11px; }
+    .ios-fs12 { font-size: 12px; }
+    .ios-fs10 { font-size: 10px; }
+    .ios-mono { font-family: 'SF Mono', 'Menlo', monospace; }
+
+    /* ── Empty states ── */
+    .ios-empty-state { text-align: center; padding: 32px 0; color: var(--ios-secondary); font-size: 12px; }
+    .ios-error-msg { padding: 16px; text-align: center; color: var(--ios-red); font-size: 12px; background: rgba(255,59,48,0.08); border-radius: 12px; }
+    .ios-success-msg { padding: 16px; text-align: center; color: var(--ios-green); font-size: 13px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+
+    /* ── Strip items ── */
+    .ios-strip-item { display: inline-flex; align-items: center; gap: 5px; }
+    .ios-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+    /* ── SLA input ── */
+    .ios-inp {
+      background: rgba(255,255,255,0.8); border: 1px solid var(--ios-card-border); border-radius: 8px;
+      color: var(--ios-primary); padding: 4px 10px; font-size: 12px; width: 64px;
+    }
+    .ios-inp:focus { outline: none; border-color: var(--ios-blue); box-shadow: 0 0 0 3px rgba(0,122,255,0.1); }
+
+    /* ── Avatar ── */
+    .ios-avatar { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; background: rgba(0,122,255,0.12); flex-shrink: 0; }
+
+    /* ── Hint text ── */
+    .ios-hint { margin-top: 10px; font-size: 10px; color: var(--ios-quaternary); }
+
+    /* ── Gap helpers ── */
+    .ios-mt-3  { margin-top: 12px; }
+    .ios-mt-4  { margin-top: 16px; }
+    .ios-mb-3  { margin-bottom: 12px; }
+    .ios-mb-4  { margin-bottom: 16px; }
+
+    /* ── Modal System ── */
+    .ios-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: none;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .ios-modal.modal-open {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 1;
+    }
+    .ios-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .ios-modal-content {
+      position: relative;
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(20px) saturate(180%);
+      -webkit-backdrop-filter: blur(20px) saturate(180%);
+      border-radius: 20px;
+      max-width: 600px;
+      width: calc(100% - 32px);
+      max-height: calc(100vh - 64px);
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      transform: translateY(20px);
+      opacity: 0;
+      transition: transform 0.3s ease, opacity 0.25s ease;
+    }
+    .ios-modal-content.modal-content-visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    .ios-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--ios-separator);
+      position: sticky;
+      top: 0;
+      background: rgba(255,255,255,0.96);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      z-index: 10;
+    }
+    .ios-modal-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--ios-primary);
+    }
+    .ios-modal-close {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(60,60,67,0.12);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ios-secondary);
+      font-size: 16px;
+      transition: background 0.2s;
+    }
+    .ios-modal-close:hover {
+      background: rgba(60,60,67,0.2);
+    }
+    .ios-modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      max-height: calc(100vh - 160px);
+    }
+
+    /* ── Flagged items ── */
+    .ios-flagged-item {
+      background: rgba(255,255,255,0.8);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+    }
+    .ios-flagged-warning { border-left: 3px solid var(--ios-orange); }
+    .ios-flagged-danger  { border-left: 3px solid var(--ios-red); }
+    .ios-flagged-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .ios-flagged-content {
+      font-size: 12px;
+      color: var(--ios-primary);
+      margin: 6px 0;
+    }
+
+    /* ── Modal trigger cards ── */
+    .ios-modal-trigger {
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+    .ios-modal-trigger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    }
+    .ios-modal-trigger:active {
+      transform: translateY(0);
+    }
+    .ios-trigger-hint {
+      font-size: 11px;
+      color: var(--ios-quaternary);
+      margin-top: 6px;
+    }
+
+    /* ── Custom scrollbar ── */
+    * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.2) transparent; }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.3); }
+  </style>
+</head>
+<body>
+
+<!-- ════ HEADER ════════════════════════════════════════════════ -->
+<header style="position:sticky;top:0;z-index:50;background:rgba(242,242,247,0.96);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--ios-separator);">
+  <div class="ios-page" style="padding-top:16px;padding-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:14px;">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg, rgba(0,122,255,0.15) 0%, rgba(175,82,222,0.15) 100%);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;border:1px solid rgba(0,122,255,0.2);">📊</div>
+      <div>
+        <div style="font-size:16px;font-weight:700;color:var(--ios-primary);display:flex;align-items:center;gap:8px;">
+          <span style="background:linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">Inbox Intelligence</span>
+          <span style="font-size:10px;background:linear-gradient(135deg, var(--ios-blue) 0%, var(--ios-purple) 100%);color:white;padding:2px 8px;border-radius:20px;font-weight:500;">v10</span>
+        </div>
+        <div id="last-updated" style="font-size:11px;color:var(--ios-secondary);margin-top:2px;">กำลังโหลด...</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <div id="header-stats" style="display:none;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap;"></div>
+      <button id="refresh-btn" onclick="refreshAll()"
+        style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-radius:10px;background:rgba(0,122,255,0.08);border:1px solid rgba(0,122,255,0.2);cursor:pointer;font-size:12px;color:var(--ios-secondary);white-space:nowrap;transition:all 0.2s;"
+        onmouseover="this.style.background='rgba(0,122,255,0.15)';this.style.borderColor='rgba(0,122,255,0.3)'"
+        onmouseout="this.style.background='rgba(0,122,255,0.08)';this.style.borderColor='rgba(0,122,255,0.2)'">
+        <svg id="refresh-icon" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        Reload
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- ════ MAIN ════════════════════════════════════════════════ -->
+<main class="ios-page" style="padding-top:32px;padding-bottom:60px;">
+
+<!-- ─── รายงานประจำวัน ─────────────────── -->
+  <div class="ios-sec-head" style="margin-top:0;">📋 &nbsp;รายงานประจำวัน</div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
+    <div id="exec-date" style="font-size:18px;font-weight:700;color:var(--ios-primary);"></div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px;">
+      <div id="exec-msg-strip" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;"></div>
+      <div id="today-snapshot" style="color:var(--ios-secondary);font-size:11px;"></div>
+    </div>
+  </div>
+
+  <!-- KPI cards -->
+  <div id="exec-kpi" class="ios-kpi-grid">
+    <div class="ios-kpi-card"><div class="ios-skeleton" style="height:70px;"></div></div>
+    <div class="ios-kpi-card"><div class="ios-skeleton" style="height:70px;"></div></div>
+    <div class="ios-kpi-card"><div class="ios-skeleton" style="height:70px;"></div></div>
+    <div class="ios-kpi-card"><div class="ios-skeleton" style="height:70px;"></div></div>
+    <div class="ios-kpi-card"><div class="ios-skeleton" style="height:70px;"></div></div>
+    <div class="ios-kpi-card"><div class="ios-skeleton" style="height:70px;"></div></div>
+  </div>
+
+  <!-- 7-day trend + hourly today -->
+  <div class="ios-two-col ios-mt-4">
+    <div class="ios-card ios-p-5">
+      <div class="ios-card-title">📈 ออเดอร์ 7 วันที่ผ่านมา</div>
+      <div id="exec-trend-chart" style="height:240px;"></div>
+    </div>
+    <div class="ios-card ios-p-5">
+      <div class="ios-card-title">⏱ Traffic วันนี้ รายชั่วโมง</div>
+      <div id="exec-hourly-chart" style="height:150px;"></div>
+    </div>
+  </div>
+
+  <!-- ─── Modal Triggers ─────────────────── -->
+  <div class="ios-sec-head">🔍 &nbsp;รายละเอียดเพิ่มเติม</div>
+  
+  <div class="ios-two-col-3-1">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;">
+      <!-- Customer Journey Trigger -->
+      <div class="ios-card ios-p-5 ios-modal-trigger" onclick="openModal('modal-journey')">
+        <div class="ios-card-title">🧭 Customer Journey</div>
+        <div class="ios-tertiary ios-fs11">Inbox → Order Conversion</div>
+        <div class="ios-trigger-hint">แตะเพื่อดูรายละเอียด →</div>
+      </div>
+      
+      <!-- Sentiment Trigger -->
+      <div class="ios-card ios-p-5 ios-modal-trigger" onclick="openModal('modal-sentiment')">
+        <div class="ios-card-title">💬 Sentiment Tags</div>
+        <div class="ios-tertiary ios-fs11">สถานะอารมณ์ 7 วัน</div>
+        <div class="ios-trigger-hint">แตะเพื่อดูรายละเอียด →</div>
+      </div>
+      
+      <!-- Flagged Messages Trigger -->
+      <div class="ios-card ios-p-5 ios-modal-trigger" onclick="openModal('modal-flagged')">
+        <div class="ios-card-title" style="color:var(--ios-orange);">⚠️ ข้อความที่อาจเป็นปัญหา</div>
+        <div id="flagged-count" class="ios-tertiary ios-fs11"></div>
+        <div class="ios-trigger-hint">แตะเพื่อดูรายละเอียด →</div>
+      </div>
+      
+      <!-- Unprofessional Messages Trigger -->
+      <div class="ios-card ios-p-5 ios-modal-trigger" onclick="openModal('modal-unprofessional')">
+        <div class="ios-card-title" style="color:var(--ios-red);">🚫 ข้อความไม่เหมาะสม</div>
+        <div id="unprof-count" class="ios-tertiary ios-fs11"></div>
+        <div class="ios-trigger-hint">แตะเพื่อดูรายละเอียด →</div>
+      </div>
+      
+      <!-- Admin Workload Trigger -->
+      <div class="ios-card ios-p-5 ios-modal-trigger" onclick="openModal('modal-workload')">
+        <div class="ios-card-title">⚙️ Admin Workload</div>
+        <div class="ios-tertiary ios-fs11">ปริมาณข้อความ 7 วัน</div>
+        <div class="ios-trigger-hint">แตะเพื่อดูรายละเอียด →</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Trending & Stock Alerts ─────────────────── -->
+  <div class="ios-sec-head">🔥 &nbsp;Trending Products (7 วัน)</div>
+  <div id="low-stock-banner" style="margin-bottom:18px;"></div>
+  <div class="ios-card ios-p-5">
+    <div class="ios-card-title">สินค้าที่ถูกถามมากที่สุด</div>
+    <div id="trending-table"></div>
+  </div>
+
+<!-- ─── Traffic Overview ─────────────────── -->
+  <div class="ios-sec-head">📡 &nbsp;Traffic Overview — 7 วัน</div>
+
+  <div class="ios-two-col-1-2">
+    <div class="ios-card ios-p-5">
+      <div class="ios-card-title">วันนี้ vs เมื่อวาน</div>
+      <div id="traffic-stats"></div>
+    </div>
+    <div class="ios-card ios-p-5">
+      <div class="ios-card-title">ปริมาณข้อความ 7 วัน</div>
+      <div id="traffic-volume-chart" style="height:200px;"></div>
+    </div>
+  </div>
+
+<!-- ─── SLA & Admin ─────────────────── -->
+  <div class="ios-sec-head">🎯 &nbsp;SLA & Admin Performance</div>
+
+  <div class="ios-two-col">
+    <div class="ios-card ios-p-5">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div class="ios-card-title" style="margin-bottom:0;">SLA Real-time</div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:11px;color:var(--ios-secondary);">เกณฑ์:</span>
+          <input id="sla-threshold-val" type="number" value="30" min="5" max="120" class="ios-inp" onchange="onSLAThresholdChange()">
+          <span style="font-size:11px;color:var(--ios-secondary);">น.</span>
+        </div>
+      </div>
+      <div id="sla-content"></div>
+    </div>
+
+    <div class="ios-card ios-p-5">
+      <div class="ios-card-title">👤 Response Time (7 วัน)</div>
+      <div id="admin-perf-table"></div>
+    </div>
+  </div>
+
+</main>
+
+<!-- ════ FOOTER ════ -->
+<footer style="border-top:1px solid var(--ios-separator);padding:24px;text-align:center;font-size:11px;color:var(--ios-quaternary);">
+  REYA Inbox Intelligence · v10 iOS Frosted Glass Theme · รายงานประจำวัน
+</footer>
+
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- MODALS -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+
+<!-- Modal: Customer Journey -->
+<div id="modal-journey" class="ios-modal">
+  <div class="ios-modal-backdrop" onclick="closeModal('modal-journey')"></div>
+  <div class="ios-modal-content">
+    <div class="ios-modal-header">
+      <div class="ios-modal-title">🧭 Customer Journey</div>
+      <button class="ios-modal-close" onclick="closeModal('modal-journey')">×</button>
+    </div>
+    <div class="ios-modal-body">
+      <div id="journey-content"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Sentiment -->
+<div id="modal-sentiment" class="ios-modal">
+  <div class="ios-modal-backdrop" onclick="closeModal('modal-sentiment')"></div>
+  <div class="ios-modal-content">
+    <div class="ios-modal-header">
+      <div class="ios-modal-title">💬 Sentiment Tags (7 วัน)</div>
+      <button class="ios-modal-close" onclick="closeModal('modal-sentiment')">×</button>
+    </div>
+    <div class="ios-modal-body">
+      <div id="sentiment-canvas-wrap" style="height:200px;"></div>
+      <div id="sentiment-tags" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Flagged Messages -->
+<div id="modal-flagged" class="ios-modal">
+  <div class="ios-modal-backdrop" onclick="closeModal('modal-flagged')"></div>
+  <div class="ios-modal-content">
+    <div class="ios-modal-header">
+      <div class="ios-modal-title" style="color:var(--ios-orange);">⚠️ ข้อความที่อาจเป็นปัญหา <span id="flagged-count-modal" style="font-size:11px;color:var(--ios-secondary);font-weight:400;"></span></div>
+      <button class="ios-modal-close" onclick="closeModal('modal-flagged')">×</button>
+    </div>
+    <div class="ios-modal-body">
+      <div id="flagged-list" style="max-height:400px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Unprofessional Messages -->
+<div id="modal-unprofessional" class="ios-modal">
+  <div class="ios-modal-backdrop" onclick="closeModal('modal-unprofessional')"></div>
+  <div class="ios-modal-content">
+    <div class="ios-modal-header">
+      <div class="ios-modal-title" style="color:var(--ios-red);">🚫 ข้อความเซลที่ไม่เหมาะสม <span id="unprof-count-modal" style="font-size:11px;color:var(--ios-secondary);font-weight:400;"></span></div>
+      <button class="ios-modal-close" onclick="closeModal('modal-unprofessional')">×</button>
+    </div>
+    <div class="ios-modal-body">
+      <div id="unprofessional-list" style="max-height:400px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Admin Workload -->
+<div id="modal-workload" class="ios-modal">
+  <div class="ios-modal-backdrop" onclick="closeModal('modal-workload')"></div>
+  <div class="ios-modal-content">
+    <div class="ios-modal-header">
+      <div class="ios-modal-title">⚙️ Admin Workload — ปริมาณข้อความ 7 วัน</div>
+      <button class="ios-modal-close" onclick="closeModal('modal-workload')">×</button>
+    </div>
+    <div class="ios-modal-body">
+      <div id="admin-workload-bars"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stubs for backward compat ── -->
+<div style="display:none;">
+  <div id="admin-workload-content"></div>
+  <div id="daily-trend-area"></div>
+  <div id="hourly-traffic-area"></div>
+  <div id="msg-type-chart-area"></div>
+  <div id="msg-type-legend"></div>
+  <div id="product-categories-area"></div>
+  <div id="response-time-chart-area"></div>
+  <div id="response-time-table"></div>
+  <div id="sentiment-chart-area"></div>
+  <div id="unread-badge"></div>
+  <div id="unread-table"></div>
+  <div id="summary-cards"></div>
+  <div id="daily-kpi-cards"></div>
+  <div id="daily-report-date"></div>
+  <div id="daily-tables-row"></div>
+  <div id="daily-msgs-today"></div>
+  <div id="traffic-comparison-content"></div>
+  <div id="admin-performance-table"></div>
+  <div id="sla-summary"></div>
+  <div id="sla-table"></div>
+  <div id="peak-hours-content"></div>
+  <div id="trending-products-content"></div>
+  <div id="customer-journey-content"></div>
+  <div id="ai-insights-content"></div>
+  <input id="sla-threshold" type="hidden" value="30">
+  <div id="sla-alert-bar"></div>
+</div>
+
+<script src="/inbox-intelligence-v10.js?v=10"></script>
+<script>
+// Load modal content on first open
+let _journeyLoaded = false, _sentimentLoaded = false, _flaggedLoaded = false, _unprofLoaded = false, _workloadLoaded = false;
+
+document.querySelector('[onclick="openModal(\'modal-journey\')"]')?.addEventListener('click', () => {
+  if (!_journeyLoaded) { loadJourneyModal(); _journeyLoaded = true; }
+});
+
+document.querySelector('[onclick="openModal(\'modal-sentiment\')"]')?.addEventListener('click', () => {
+  if (!_sentimentLoaded) { loadSentimentModal(); _sentimentLoaded = true; }
+});
+
+document.querySelector('[onclick="openModal(\'modal-flagged\')"]')?.addEventListener('click', () => {
+  if (!_flaggedLoaded) { loadFlaggedModal(); _flaggedLoaded = true; }
+});
+
+document.querySelector('[onclick="openModal(\'modal-unprofessional\')"]')?.addEventListener('click', () => {
+  if (!_unprofLoaded) { loadUnprofessionalModal(); _unprofLoaded = true; }
+});
+
+document.querySelector('[onclick="openModal(\'modal-workload\')"]')?.addEventListener('click', () => {
+  if (!_workloadLoaded) { loadAdminWorkloadModal(); _workloadLoaded = true; }
+});
+
+// Also load flagged/unprofessional counts on page load for the trigger cards
+document.addEventListener('DOMContentLoaded', () => {
+  // Load counts for trigger cards
+  loadFlaggedModal();
+});
+</script>
+</body>
+</html>

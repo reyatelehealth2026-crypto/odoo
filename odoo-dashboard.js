@@ -2002,10 +2002,12 @@ async function loadSlips(){
     const search=document.getElementById('slipSearch')?.value||'';
     const status=document.getElementById('slipStatusFilter')?.value||'';
     const date=document.getElementById('slipDateFilter')?.value||'';
+    const days=document.getElementById('slipDaysFilter')?.value||'7';
     const params=new URLSearchParams({limit:slipPageSize,offset:slipCurrentOffset});
     if(search)params.append('search',search);
     if(status)params.append('status',status);
     if(date)params.append('date',date);
+    else if(days)params.append('days',days); // default 7 วัน เมื่อไม่มี exact date
     try{
         const _sc=new AbortController();const _st=setTimeout(()=>_sc.abort(),10000);
         const r=await fetch('api/slips-list.php?'+params.toString(),{signal:_sc.signal});
@@ -3017,14 +3019,16 @@ async function loadTodayOverview(){
                     },
                     orders: f.orders || [],
                     orders_total: f.orders_today || 0,
-                    overdue_customers: [],
+                    // sales_today from API (sum of all today orders, not just top 5)
+                    _sales_today: f.sales_today || 0,
+                    overdue_customers: f.overdue_customers_list || [],
                     overdue_total: f.overdue_customers || 0,
                     pending_bdo: {
-                        orders: [],
-                        bdos: Array(f.bdos_pending || 0).fill({ amount_net_to_pay: f.bdos_pending_amount / Math.max(1, f.bdos_pending) }),
+                        orders: f.bdos_list || [],
+                        bdos: f.bdos_list || Array(f.bdos_pending || 0).fill({ amount_net_to_pay: (f.bdos_pending_amount || 0) / Math.max(1, f.bdos_pending || 1) }),
                         total: f.bdos_pending || 0
                     },
-                    slips_pending: [],
+                    slips_pending: f.slips_pending_list || [],
                     slips_pending_total: f.slips_pending || 0,
                     slips_matched_today_sum: f.payments_today || 0,
                     _source: 'overview_fast'
@@ -3092,8 +3096,9 @@ async function loadTodayOverview(){
             +'<div style="background:'+(s.dead_letter>0?'#fee2e2':'#f0fdf4')+';border-radius:8px;padding:0.6rem 0.8rem;flex:1;min-width:100px;"><div style="font-size:0.72rem;color:'+(s.dead_letter>0?'#dc2626':'#16a34a')+';">สถานะระบบ</div><div style="font-size:1.2rem;font-weight:700;color:'+(s.dead_letter>0?'#dc2626':'#16a34a')+';">'+(s.dead_letter>0?'มีปัญหา '+s.dead_letter:'ปกติ')+'</div></div>'
             +'</div>';
     }
-    let totalSales=0;
-    orders.forEach(function(o){ totalSales+=parseFloat(o.amount_total||0); });
+    let totalSales = d._sales_today && d._sales_today > 0
+        ? d._sales_today
+        : orders.reduce(function(s,o){ return s + parseFloat(o.amount_total||0); }, 0);
     if(kpiSales){
         kpiSales.textContent=totalSales>0?'฿'+totalSales.toLocaleString('th-TH',{minimumFractionDigits:0,maximumFractionDigits:0}):'-';
         const kpiSalesSub=kpiSales.parentElement&&kpiSales.parentElement.querySelector('.kpi-sub');

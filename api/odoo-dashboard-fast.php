@@ -184,6 +184,9 @@ if ($action === 'overview_fast') {
         'bdos_pending' => 0,
         'bdos_pending_amount' => 0.0,
         'overdue_customers' => 0,
+        'overdue_customers_list' => [],
+        'slips_pending_list'  => [],
+        'bdos_list'           => [],
         'payments_today' => 0.0,
         'last_webhook' => null,
         'webhook_total_today' => 0,
@@ -192,11 +195,11 @@ if ($action === 'overview_fast') {
 
     // Orders today — range predicates so MySQL can use index on date_order/updated_at
     try {
-        $row = $db->query("SELECT COUNT(*) as c, COALESCE(SUM(amount_total),0) as s FROM odoo_orders WHERE COALESCE(date_order,updated_at) >= CURDATE() AND COALESCE(date_order,updated_at) < CURDATE()+INTERVAL 1 DAY")->fetch(PDO::FETCH_ASSOC);
+        $row = $db->query("SELECT COUNT(*) as c, COALESCE(SUM(amount_total),0) as s FROM odoo_orders WHERE date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY AND (state IS NULL OR state NOT IN ('cancel'))")->fetch(PDO::FETCH_ASSOC);
         $r['orders_today'] = (int) ($row['c'] ?? 0);
         $r['sales_today'] = (float) ($row['s'] ?? 0);
 
-        $stmt = $db->query("SELECT order_id, order_name, customer_ref, state, state_display, amount_total, date_order, updated_at, latest_event, salesperson_name, line_user_id FROM odoo_orders WHERE COALESCE(date_order,updated_at) >= CURDATE() AND COALESCE(date_order,updated_at) < CURDATE()+INTERVAL 1 DAY ORDER BY updated_at DESC LIMIT 5");
+        $stmt = $db->query("SELECT order_id, order_name, customer_ref, state, state_display, amount_total, date_order, updated_at, latest_event, salesperson_name, line_user_id FROM odoo_orders WHERE date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY AND (state IS NULL OR state NOT IN ('cancel')) ORDER BY updated_at DESC LIMIT 5");
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($orders as &$o) { $o['amount_total'] = (float) ($o['amount_total'] ?? 0); }
         unset($o);
@@ -206,6 +209,26 @@ if ($action === 'overview_fast') {
     // Pending slips
     try {
         $r['slips_pending'] = (int) $db->query("SELECT COUNT(*) FROM odoo_slip_uploads WHERE status IN ('new','pending')")->fetchColumn();
+        // Top 5 pending slips for dashboard section
+        try {
+            $slipStmt2 = $db->query("
+                SELECT s.id, s.line_user_id, s.amount, s.transfer_date, s.image_path, s.image_url, s.uploaded_at, s.status,
+                       u.display_name AS customer_name
+                FROM odoo_slip_uploads s
+                LEFT JOIN users u ON u.line_user_id = s.line_user_id
+                WHERE s.status IN ('new','pending')
+                ORDER BY s.uploaded_at DESC LIMIT 5
+            ");
+            $pendingSlips2 = $slipStmt2->fetchAll(PDO::FETCH_ASSOC);
+            $baseUrl2 = rtrim(defined('SITE_URL') ? SITE_URL : 'https://cny.re-ya.com', '/');
+            foreach ($pendingSlips2 as &$ps2) {
+                $ps2['id'] = (int) $ps2['id'];
+                $ps2['amount'] = $ps2['amount'] !== null ? (float) $ps2['amount'] : null;
+                $ps2['image_full_url'] = !empty($ps2['image_path']) ? $baseUrl2 . '/' . ltrim($ps2['image_path'], '/') : ($ps2['image_url'] ?? null);
+            }
+            unset($ps2);
+            $r['slips_pending_list'] = $pendingSlips2;
+        } catch (Exception $e) {}
         // Range predicate instead of DATE() wrapper — allows index on matched_at/uploaded_at
         $m = $db->query("SELECT COALESCE(SUM(amount),0) FROM odoo_slip_uploads WHERE status='matched' AND COALESCE(matched_at,uploaded_at) >= CURDATE() AND COALESCE(matched_at,uploaded_at) < CURDATE()+INTERVAL 1 DAY")->fetchColumn();
         $r['payments_today'] = (float) $m;
@@ -220,7 +243,33 @@ if ($action === 'overview_fast') {
 
     // Overdue customers — direct comparison avoids COALESCE function per row
     try {
-        $r['overdue_customers'] = (int) $db->query("SELECT COUNT(*) FROM odoo_customer_projection WHERE overdue_amount > 0")->fetchColumn();
+        $r['overdue_customers'] = (int) $db->query("SELECT COUNT(DISTINCT partner_id) FROM odoo_orders WHERE is_paid = 0 AND (state IS NULL OR state NOT IN ('cancel')) AND amount_total > 0 AND partner_id IS NOT NULL")->fetchColumn();
+        // Top 5 overdue customers for dashboard section
+        try {
+            $overdueStmt = $db->query("
+                SELECT o.partner_id, o.customer_ref,
+                       COUNT(*) as unpaid_orders,
+                       ROUND(SUM(o.amount_total), 2) as unpaid_amount,
+                       MAX(o.date_order) as latest_order_at,
+                       COALESCE(o.salesperson_name, '') as salesperson_name,
+                       COALESCE(cp.customer_name, cp.partner_name, o.customer_ref, '') as customer_name
+                FROM odoo_orders o
+                LEFT JOIN odoo_customer_projection cp ON cp.odoo_partner_id = o.partner_id
+                WHERE o.is_paid = 0 AND (o.state IS NULL OR o.state NOT IN ('cancel'))
+                  AND o.amount_total > 0 AND o.partner_id IS NOT NULL
+                GROUP BY o.partner_id, o.customer_ref, o.salesperson_name, cp.customer_name, cp.partner_name
+                ORDER BY unpaid_amount DESC LIMIT 5
+            ");
+            $overdueList = $overdueStmt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($overdueList as &$oc) {
+                $oc['partner_id']    = (int) $oc['partner_id'];
+                $oc['unpaid_amount'] = (float) $oc['unpaid_amount'];
+                $oc['overdue_amount'] = (float) $oc['unpaid_amount'];
+                $oc['total_due']      = (float) $oc['unpaid_amount'];
+            }
+            unset($oc);
+            $r['overdue_customers_list'] = $overdueList;
+        } catch (Exception $e) {}
     } catch (Exception $e) { /* table may not exist */ }
 
     // Lightweight webhook stats — use cached resolveWebhookTimeColumn() (single SHOW COLUMNS,
@@ -396,7 +445,7 @@ if ($action === 'customer_profile_fast') {
             $params[] = (int) $partnerId;
         }
         if ($customerRef !== '') {
-            $where[]  = 'COALESCE(partner_code, customer_ref) = ?';
+            $where[]  = 'customer_ref = ?';
             $params[] = $customerRef;
         }
         $whereSql = $where ? ('WHERE (' . implode(' OR ', $where) . ')') : '';
@@ -404,10 +453,10 @@ if ($action === 'customer_profile_fast') {
         $stmt = $db->prepare("
             SELECT
                 COALESCE(partner_name, customer_name, '') AS name,
-                COALESCE(partner_code,  customer_ref, '')  AS ref,
-                COALESCE(odoo_partner_id, customer_id)     AS partner_id,
-                COALESCE(phone, '')          AS phone,
-                COALESCE(email, '')          AS email,
+                COALESCE(customer_ref, '')  AS ref,
+                COALESCE(odoo_partner_id, CAST(customer_id AS UNSIGNED), 0) AS partner_id,
+                ''          AS phone,
+                ''          AS email,
                 COALESCE(salesperson_name,'') AS salesperson_name,
                 COALESCE(credit_limit,  0)  AS credit_limit,
                 COALESCE(credit_used,   0)  AS credit_used,
@@ -456,21 +505,62 @@ if ($action === 'customer_profile_fast') {
             $luParams[] = $customerRef;
         }
         if ($luWhere) {
-            $stmt = $db->prepare("
+            $luStmt = $db->prepare("
                 SELECT line_user_id, line_account_id, odoo_partner_id, odoo_customer_code,
-                       linked_at, created_at
+                       linked_at, odoo_phone, odoo_email
                 FROM odoo_line_users
                 WHERE " . implode(' OR ', $luWhere) . "
                 LIMIT 1
             ");
-            $stmt->execute($luParams);
-            $luRow = $stmt->fetch(PDO::FETCH_ASSOC);
+            $luStmt->execute($luParams);
+            $luRow = $luStmt->fetch(PDO::FETCH_ASSOC);
             if ($luRow) {
                 $link = $luRow;
             }
         }
-    } catch (Exception $e) { /* table may not exist */ }
+    } catch (Exception $e) {
+        error_log('[customer_profile_fast] link query error: ' . $e->getMessage());
+    }
 
+    // ── Enrich phone/email from link data (odoo_line_users has odoo_phone, odoo_email) ──
+    if (is_array($profile) && is_array($link)) {
+        if (empty($profile['phone']) && !empty($link['odoo_phone'])) {
+            $profile['phone'] = $link['odoo_phone'];
+        }
+        if (empty($profile['email']) && !empty($link['odoo_email'])) {
+            $profile['email'] = $link['odoo_email'];
+        }
+    }
+
+    // ── Enrich credit data from Odoo API /reya/credit-status ──
+    $lineUserIdForCredit = ($link['line_user_id'] ?? null)
+                        ?: (is_array($profile) ? ($profile['line_user_id'] ?? null) : null);
+    // fallback: get line_user_id from odoo_line_users if not already resolved
+    if (!$lineUserIdForCredit && !empty($credit)) {
+        try {
+            $creditLuStmt = $db->prepare("SELECT line_user_id FROM odoo_line_users WHERE odoo_partner_id = ? LIMIT 1");
+            $creditLuStmt->execute([(int) $partnerId]);
+            $luRow2 = $creditLuStmt->fetch(PDO::FETCH_ASSOC);
+            $lineUserIdForCredit = $luRow2['line_user_id'] ?? null;
+        } catch (Exception $e) {}
+    }
+    if ($lineUserIdForCredit && !empty($credit)) {
+        try {
+            require_once __DIR__ . '/../classes/OdooAPIClient.php';
+            $odooApi = new OdooAPIClient($db, 3);
+            $creditResp = $odooApi->getCreditStatus($lineUserIdForCredit);
+            if (!empty($creditResp['success']) && !empty($creditResp['data'])) {
+                $cd = $creditResp['data'];
+                $credit['credit_limit']     = (float) ($cd['credit_limit']     ?? $credit['credit_limit']);
+                $credit['credit_used']      = (float) ($cd['credit_used']      ?? $credit['credit_used']);
+                $credit['credit_remaining'] = (float) ($cd['credit_available'] ?? $credit['credit_remaining']);
+                $credit['overdue_amount']   = (float) ($cd['overdue_amount']   ?? $credit['overdue_amount']);
+                if (!empty($cd['payment_term'])) $credit['payment_term'] = $cd['payment_term'];
+            }
+        } catch (Exception $e) {
+            // Odoo API unavailable — keep projection values
+        }
+    }
     $_result = [
         'success' => true,
         'data' => [

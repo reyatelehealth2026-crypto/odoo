@@ -786,18 +786,25 @@ function getCustomerList($db, $input)
     $spNameExpr = "NULLIF(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.salesperson.name')), '')";
 
     // Try odoo_customer_projection first
-    // NOTE: projection table has no salesperson column → fall through to webhook when salesperson filter active
-    if ($salespersonId === '' && tableExists($db, 'odoo_customer_projection')) {
+    // Projection now has salesperson_id column - use it for all filters
+    if (tableExists($db, 'odoo_customer_projection')) {
         try {
             $where = [];
             $params = [];
 
             if ($search !== '') {
-                $where[] = "(partner_name LIKE ? OR partner_code LIKE ? OR customer_name LIKE ?)";
+                $where[] = "(partner_name LIKE ? OR customer_ref LIKE ? OR customer_name LIKE ? OR CAST(odoo_partner_id AS CHAR) LIKE ?)";
                 $s = "%{$search}%";
                 $params[] = $s;
                 $params[] = $s;
                 $params[] = $s;
+                $params[] = $s;
+            }
+
+            // ★ Salesperson filter in projection path
+            if ($salespersonId !== '') {
+                $where[] = "salesperson_id = ?";
+                $params[] = $salespersonId;
             }
 
             if ($invoiceFilter === 'unpaid') {
@@ -837,9 +844,9 @@ function getCustomerList($db, $input)
             $stmt = $db->prepare("
                 SELECT
                     COALESCE(cp.partner_name, cp.customer_name, '') as customer_name,
-                    COALESCE(cp.partner_code, cp.customer_ref, '') as customer_ref,
-                    COALESCE(cp.odoo_partner_id, cp.customer_id) as customer_id,
-                    COALESCE(cp.odoo_partner_id, cp.customer_id) as partner_id,
+                    COALESCE(cp.customer_ref, '') as customer_ref,
+                    COALESCE(cp.odoo_partner_id, 0) as customer_id,
+                    COALESCE(cp.odoo_partner_id, 0) as partner_id,
                     COALESCE(cp.orders_count_30d, 0) as orders_30d,
                     COALESCE(cp.orders_count_total, 0) as orders_total,
                     COALESCE(cp.spend_30d, 0) as spend_30d,
@@ -850,7 +857,9 @@ function getCustomerList($db, $input)
                     COALESCE(cp.credit_remaining, 0) as credit_remaining,
                     cp.latest_order_at,
                     cp.line_user_id,
-                    COALESCE(bdo_cnt.waiting_bdo_count, 0) as waiting_bdo_count
+                    COALESCE(bdo_cnt.waiting_bdo_count, 0) as waiting_bdo_count,
+                    cp.salesperson_id,
+                    cp.salesperson_name
                 FROM odoo_customer_projection cp
                 {$bdoJoin}
                 {$whereClause}
@@ -1676,7 +1685,11 @@ function getOdooSlips($db, $input)
             match_reason,
             uploaded_by
         FROM odoo_slip_uploads
-        WHERE line_user_id = ?
+        WHERE id IN (
+            SELECT MAX(id) FROM odoo_slip_uploads
+            WHERE line_user_id = ?
+            GROUP BY COALESCE(image_url, image_path, CAST(id AS CHAR))
+        )
         ORDER BY uploaded_at DESC
         LIMIT 100
     ");
@@ -3014,7 +3027,7 @@ function getOverviewToday($db)
     $ordersDate  = date('Y-m-d');
     try {
         if (tableExists($db, 'odoo_orders')) {
-            $countStmt = $db->query("SELECT COUNT(*) FROM odoo_orders WHERE (date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY) OR (updated_at >= CURDATE() AND updated_at < CURDATE()+INTERVAL 1 DAY)");
+            $countStmt = $db->query("SELECT COUNT(*) FROM odoo_orders WHERE date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY");
             $ordersTotal = (int) $countStmt->fetchColumn();
 
             $stmt = $db->query("
@@ -3037,7 +3050,7 @@ function getOverviewToday($db)
                         END
                     ) as progress
                 FROM odoo_orders o
-                WHERE (date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY) OR (updated_at >= CURDATE() AND updated_at < CURDATE()+INTERVAL 1 DAY)
+                WHERE date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY
                 ORDER BY updated_at DESC
                 LIMIT 5
             ");
@@ -3059,13 +3072,53 @@ function getOverviewToday($db)
         $orders = [];
     }
 
-    // ── 3. Overdue customers — use odoo_customer_projection (already fast) ──
-    $overdueData = getCustomerList($db, [
-        'invoice_filter' => 'overdue',
-        'limit' => 5,
-        'offset' => 0,
-        'sort_by' => 'due_desc',
-    ]);
+    // ── 3. Overdue customers — use odoo_orders directly (projection.overdue_amount not populated) ──
+    $overdueData = ['customers' => [], 'total' => 0];
+    try {
+        if (tableExists($db, 'odoo_orders')) {
+            // Count distinct customers with unpaid orders
+            $overdueCount = $db->query("
+                SELECT COUNT(DISTINCT partner_id) as cnt,
+                       ROUND(SUM(amount_total), 2) as total_amount
+                FROM odoo_orders
+                WHERE is_paid = 0
+                  AND (state IS NULL OR state NOT IN ('cancel'))
+                  AND amount_total > 0
+                  AND partner_id IS NOT NULL
+            ")->fetch(PDO::FETCH_ASSOC);
+            $overdueData['total'] = (int) ($overdueCount['cnt'] ?? 0);
+            $overdueData['total_amount'] = (float) ($overdueCount['total_amount'] ?? 0);
+
+            // Top 5 overdue customers
+            $topOverdue = $db->query("
+                SELECT partner_id, customer_ref,
+                       COUNT(*) as unpaid_orders,
+                       ROUND(SUM(amount_total), 2) as unpaid_amount,
+                       MAX(date_order) as latest_order_at,
+                       COALESCE(salesperson_name, '') as salesperson_name
+                FROM odoo_orders
+                WHERE is_paid = 0
+                  AND (state IS NULL OR state NOT IN ('cancel'))
+                  AND amount_total > 0
+                  AND partner_id IS NOT NULL
+                GROUP BY partner_id, customer_ref, salesperson_name
+                ORDER BY unpaid_amount DESC
+                LIMIT 5
+            ")->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($topOverdue as &$c) {
+                $c['partner_id']     = (int) $c['partner_id'];
+                $c['unpaid_amount']  = (float) $c['unpaid_amount'];
+                $c['unpaid_orders']  = (int) $c['unpaid_orders'];
+                $c['overdue_amount'] = (float) $c['unpaid_amount']; // compat key
+                $c['total_due']      = (float) $c['unpaid_amount'];
+                $c['customer_name']  = $c['customer_ref'] ?? '';
+            }
+            unset($c);
+            $overdueData['customers'] = $topOverdue;
+        }
+    } catch (Exception $e) {
+        // keep defaults
+    }
 
     // ── 4. Pending BDOs — use odoo_bdos sync table (no JSON_EXTRACT) ──
     $pendingBdo = ['orders' => [], 'bdos' => [], 'total' => 0];
@@ -3139,7 +3192,7 @@ function getOverviewSlipsSummary($db)
             ORDER BY s.uploaded_at DESC
             LIMIT 5
         ");
-        $stmt->execute();
+        $stmt->execute($openStatuses);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rows as $row) {
             $row['id'] = (int) $row['id'];
@@ -4766,33 +4819,47 @@ function getCustomerDetail($db, $input)
         $where  = [];
         $params = [];
         if ($partnerId !== '' && $partnerId !== '-') {
-            $where[]  = 'partner_id = ?';
+            $where[]  = 'o.partner_id = ?';
             $params[] = (int) $partnerId;
         } elseif ($customerRef !== '') {
-            $where[]  = 'customer_ref = ?';
+            $where[]  = 'o.customer_ref = ?';
             $params[] = $customerRef;
         }
         if ($where) {
             $s = $db->prepare("
-                SELECT customer_ref, salesperson_name, line_user_id, partner_id
-                FROM odoo_orders
+                SELECT o.customer_ref, o.salesperson_name, o.line_user_id, o.partner_id,
+                       COALESCE(cp.customer_name, cp.partner_name) as display_name,
+                       cp.credit_limit, cp.credit_used, cp.total_due, cp.overdue_amount,
+                       cp.orders_count_30d, cp.orders_count_total, cp.spend_30d, cp.spend_total,
+                       cp.latest_order_at, cp.salesperson_name as cp_salesperson
+                FROM odoo_orders o
+                LEFT JOIN odoo_customer_projection cp ON cp.odoo_partner_id = o.partner_id
                 WHERE " . implode(' AND ', $where) . "
-                ORDER BY updated_at DESC LIMIT 1
+                ORDER BY o.updated_at DESC LIMIT 1
             ");
             $s->execute($params);
             $row = $s->fetch(PDO::FETCH_ASSOC);
             if ($row) {
+                $displayName = $row['display_name'] ?? ($row['customer_ref'] ?? '');
                 $detail['profile'] = [
-                    'name'             => $row['customer_ref'] ?? '',
-                    'customer_name'    => $row['customer_ref'] ?? '',
+                    'name'             => $displayName,
+                    'customer_name'    => $displayName,
                     'ref'              => $row['customer_ref'] ?? '',
                     'customer_ref'     => $row['customer_ref'] ?? '',
                     'partner_id'       => $row['partner_id'],
                     'phone'            => '',
                     'email'            => '',
-                    'salesperson_name' => $row['salesperson_name'] ?? '',
+                    'salesperson_name' => $row['cp_salesperson'] ?? ($row['salesperson_name'] ?? ''),
+                    'credit_limit'     => (float) ($row['credit_limit'] ?? 0),
+                    'credit_used'      => (float) ($row['credit_used'] ?? 0),
+                    'total_due'        => (float) ($row['total_due'] ?? 0),
+                    'overdue_amount'   => (float) ($row['overdue_amount'] ?? 0),
+                    'orders_count_30d' => (int) ($row['orders_count_30d'] ?? 0),
+                    'orders_total'     => (int) ($row['orders_count_total'] ?? 0),
+                    'spend_30d'        => (float) ($row['spend_30d'] ?? 0),
+                    'spend_total'      => (float) ($row['spend_total'] ?? 0),
                 ];
-                $detail['warnings'][] = 'profile_source: odoo_orders';
+                $detail['warnings'][] = 'profile_source: odoo_orders+projection';
                 // Ensure customer_ref is resolved for BDO lookup below
                 if ($customerRef === '') $customerRef = $row['customer_ref'] ?? '';
             }

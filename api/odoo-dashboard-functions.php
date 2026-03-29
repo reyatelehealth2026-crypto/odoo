@@ -1168,10 +1168,10 @@ if (!function_exists('getOverviewFast')) {
             'webhook_success_rate'=> 0,
         ];
         try {
-            $row = $db->query("SELECT COUNT(*) as c, COALESCE(SUM(amount_total),0) as s FROM odoo_orders WHERE COALESCE(date_order,updated_at) >= CURDATE() AND COALESCE(date_order,updated_at) < CURDATE()+INTERVAL 1 DAY")->fetch(PDO::FETCH_ASSOC);
+            $row = $db->query("SELECT COUNT(*) as c, COALESCE(SUM(amount_total),0) as s FROM odoo_orders WHERE date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY AND (state IS NULL OR state NOT IN ('cancel'))")->fetch(PDO::FETCH_ASSOC);
             $r['orders_today'] = (int) ($row['c'] ?? 0);
             $r['sales_today']  = (float) ($row['s'] ?? 0);
-            $stmt = $db->query("SELECT order_id, order_name, customer_ref, state, state_display, amount_total, date_order, updated_at, latest_event, salesperson_name, line_user_id FROM odoo_orders WHERE COALESCE(date_order,updated_at) >= CURDATE() AND COALESCE(date_order,updated_at) < CURDATE()+INTERVAL 1 DAY ORDER BY updated_at DESC LIMIT 5");
+            $stmt = $db->query("SELECT order_id, order_name, customer_ref, state, state_display, amount_total, date_order, updated_at, latest_event, salesperson_name, line_user_id FROM odoo_orders WHERE date_order >= CURDATE() AND date_order < CURDATE()+INTERVAL 1 DAY AND (state IS NULL OR state NOT IN ('cancel')) ORDER BY date_order DESC, updated_at DESC LIMIT 5");
             $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
             foreach ($orders as &$o) { $o['amount_total'] = (float) ($o['amount_total'] ?? 0); }
             unset($o);
@@ -1187,7 +1187,7 @@ if (!function_exists('getOverviewFast')) {
             $r['bdos_pending_amount'] = (float) ($row['s'] ?? 0);
         } catch (Exception $e) {}
         try {
-            $r['overdue_customers'] = (int) $db->query("SELECT COUNT(*) FROM odoo_customer_projection WHERE overdue_amount > 0")->fetchColumn();
+            $r['overdue_customers'] = (int) $db->query("SELECT COUNT(DISTINCT partner_id) FROM odoo_orders WHERE is_paid = 0 AND (state IS NULL OR state NOT IN ('cancel')) AND amount_total > 0 AND partner_id IS NOT NULL")->fetchColumn();
         } catch (Exception $e) {}
         try {
             $col = resolveWebhookTimeColumn($db);

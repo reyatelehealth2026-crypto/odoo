@@ -53,6 +53,7 @@ try {
     $search      = trim($_GET['search']      ?? '');
     $status      = trim($_GET['status']      ?? '');
     $date        = trim($_GET['date']        ?? '');
+    $days        = isset($_GET['days']) ? max(1, min(365, (int) $_GET['days'])) : 7; // default 7 วัน
     $lineUserId  = trim($_GET['line_user_id'] ?? '');
     $customerRef = trim($_GET['customer_ref'] ?? '');
     $partnerId   = (int) ($_GET['partner_id'] ?? 0);
@@ -105,8 +106,13 @@ try {
     }
 
     if ($date !== '') {
+        // Exact date filter (overrides days range)
         $where[]  = 'DATE(s.uploaded_at) = ?';
         $params[] = $date;
+    } elseif ($lineUserId === '' && $days > 0) {
+        // Default: show last N days (skip date filter for per-customer scoped queries)
+        $where[]  = 's.uploaded_at >= DATE_SUB(NOW(), INTERVAL ? DAY)';
+        $params[] = $days;
     }
 
     $whereClause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
@@ -150,12 +156,12 @@ try {
             s.matched_at,
             u.display_name AS customer_name,
             u.picture_url  AS customer_avatar,
-            COALESCE(olu.odoo_customer_code, ob.customer_ref) AS customer_ref,
-            COALESCE(olu.odoo_partner_id, ob.partner_id) AS partner_id
+            olu.odoo_customer_code AS customer_ref,
+            olu.odoo_partner_id AS partner_id
         FROM odoo_slip_uploads s
         LEFT JOIN users u ON u.line_user_id = s.line_user_id
         LEFT JOIN odoo_line_users olu ON olu.line_user_id = s.line_user_id
-        LEFT JOIN odoo_bdos ob ON ob.line_user_id = s.line_user_id AND ob.customer_ref IS NOT NULL
+        -- odoo_bdos JOIN removed (caused N×M fanout)
         $whereClause
         ORDER BY s.uploaded_at DESC
         LIMIT ? OFFSET ?
