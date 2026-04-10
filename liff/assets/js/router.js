@@ -52,7 +52,9 @@ class Router {
             '/retail-cart': { page: 'retail-cart', title: 'ตะกร้าสินค้า' },
             '/retail-checkout': { page: 'retail-checkout', title: 'ชำระเงิน' },
             '/retail-orders': { page: 'retail-orders', title: 'คำสั่งซื้อ' },
-            '/retail-order/:id': { page: 'retail-order', title: 'รายละเอียดคำสั่งซื้อ' }
+            '/retail-order/:id': { page: 'retail-order', title: 'รายละเอียดคำสั่งซื้อ' },
+            // Minigame
+            '/minigame': { page: 'minigame', title: 'มินิเกมลุ้นรางวัล' }
         };
     }
 

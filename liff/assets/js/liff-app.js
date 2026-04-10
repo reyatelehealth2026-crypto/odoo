@@ -448,6 +448,9 @@ class LiffApp {
         window.router.register('odoo-invoices', () => this.renderOdooInvoicesPage());
         window.router.register('odoo-credit-status', () => this.renderOdooCreditStatusPage());
         window.router.register('odoo-slip', () => this.renderOdooSlipPage());
+
+        // Minigame page
+        window.router.register('minigame', () => this.renderMinigamePage());
     }
 
     /**
@@ -526,6 +529,11 @@ class LiffApp {
         // Initialize health profile page
         if (route.page === 'health-profile') {
             setTimeout(() => this.initHealthProfilePage(), 100);
+        }
+
+        // Initialize minigame page
+        if (route.page === 'minigame') {
+            setTimeout(() => this.initMinigamePage(), 100);
         }
 
         // Initialize Odoo pages
@@ -11827,6 +11835,339 @@ class LiffApp {
             submitBtn.innerHTML = originalText;
             submitBtn.disabled = false;
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // MINIGAME PAGE
+    // ─────────────────────────────────────────────────────────────
+
+    /** Render skeleton while data loads */
+    async renderMinigamePage() {
+        return `
+        <div id="minigame-root" style="min-height:100vh;background:linear-gradient(135deg,#0D8A82 0%,#11B0A6 50%,#3B82F6 100%);padding:0 0 80px;">
+            <!-- Header -->
+            <div style="display:flex;align-items:center;gap:12px;padding:16px 16px 0;">
+                <button onclick="window.router.back()"
+                        style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">มินิเกมลุ้นรางวัล</h1>
+            </div>
+            <!-- Loading skeleton -->
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;">
+                <div style="width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,.15);animation:mg-pulse 1.4s ease-in-out infinite;margin-bottom:24px;"></div>
+                <div style="width:160px;height:20px;border-radius:10px;background:rgba(255,255,255,.2);animation:mg-pulse 1.4s ease-in-out infinite;margin-bottom:12px;"></div>
+                <div style="width:120px;height:16px;border-radius:8px;background:rgba(255,255,255,.15);animation:mg-pulse 1.4s ease-in-out .2s infinite;"></div>
+            </div>
+            <style>
+            @keyframes mg-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+            @keyframes mg-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+            @keyframes mg-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+            @keyframes mg-pop{0%{transform:scale(0);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+            @keyframes mg-confetti-fall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(100vh) rotate(720deg);opacity:0}}
+            </style>
+        </div>`;
+    }
+
+    /** Called after DOM is ready; fetches play status and renders real UI */
+    async initMinigamePage() {
+        const root = document.getElementById('minigame-root');
+        if (!root) return;
+
+        const profile   = window.store?.get('profile');
+        const lineUserId = profile?.userId;
+        const accountId  = this.config.ACCOUNT_ID;
+        const baseUrl    = this.config.BASE_URL;
+
+        if (!lineUserId) {
+            this._mgRenderError(root, 'กรุณาเข้าสู่ระบบก่อนเล่นเกม');
+            return;
+        }
+
+        try {
+            const res  = await fetch(`${baseUrl}/api/minigame.php?action=check_played&line_user_id=${encodeURIComponent(lineUserId)}&line_account_id=${accountId}`);
+            const data = await res.json();
+
+            if (!data.success) throw new Error(data.message);
+
+            if (data.played) {
+                this._mgRenderResult(root, data.play, false, baseUrl, accountId, lineUserId);
+            } else {
+                this._mgRenderGame(root, baseUrl, accountId, lineUserId, profile?.displayName || '');
+            }
+        } catch (e) {
+            this._mgRenderError(root, 'ไม่สามารถโหลดข้อมูลได้ กรุณาลองใหม่');
+        }
+    }
+
+    /** Render the interactive game screen */
+    _mgRenderGame(root, baseUrl, accountId, lineUserId, displayName) {
+        root.innerHTML = `
+        <style>
+        @keyframes mg-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes mg-bounce{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-16px) scale(1.05)}}
+        @keyframes mg-pop{0%{transform:scale(0);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+        @keyframes mg-shimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+        .mg-spin-btn{background:linear-gradient(135deg,#FFD700,#FFA500);border:none;border-radius:60px;padding:18px 48px;font-size:22px;font-weight:800;color:#7B3F00;cursor:pointer;box-shadow:0 6px 20px rgba(255,165,0,.5);transition:transform .15s,box-shadow .15s;}
+        .mg-spin-btn:active{transform:scale(.96);box-shadow:0 3px 10px rgba(255,165,0,.4);}
+        .mg-spin-btn:disabled{opacity:.6;cursor:not-allowed;}
+        </style>
+
+        <!-- Back -->
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 16px 0;">
+            <button onclick="window.router.back()"
+                    style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">มินิเกมลุ้นรางวัล</h1>
+        </div>
+
+        <!-- Game card -->
+        <div style="margin:20px 16px;background:rgba(255,255,255,.12);border-radius:24px;padding:28px 20px;text-align:center;backdrop-filter:blur(8px);">
+            <p style="color:rgba(255,255,255,.85);font-size:14px;margin:0 0 6px;">สแกน QR แล้วเข้ามาถึงนี่ได้ยังไง? 🎉</p>
+            <h2 style="color:#fff;font-size:22px;font-weight:800;margin:0 0 24px;">กดหมุนเพื่อลุ้นรางวัล!</h2>
+
+            <!-- Wheel graphic -->
+            <div id="mg-wheel-wrap" style="position:relative;width:200px;height:200px;margin:0 auto 28px;">
+                <div id="mg-wheel" style="width:200px;height:200px;border-radius:50%;background:conic-gradient(
+                    #FF6B6B 0deg 51.43deg,
+                    #FFD93D 51.43deg 102.86deg,
+                    #6BCB77 102.86deg 154.29deg,
+                    #4D96FF 154.29deg 205.71deg,
+                    #C77DFF 205.71deg 257.14deg,
+                    #FF9A3C 257.14deg 308.57deg,
+                    #FF6B6B 308.57deg 360deg
+                );box-shadow:0 8px 32px rgba(0,0,0,.3);transition:transform 3s cubic-bezier(.17,.67,.12,1);">
+                </div>
+                <!-- Center circle -->
+                <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:56px;height:56px;border-radius:50%;background:#fff;box-shadow:0 4px 12px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;font-size:28px;">
+                    🎰
+                </div>
+                <!-- Pointer -->
+                <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:12px solid transparent;border-right:12px solid transparent;border-top:24px solid #FFD700;filter:drop-shadow(0 2px 4px rgba(0,0,0,.3));"></div>
+            </div>
+
+            <p style="color:rgba(255,255,255,.8);font-size:13px;margin:0 0 20px;">กดปุ่มด้านล่างเพื่อหมุนวงล้อ<br>สุ่มรางวัลได้ <strong style="color:#FFD700;">1 ครั้งต่อ 1 ท่าน</strong></p>
+
+            <button id="mg-spin-btn" class="mg-spin-btn" onclick="window.liffApp._mgDoSpin('${baseUrl}',${accountId},'${lineUserId.replace(/'/g,"\\'")}','${(displayName || '').replace(/'/g,"\\'")}')">
+                🎰 หมุนเลย!
+            </button>
+        </div>
+
+        <!-- Prize list -->
+        <div style="margin:0 16px;background:rgba(255,255,255,.1);border-radius:20px;padding:20px;">
+            <h3 style="color:#fff;font-size:15px;font-weight:700;margin:0 0 14px;text-align:center;">🏅 รายการรางวัลที่ลุ้นได้</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                ${[
+                    ['🎟️','ส่วนลด 10%','โอกาส 30%'],
+                    ['🎫','ส่วนลด 20%','โอกาส 15%'],
+                    ['⭐','แต้มโบนัส 50','โอกาส 25%'],
+                    ['🌟','แต้มโบนัส 100','โอกาส 12%'],
+                    ['🎁','ของฟรี 1 ชิ้น','โอกาส 8%'],
+                    ['💊','ตรวจสุขภาพฟรี','โอกาส 5%'],
+                    ['🏆','รางวัลใหญ่พิเศษ','โอกาส 5%'],
+                ].map(([icon, name, chance]) => `
+                    <div style="background:rgba(255,255,255,.1);border-radius:12px;padding:10px;text-align:center;">
+                        <div style="font-size:24px;">${icon}</div>
+                        <div style="color:#fff;font-size:12px;font-weight:600;margin:4px 0 2px;">${name}</div>
+                        <div style="color:rgba(255,255,255,.6);font-size:11px;">${chance}</div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>`;
+    }
+
+    /** Spin animation + call API */
+    async _mgDoSpin(baseUrl, accountId, lineUserId, displayName) {
+        const btn   = document.getElementById('mg-spin-btn');
+        const wheel = document.getElementById('mg-wheel');
+        if (!btn || !wheel) return;
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังสุ่ม...';
+
+        // Animate wheel spinning (3 full rotations + random extra)
+        const extraDeg   = Math.floor(Math.random() * 360);
+        const totalDeg   = 360 * 5 + extraDeg;
+        wheel.style.transition = 'transform 3s cubic-bezier(.17,.67,.12,1)';
+        wheel.style.transform  = `rotate(${totalDeg}deg)`;
+
+        try {
+            const res  = await fetch(`${baseUrl}/api/minigame.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'play', line_user_id: lineUserId, line_account_id: accountId, display_name: displayName })
+            });
+            const data = await res.json();
+
+            // Wait for spin animation to finish (3s)
+            await new Promise(r => setTimeout(r, 3200));
+
+            if (!data.success) {
+                if (data.message === 'already_played') {
+                    // Reload to show result
+                    this.initMinigamePage();
+                    return;
+                }
+                throw new Error(data.message);
+            }
+
+            const root = document.getElementById('minigame-root');
+            if (root) this._mgRenderResult(root, data.reward, true, baseUrl, accountId, lineUserId);
+
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = '🎰 หมุนเลย!';
+            alert('เกิดข้อผิดพลาด: ' + e.message);
+        }
+    }
+
+    /** Render result screen */
+    _mgRenderResult(root, play, isNew, baseUrl, accountId, lineUserId) {
+        const icon     = play.reward_icon || play.icon || '🎁';
+        const name     = play.reward_name || play.name || 'รางวัล';
+        const desc     = play.reward_desc || play.desc || '';
+        const claimed  = play.claimed;
+        const queueNum = play.queue_number;
+        const staffRcv = play.staff_received;
+
+        const confetti = isNew ? this._mgConfettiHtml() : '';
+
+        root.innerHTML = `
+        <style>
+        @keyframes mg-pop{0%{transform:scale(0);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+        @keyframes mg-confetti-fall{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(110vh) rotate(720deg);opacity:0}}
+        @keyframes mg-bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+        .mg-claim-btn{background:linear-gradient(135deg,#10B981,#059669);border:none;border-radius:60px;padding:16px 40px;font-size:18px;font-weight:700;color:#fff;cursor:pointer;box-shadow:0 6px 20px rgba(16,185,129,.4);transition:transform .15s,box-shadow .15s;width:100%;}
+        .mg-claim-btn:active{transform:scale(.97);}
+        .mg-claim-btn:disabled{opacity:.6;cursor:not-allowed;}
+        </style>
+
+        ${confetti}
+
+        <!-- Back -->
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 16px 0;">
+            <button onclick="window.router.back()"
+                    style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">ผลการลุ้นรางวัล</h1>
+        </div>
+
+        <!-- Result card -->
+        <div style="margin:20px 16px;background:rgba(255,255,255,.95);border-radius:24px;padding:32px 24px;text-align:center;animation:mg-pop .5s ease-out;">
+            ${isNew ? '<p style="color:#10B981;font-weight:700;font-size:14px;margin:0 0 8px;">🎉 ยินดีด้วย! คุณได้รับ</p>' : '<p style="color:#6B7280;font-size:13px;margin:0 0 8px;">คุณเคยเล่นแล้วและได้รับ</p>'}
+            <div style="font-size:72px;margin-bottom:12px;animation:mg-bounce 1.5s ease-in-out infinite;">${icon}</div>
+            <h2 style="color:#1F2937;font-size:26px;font-weight:800;margin:0 0 8px;">${name}</h2>
+            <p style="color:#6B7280;font-size:14px;margin:0 0 24px;">${desc}</p>
+
+            ${staffRcv
+                ? `<div style="background:#D1FAE5;border-radius:12px;padding:16px;margin-bottom:20px;">
+                       <p style="color:#065F46;font-weight:700;margin:0;">✅ รับของเรียบร้อยแล้ว</p>
+                   </div>`
+                : claimed
+                ? `<div style="background:#DBEAFE;border-radius:12px;padding:16px;margin-bottom:20px;">
+                       <p style="color:#1E40AF;font-weight:700;margin:0 0 4px;">📋 หมายเลขคิวของคุณ</p>
+                       <p style="color:#1D4ED8;font-size:36px;font-weight:900;margin:0;">#${queueNum}</p>
+                       <p style="color:#3B82F6;font-size:13px;margin:4px 0 0;">รอเจ้าหน้าที่เรียกคิว</p>
+                   </div>
+                   <button class="mg-claim-btn" style="background:linear-gradient(135deg,#6B7280,#4B5563);" disabled>
+                       ✅ อยู่ในคิวแล้ว (#${queueNum})
+                   </button>`
+                : `<button class="mg-claim-btn" id="mg-claim-btn"
+                        onclick="window.liffApp._mgDoClaim('${baseUrl}',${accountId},'${lineUserId.replace(/'/g,"\\'")}')">
+                        🎁 รับของ
+                   </button>`
+            }
+        </div>
+
+        <!-- Info box -->
+        <div style="margin:0 16px;background:rgba(255,255,255,.15);border-radius:16px;padding:16px;text-align:center;">
+            <p style="color:rgba(255,255,255,.85);font-size:13px;margin:0;">
+                <i class="fas fa-info-circle"></i>
+                สุ่มรางวัลได้ 1 ครั้งต่อท่าน<br>กด <strong>รับของ</strong> แล้วรอเจ้าหน้าที่ยืนยันการรับ
+            </p>
+        </div>`;
+    }
+
+    /** Handle claim button */
+    async _mgDoClaim(baseUrl, accountId, lineUserId) {
+        // Check if user has added OA as friend
+        const isInClient = liff?.isInClient?.() ?? false;
+        const isFriend   = isInClient ? (liff?.getFriendship?.()?.friendFlag ?? true) : true;
+
+        // If running in LIFF and not a friend, redirect to add friend page
+        if (isInClient && typeof liff !== 'undefined') {
+            try {
+                const friendship = await liff.getFriendship();
+                if (!friendship.friendFlag) {
+                    // Redirect to OA add page
+                    const addFriendUrl = `https://line.me/R/ti/p/${window.APP_CONFIG?.LIFF_ID || ''}`;
+                    if (confirm('กรุณาเพิ่ม LINE OA เป็นเพื่อนก่อนรับของ\nกด OK เพื่อไปหน้าเพิ่มเพื่อน')) {
+                        window.open(addFriendUrl, '_blank');
+                    }
+                    return;
+                }
+            } catch (e) {
+                // getFriendship not available — proceed anyway
+            }
+        }
+
+        const btn = document.getElementById('mg-claim-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังดำเนินการ...'; }
+
+        try {
+            const res  = await fetch(`${baseUrl}/api/minigame.php`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'claim', line_user_id: lineUserId, line_account_id: accountId })
+            });
+            const data = await res.json();
+
+            if (!data.success && data.message !== 'already_claimed') throw new Error(data.message);
+
+            // Reload page to show queue screen
+            this.initMinigamePage();
+
+        } catch (e) {
+            if (btn) { btn.disabled = false; btn.innerHTML = '🎁 รับของ'; }
+            alert('เกิดข้อผิดพลาด: ' + e.message);
+        }
+    }
+
+    /** Simple confetti burst */
+    _mgConfettiHtml() {
+        const colors = ['#FFD700','#FF6B6B','#6BCB77','#4D96FF','#C77DFF','#FF9A3C'];
+        let html = '<div style="position:fixed;top:0;left:0;width:100%;height:0;pointer-events:none;z-index:9999;">';
+        for (let i = 0; i < 40; i++) {
+            const color = colors[i % colors.length];
+            const left  = Math.random() * 100;
+            const delay = Math.random() * 0.8;
+            const size  = 8 + Math.random() * 8;
+            const dur   = 2.5 + Math.random() * 1.5;
+            html += `<div style="position:absolute;left:${left}%;top:0;width:${size}px;height:${size}px;background:${color};border-radius:${Math.random() > 0.5 ? '50%' : '2px'};animation:mg-confetti-fall ${dur}s ${delay}s ease-in forwards;"></div>`;
+        }
+        html += '</div>';
+        return html;
+    }
+
+    _mgRenderError(root, msg) {
+        root.innerHTML = `
+        <div style="display:flex;align-items:center;gap:12px;padding:16px 16px 0;">
+            <button onclick="window.router.back()"
+                    style="background:rgba(255,255,255,.2);border:none;border-radius:50%;width:40px;height:40px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">มินิเกมลุ้นรางวัล</h1>
+        </div>
+        <div style="text-align:center;padding:60px 20px;">
+            <div style="font-size:48px;margin-bottom:16px;">😔</div>
+            <p style="color:#fff;font-size:16px;">${msg}</p>
+            <button onclick="window.liffApp.initMinigamePage()"
+                    style="margin-top:20px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);border-radius:12px;padding:12px 32px;color:#fff;font-size:15px;cursor:pointer;">
+                ลองใหม่
+            </button>
+        </div>`;
     }
 }
 

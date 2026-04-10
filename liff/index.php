@@ -31,7 +31,7 @@ $shopName = 'ร้านค้า';
 $shopLogo = '';
 $companyName = 'MedCare';
 $orderDataSource = 'shop';
-$v = '202603162301'; // Global Cache Buster defined at top - Updated for retail B2C
+$v = '202604101200'; // Global Cache Buster - Updated for minigame feature
 
 // Build LIFF ID to Account mapping for JavaScript
 $liffToAccountMap = [];
