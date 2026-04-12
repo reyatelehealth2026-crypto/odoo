@@ -2,24 +2,28 @@ import { useNavigate } from 'react-router-dom'
 import { ShoppingBag, ShoppingCart, ClipboardList, Bot, Calendar, Gift } from 'lucide-react'
 
 const services = [
-  { path: '/shop', icon: ShoppingBag, label: 'ร้านค้า', color: 'bg-blue-100 text-blue-600' },
-  { path: '/cart', icon: ShoppingCart, label: 'ตะกร้า', color: 'bg-green-100 text-green-600' },
-  { path: '/orders', icon: ClipboardList, label: 'ออเดอร์', color: 'bg-orange-100 text-orange-600' },
-  { path: '/ai-chat', icon: Bot, label: 'AI ช่วย', color: 'bg-purple-100 text-purple-600' },
-  { path: '/appointments', icon: Calendar, label: 'นัดหมาย', color: 'bg-pink-100 text-pink-600' },
-  { path: '/redeem', icon: Gift, label: 'แลกแต้ม', color: 'bg-amber-100 text-amber-600' },
+  { path: '/shop', icon: ShoppingBag, label: 'ร้านค้า', bg: 'bg-emerald-50', fg: 'text-emerald-600' },
+  { path: '/cart', icon: ShoppingCart, label: 'ตะกร้า', bg: 'bg-cyan-50', fg: 'text-cyan-600' },
+  { path: '/orders', icon: ClipboardList, label: 'ออเดอร์', bg: 'bg-orange-50', fg: 'text-orange-500' },
+  { path: '/ai-chat', icon: Bot, label: 'AI ช่วย', bg: 'bg-violet-50', fg: 'text-violet-600' },
+  { path: '/appointments', icon: Calendar, label: 'นัดหมาย', bg: 'bg-rose-50', fg: 'text-rose-500' },
+  { path: '/redeem', icon: Gift, label: 'แลกแต้ม', bg: 'bg-amber-50', fg: 'text-amber-600' },
 ]
 
 export function ServiceGrid() {
   const navigate = useNavigate()
   return (
-    <div className="grid grid-cols-3 gap-3">
+    <div className="grid grid-cols-3 gap-2.5">
       {services.map((s) => (
-        <button key={s.path} onClick={() => navigate(s.path)} className="flex flex-col items-center gap-2 py-3 bg-white rounded-xl shadow-sm active:scale-95 transition-transform">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.color}`}>
-            <s.icon className="w-5 h-5" />
+        <button
+          key={s.path}
+          onClick={() => navigate(s.path)}
+          className="flex flex-col items-center gap-1.5 py-4 bg-white rounded-2xl cursor-pointer active:scale-[0.96] transition-all duration-150 hover:shadow-sm border border-slate-50"
+        >
+          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${s.bg}`}>
+            <s.icon className={`w-[22px] h-[22px] ${s.fg}`} strokeWidth={1.8} />
           </div>
-          <span className="text-xs font-medium text-gray-700">{s.label}</span>
+          <span className="text-[11px] font-medium text-slate-700">{s.label}</span>
         </button>
       ))}
     </div>

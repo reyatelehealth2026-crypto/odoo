@@ -5,7 +5,7 @@ import { LiffProvider } from './LiffProvider'
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/app">
       <QueryProvider>
         <LiffProvider>
           {children}

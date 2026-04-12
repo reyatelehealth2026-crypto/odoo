@@ -1,6 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Home, ShoppingBag, ClipboardList, CreditCard, User } from 'lucide-react'
-import { clsx } from 'clsx'
 
 const tabs = [
   { path: '/', icon: Home, label: 'หน้าแรก' },
@@ -15,18 +14,19 @@ export function BottomNav() {
   const navigate = useNavigate()
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 safe-bottom z-50">
-      <div className="flex items-center justify-around max-w-lg mx-auto">
+    <nav className="bg-white/95 backdrop-blur-lg border-t border-slate-100 safe-bottom">
+      <div className="flex items-stretch justify-around h-[56px]">
         {tabs.map((tab) => {
           const active = tab.path === '/' ? location.pathname === '/' : location.pathname.startsWith(tab.path)
           return (
             <button
               key={tab.path}
               onClick={() => navigate(tab.path)}
-              className={clsx('flex flex-col items-center py-2 px-3 min-w-0', active ? 'text-primary' : 'text-gray-400')}
+              className="flex flex-col items-center justify-center flex-1 min-w-0 cursor-pointer relative transition-colors duration-150"
             >
-              <tab.icon className="w-5 h-5" />
-              <span className="text-[10px] mt-0.5 font-medium">{tab.label}</span>
+              {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 w-6 h-[3px] bg-primary rounded-full" />}
+              <tab.icon className={`w-[22px] h-[22px] transition-colors duration-150 ${active ? 'text-primary' : 'text-slate-400'}`} strokeWidth={active ? 2.2 : 1.8} />
+              <span className={`text-[10px] mt-0.5 transition-colors duration-150 ${active ? 'text-primary font-semibold' : 'text-slate-400 font-medium'}`}>{tab.label}</span>
             </button>
           )
         })}
