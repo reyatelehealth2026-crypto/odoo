@@ -279,13 +279,33 @@ try {
                     }
                 }
 
-                $messagePayload = $message;
-                if ($quoteToken) {
+                // Build LINE message payload based on type.
+                // For non-text types (flex/image/video/sticker/audio/location/imagemap),
+                // $message is a JSON-encoded LINE message object — decode it.
+                if ($messageType === 'text') {
                     $messagePayload = [
-                        'type'       => $messageType,
-                        'text'       => $message,
-                        'quoteToken' => $quoteToken,
+                        'type' => 'text',
+                        'text' => $message,
                     ];
+                    if ($quoteToken) {
+                        $messagePayload['quoteToken'] = $quoteToken;
+                    }
+                } else {
+                    $decoded = json_decode($message, true);
+                    if (!is_array($decoded)) {
+                        throw new Exception(
+                            "Invalid $messageType payload: expected JSON object, got " .
+                            substr($message, 0, 80)
+                        );
+                    }
+                    // Ensure type field matches declared messageType
+                    if (!isset($decoded['type'])) {
+                        $decoded['type'] = $messageType;
+                    }
+                    if ($quoteToken) {
+                        $decoded['quoteToken'] = $quoteToken;
+                    }
+                    $messagePayload = $decoded;
                 }
 
                 $lineManager = new LineAccountManager($db);
@@ -307,7 +327,19 @@ try {
                 }
 
                 if ($result['code'] !== 200) {
-                    throw new Exception('LINE API Error: ' . ($result['error'] ?? 'Unknown'));
+                    // LINE API error body shape:
+                    //   { "message": "...", "details": [{ "message": "...", "property": "..." }] }
+                    $body = $result['body'] ?? [];
+                    $errMsg = $body['message'] ?? ($result['error'] ?? 'Unknown');
+                    if (!empty($body['details']) && is_array($body['details'])) {
+                        $detailParts = [];
+                        foreach ($body['details'] as $d) {
+                            $detailParts[] = ($d['property'] ?? '') . ': ' . ($d['message'] ?? '');
+                        }
+                        $errMsg .= ' (' . implode('; ', $detailParts) . ')';
+                    }
+                    error_log('LINE API send failed (code ' . $result['code'] . '): ' . json_encode($result));
+                    throw new Exception('LINE API Error: ' . $errMsg);
                 }
 
                 // Extract sentMessages from LINE API response
