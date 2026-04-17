@@ -58,6 +58,7 @@ export interface HomeSection {
   iconUrl: string | null
   countdownEndsAt: string | null
   displayOrder: number
+  viewAllLink?: Omit<UniversalLink, 'label'>
   products: HomeProduct[]
 }
 

@@ -22,6 +22,7 @@ function LineProvider({ children }: { children: ReactNode }) {
     isReady: false,
     isLoggedIn: false,
     isInClient: false,
+    isGuest: false,
     profile: null,
     accessToken: null,
     error: null
@@ -30,11 +31,6 @@ function LineProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     bootstrapLine().then((state) => {
       setLineState(state)
-      if (state.needsLogin) {
-        import('@line/liff').then((liff) => {
-          liff.default.login()
-        })
-      }
     })
   }, [])
 
@@ -46,19 +42,6 @@ function LineProvider({ children }: { children: ReactNode }) {
             <div className="h-6 w-6 animate-spin rounded-full border-3 border-white border-t-transparent" />
           </div>
           <p className="text-sm font-medium text-slate-500">กำลังเตรียมระบบ...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (lineState.needsLogin) {
-    return (
-      <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-surface-secondary">
-        <div className="flex flex-col items-center gap-4">
-          <div className="gradient-card flex h-16 w-16 items-center justify-center rounded-2xl shadow-glow">
-            <div className="h-6 w-6 animate-spin rounded-full border-3 border-white border-t-transparent" />
-          </div>
-          <p className="text-sm font-medium text-slate-500">กำลังเข้าสู่ระบบ LINE...</p>
         </div>
       </div>
     )

@@ -9,6 +9,7 @@ export interface LineBootstrapState {
   isReady: boolean
   isLoggedIn: boolean
   isInClient: boolean
+  isGuest: boolean
   profile: LineProfile | null
   accessToken: string | null
   error: string | null

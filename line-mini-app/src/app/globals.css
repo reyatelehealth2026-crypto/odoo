@@ -142,12 +142,12 @@ textarea {
 .banner-slider {
   position: relative;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: 1.25rem;
 }
 
 .banner-slider-track {
   display: flex;
-  transition: transform 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+  transition: transform 0.35s cubic-bezier(0.33, 1, 0.68, 1);
   will-change: transform;
 }
 
@@ -156,31 +156,32 @@ textarea {
   min-width: 0;
 }
 
+.aspect-banner {
+  aspect-ratio: 16 / 7;
+}
+
 .banner-slider-dots {
   display: flex;
   justify-content: center;
   gap: 5px;
-  padding: 8px 0 6px;
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  padding: 8px 0 2px;
+  position: static;
 }
 
 .banner-slider-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   border: none;
-  background: rgba(255,255,255,0.4);
+  background: rgba(15,23,42,0.18);
   cursor: pointer;
   padding: 0;
   transition: all 0.25s;
 }
 
 .banner-slider-dot.active {
-  background: white;
-  width: 18px;
+  background: #004aad;
+  width: 20px;
   border-radius: 3px;
 }
 
@@ -188,9 +189,23 @@ textarea {
    Flash Sale Section — Makro Pro dark promo banner
    ============================================================ */
 .flash-sale-section {
-  border-radius: 16px;
+  position: relative;
+  border-radius: 1.25rem;
   padding: 14px;
   overflow: hidden;
+  box-shadow: 0 4px 24px rgba(15,23,42,0.12);
+}
+
+.flash-sale-section::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 32px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--flash-sale-fade, rgba(139,0,0,0.6)));
+  border-radius: 0 1.25rem 1.25rem 0;
 }
 
 .flash-sale-header {
@@ -240,8 +255,10 @@ textarea {
   display: flex;
   align-items: center;
   gap: 3px;
-  background: rgba(0,0,0,0.3);
-  border-radius: 8px;
+  background: rgba(0,0,0,0.35);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
   padding: 4px 8px;
   font-size: 12px;
 }
@@ -251,11 +268,18 @@ textarea {
   font-weight: 700;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  background: rgba(255,255,255,0.2);
-  border-radius: 4px;
+  background: rgba(255,255,255,0.25);
+  border-radius: 6px;
   padding: 1px 5px;
   min-width: 26px;
   text-align: center;
+}
+
+.flash-sale-countdown-sep {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.6;
+  margin: 0 -1px;
 }
 
 .flash-sale-expired {
@@ -268,23 +292,33 @@ textarea {
   align-items: center;
   gap: 2px;
   background: none;
-  border: none;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 20px;
   color: inherit;
   font-size: 11px;
   font-weight: 600;
-  opacity: 0.8;
+  opacity: 0.85;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 10px;
+  text-decoration: none;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.flash-sale-see-all:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.1);
 }
 
 .flash-sale-scroll {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
+  padding-left: 2px;
+  padding-right: 2px;
 }
 
 .flash-sale-scroll::-webkit-scrollbar {
@@ -298,22 +332,26 @@ textarea {
   display: flex;
   flex-direction: column;
   background: white;
-  border-radius: 12px;
+  border-radius: 1rem;
   overflow: hidden;
   text-decoration: none;
   color: inherit;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, transform 0.15s;
   scroll-snap-align: start;
-  border: 1px solid #f0f0f0;
+  border: 1px solid rgba(15,23,42,0.06);
 }
 
 .product-card:hover {
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  box-shadow: 0 4px 24px rgba(15,23,42,0.10);
+}
+
+.product-card:active {
+  transform: scale(0.98);
 }
 
 .product-card-flash_sale {
-  min-width: 132px;
-  max-width: 148px;
+  min-width: 140px;
+  max-width: 156px;
   flex-shrink: 0;
 }
 
@@ -327,8 +365,9 @@ textarea {
   position: relative;
   aspect-ratio: 1;
   overflow: hidden;
-  background: #fafafa;
-  padding: 8px;
+  background: #f8fafc;
+  padding: 10px;
+  border-radius: inherit;
 }
 
 .product-card-img {
@@ -341,25 +380,30 @@ textarea {
   position: absolute;
   top: 0;
   left: 0;
-  background: #e53935;
+  background: #dc2626;
   color: white;
   font-size: 11px;
   font-weight: 800;
   padding: 3px 8px;
   border-radius: 0 0 8px 0;
   line-height: 1;
+  letter-spacing: 0.01em;
 }
 
 .product-card-promo-label {
   position: absolute;
   bottom: 4px;
   left: 4px;
-  background: #333;
+  background: rgba(15,23,42,0.75);
   color: white;
   font-size: 9px;
   font-weight: 700;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 6px;
+}
+
+.product-card-custom-label {
+  background: var(--line-green);
 }
 
 .product-card-badges {
@@ -376,11 +420,11 @@ textarea {
   font-size: 9px;
   font-weight: 600;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: 6px;
   color: white;
 }
 
-.product-card-badge-red { background: #e53935; }
+.product-card-badge-red { background: #dc2626; }
 .product-card-badge-orange { background: #ef6c00; }
 .product-card-badge-green { background: #2e7d32; }
 .product-card-badge-blue { background: #1565c0; }
@@ -389,7 +433,7 @@ textarea {
   display: flex;
   flex-direction: column;
   flex: 1;
-  padding: 8px 10px 10px;
+  padding: 8px 10px 12px;
   gap: 2px;
 }
 
@@ -402,8 +446,8 @@ textarea {
 
 .product-card-promo-tag {
   font-size: 9px;
-  color: #1565c0;
-  background: #e3f2fd;
+  color: #004aad;
+  background: #e6eeff;
   padding: 1px 5px;
   border-radius: 4px;
   line-height: 1.3;
@@ -411,8 +455,8 @@ textarea {
 
 .product-card-title {
   font-size: 12px;
-  font-weight: 500;
-  color: #333;
+  font-weight: 600;
+  color: #1e293b;
   margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -424,7 +468,7 @@ textarea {
 
 .product-card-desc {
   font-size: 11px;
-  color: #999;
+  color: #94a3b8;
   margin: 0;
 }
 
@@ -448,36 +492,61 @@ textarea {
 
 .product-card-stock {
   font-size: 9px;
-  color: #e53935;
+  color: #dc2626;
   margin: 0;
   font-weight: 600;
 }
 
+.product-card-stock-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: #f1f5f9;
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.product-card-stock-bar-fill {
+  height: 100%;
+  background: #dc2626;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
 .product-card-price-area {
   display: flex;
-  align-items: baseline;
-  gap: 4px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   margin-top: auto;
   padding-top: 6px;
+}
+
+.product-card-price-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
 }
 
 .product-card-price {
   font-size: 16px;
   font-weight: 800;
-  color: #e53935;
+  color: #dc2626;
   line-height: 1;
+}
+
+.product-card-flash_sale .product-card-price {
+  font-size: 15px;
 }
 
 .product-card-price-unit {
   font-size: 11px;
   font-weight: 400;
-  color: #999;
+  color: #94a3b8;
 }
 
 .product-card-original-price {
   font-size: 11px;
-  color: #bbb;
+  color: #94a3b8;
   text-decoration: line-through;
 }
 
@@ -491,9 +560,10 @@ textarea {
 .home-section-card {
   background: white;
   margin: 0 12px;
-  border-radius: 16px;
+  border-radius: 1.25rem;
   padding: 14px;
   overflow: hidden;
+  border: 1px solid rgba(15,23,42,0.05);
 }
 
 .home-section-header {
@@ -515,6 +585,7 @@ textarea {
   height: 28px;
   border-radius: 6px;
   object-fit: contain;
+  box-shadow: 0 2px 6px rgba(15,23,42,0.08);
 }
 
 .home-section-title {
@@ -534,13 +605,37 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: none;
+  background: #e6eeff;
   border: none;
+  border-radius: 20px;
   color: #004aad;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
-  padding: 0;
+  padding: 4px 12px;
+  flex-shrink: 0;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.home-section-see-all:hover {
+  background: #d4e4ff;
+}
+
+.home-section-header-accent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.home-section-header-accent::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: #004aad;
   flex-shrink: 0;
 }
 
@@ -551,7 +646,7 @@ textarea {
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding-bottom: 2px;
+  padding-bottom: 6px;
 }
 
 .home-section-scroll::-webkit-scrollbar {
@@ -561,7 +656,7 @@ textarea {
 .home-section-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
 }
 
 .home-section-grid .product-card {

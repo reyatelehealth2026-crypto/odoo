@@ -3,6 +3,7 @@
 import { Truck } from 'lucide-react'
 import type { HomeProduct } from '@/types/miniapp-home'
 import { UniversalLink } from '@/components/miniapp/UniversalLink'
+import { cn } from '@/lib/utils'
 
 interface ProductCardProps {
   product: HomeProduct
@@ -25,6 +26,7 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
           alt={product.title}
           className="product-card-img"
           loading="lazy"
+          onError={(e) => { (e.target as HTMLImageElement).style.opacity = '0.3' }}
         />
         {/* Discount badge — Makro Pro top-left red tag */}
         {product.discountPercent != null && product.discountPercent > 0 && (
@@ -33,9 +35,11 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
           </span>
         )}
         {/* Promotion label badge */}
-        {product.promotionLabel && (
+        {product.promotionLabel ? (
           <span className="product-card-promo-label">{product.promotionLabel}</span>
-        )}
+        ) : product.customLabel ? (
+          <span className="product-card-promo-label product-card-custom-label">{product.customLabel}</span>
+        ) : null}
         {/* Badges overlay */}
         {product.badges.length > 0 && (
           <div className="product-card-badges">
@@ -79,18 +83,30 @@ export function ProductCard({ product, variant = 'default' }: ProductCardProps) 
 
         {/* Stock badge */}
         {product.showStockBadge && (
-          <p className="product-card-stock">จำนวนจำกัด</p>
+          <>
+            <p className="product-card-stock">จำนวนจำกัด</p>
+            {product.stockQty != null && product.limitQty != null && product.limitQty > 0 && (
+              <div className="product-card-stock-bar">
+                <div
+                  className="product-card-stock-bar-fill"
+                  style={{ width: `${Math.min(100, (product.stockQty / product.limitQty) * 100)}%` }}
+                />
+              </div>
+            )}
+          </>
         )}
 
         {/* Price — Makro Pro style: sale price big red, original struck-through */}
         <div className="product-card-price-area">
           {displayPrice != null && (
-            <span className="product-card-price">
-              ฿{displayPrice.toLocaleString()}
-            </span>
-          )}
-          {product.priceUnit && (
-            <span className="product-card-price-unit">/{product.priceUnit}</span>
+            <div className="product-card-price-row">
+              <span className="product-card-price">
+                ฿{displayPrice.toLocaleString()}
+              </span>
+              {product.priceUnit && (
+                <span className="product-card-price-unit">/{product.priceUnit}</span>
+              )}
+            </div>
           )}
           {hasDiscount && (
             <span className="product-card-original-price">

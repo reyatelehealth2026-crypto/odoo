@@ -18,9 +18,10 @@ import {
   type ProductSort,
   type ShopCategory,
 } from '@/lib/shop-api'
-import { enrichShopProduct } from '@/lib/shop-product-utils'
+import { enrichShopProduct, filterVisibleShopProducts } from '@/lib/shop-product-utils'
 import { toggleWishlist } from '@/lib/wishlist-api'
 import { cn } from '@/lib/utils'
+import { appConfig } from '@/lib/config'
 
 const sortOptions: Array<{ value: ProductSort; label: string }> = [
   { value: 'latest', label: 'ล่าสุด' },
@@ -108,6 +109,9 @@ export function ShopClient() {
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null)
   const [activeBrand, setActiveBrand] = useState<string | null>(null)
   const [sort, setSort] = useState<ProductSort>('latest')
+  const [activeBucket, setActiveBucket] = useState<string | null>(
+    appConfig.shopCatalog.defaultBucket || null
+  )
   const [addingId, setAddingId] = useState<number | null>(null)
   const [favoriteId, setFavoriteId] = useState<number | null>(null)
 
@@ -132,7 +136,7 @@ export function ShopClient() {
   })
 
   const catalogQuery = useInfiniteQuery({
-    queryKey: ['shop-products', activeCategoryId, searchTerm, sort, activeBrand, lineUserId],
+    queryKey: ['shop-products', activeCategoryId, searchTerm, sort, activeBrand, activeBucket, lineUserId],
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       fetchProducts({
@@ -140,6 +144,10 @@ export function ShopClient() {
         search: searchTerm,
         sort,
         brand: activeBrand ?? undefined,
+        catalogMode: appConfig.shopCatalog.mode,
+        catalogBucket: activeBucket ?? undefined,
+        includeZeroPrice: !appConfig.shopCatalog.hideZeroPriceProducts,
+        includeInactive: !appConfig.shopCatalog.hideInactiveProducts,
         offset: pageParam,
         limit: 12,
         lineUserId,
@@ -170,10 +178,25 @@ export function ShopClient() {
   })
 
   const pages = catalogQuery.data?.pages ?? []
-  const products = useMemo(
-    () => pages.flatMap((page) => (page.products ?? []).map((product) => enrichShopProduct(product))),
-    [pages]
-  )
+  const products = useMemo(() => {
+    const all = pages.flatMap((page) => (page.products ?? []).map((product) => enrichShopProduct(product)))
+    return filterVisibleShopProducts(all, {
+      hideZeroPrice: appConfig.shopCatalog.hideZeroPriceProducts,
+      hideInactive: appConfig.shopCatalog.hideInactiveProducts,
+      mode: appConfig.shopCatalog.mode,
+      bucket: activeBucket,
+    })
+  }, [activeBucket, pages])
+  const allBuckets = useMemo(() => {
+    const source = pages.flatMap((page) => page.products ?? [])
+    return Array.from(
+      new Set(
+        source
+          .map((product) => product.catalog_bucket?.trim() || '')
+          .filter((bucket) => bucket.length > 0)
+      )
+    )
+  }, [pages])
   const firstPage = pages[0]
   const categories = firstPage?.categories ?? []
   const brands = firstPage?.brands ?? []
@@ -182,7 +205,7 @@ export function ShopClient() {
   const cartCount = cartQuery.data?.item_count ?? cartQuery.data?.items?.length ?? 0
 
   const hasActiveFilters =
-    Boolean(searchTerm) || Boolean(activeCategoryId) || Boolean(activeBrand) || sort !== 'latest'
+    Boolean(searchTerm) || Boolean(activeCategoryId) || Boolean(activeBrand) || Boolean(activeBucket) || sort !== 'latest'
 
   return (
     <AppShell
@@ -231,6 +254,7 @@ export function ShopClient() {
                   setSearchTerm('')
                   setActiveCategoryId(null)
                   setActiveBrand(null)
+                  setActiveBucket(appConfig.shopCatalog.defaultBucket || null)
                   setSort('latest')
                 }}
                 className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 ring-1 ring-slate-200"
@@ -258,6 +282,30 @@ export function ShopClient() {
                 active={activeCategoryId === String(category.id)}
                 onClick={() => setActiveCategoryId((prev) => (prev === String(category.id) ? null : String(category.id)))}
               />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {allBuckets.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2 text-slate-900">
+            <Sparkles size={16} className="text-line" />
+            <h2 className="text-sm font-semibold">Catalog Bucket</h2>
+          </div>
+          <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-1">
+            {allBuckets.map((bucket) => (
+              <button
+                key={bucket}
+                type="button"
+                onClick={() => setActiveBucket((prev) => (prev === bucket ? null : bucket))}
+                className={cn(
+                  'shrink-0 rounded-full px-4 py-2 text-xs font-semibold transition',
+                  activeBucket === bucket ? 'bg-line text-white' : 'bg-white text-slate-500 ring-1 ring-slate-200'
+                )}
+              >
+                {bucket}
+              </button>
             ))}
           </div>
         </section>

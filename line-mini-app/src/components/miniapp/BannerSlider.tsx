@@ -67,7 +67,7 @@ export function BannerSlider({ banners, autoPlayMs = 4000 }: BannerSliderProps) 
   if (count === 0) return null
 
   return (
-    <div className="banner-slider">
+    <div className="banner-slider" role="region" aria-label="Banner Slider">
       <div
         ref={trackRef}
         className="banner-slider-track"
@@ -76,19 +76,18 @@ export function BannerSlider({ banners, autoPlayMs = 4000 }: BannerSliderProps) 
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
-        {banners.map((banner) => (
+        {banners.map((banner, index) => (
           <div key={banner.id} className="banner-slider-slide">
             <UniversalLink link={banner.link} className="block w-full">
               <div
-                className="relative w-full overflow-hidden rounded-2xl"
+                className="relative w-full overflow-hidden rounded-2xl bg-slate-100"
                 style={{ backgroundColor: banner.bgColor || undefined }}
               >
                 <img
                   src={banner.imageMobileUrl || banner.imageUrl}
                   alt={banner.title || ''}
-                  className="w-full object-cover"
-                  style={{ aspectRatio: '16/7' }}
-                  loading="lazy"
+                  className="w-full object-cover aspect-banner"
+                  loading={index === 0 ? 'eager' : 'lazy'}
                 />
                 {(banner.title || banner.subtitle) && (
                   <div className="absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/40 to-transparent p-4">
@@ -108,11 +107,13 @@ export function BannerSlider({ banners, autoPlayMs = 4000 }: BannerSliderProps) 
 
       {/* Dots */}
       {count > 1 && (
-        <div className="banner-slider-dots">
+        <div className="banner-slider-dots" role="tablist" aria-label="Slides">
           {banners.map((_, i) => (
             <button
               key={i}
               type="button"
+              role="tab"
+              aria-selected={i === current}
               onClick={() => { pauseAutoPlay(); goTo(i); resumeAutoPlay() }}
               className={`banner-slider-dot ${i === current ? 'active' : ''}`}
               aria-label={`Slide ${i + 1}`}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { ChevronRight, Clock } from 'lucide-react'
 import type { HomeSection } from '@/types/miniapp-home'
 import { ProductCard } from '@/components/miniapp/ProductCard'
+import { UniversalLink } from '@/components/miniapp/UniversalLink'
 
 interface FlashSaleSectionProps {
   section: HomeSection
@@ -36,8 +37,10 @@ function CountdownTimer({ endsAt }: { endsAt: string }) {
   return (
     <div className="flash-sale-countdown">
       <Clock size={12} />
-      <span className="flash-sale-countdown-block">{String(h).padStart(2, '0')}h</span>
+      <span className="flash-sale-countdown-block">{String(h).padStart(2, '0')}</span>
+      <span className="flash-sale-countdown-sep">:</span>
       <span className="flash-sale-countdown-block">{String(m).padStart(2, '0')}</span>
+      <span className="flash-sale-countdown-sep">:</span>
       <span className="flash-sale-countdown-block">{String(s).padStart(2, '0')}</span>
     </div>
   )
@@ -52,7 +55,10 @@ export function FlashSaleSection({ section }: FlashSaleSectionProps) {
       style={{
         backgroundColor: section.bgColor || '#8B0000',
         color: section.textColor || '#FFFFFF',
-      }}
+        '--flash-sale-fade': section.bgColor
+          ? `${section.bgColor}99`
+          : 'rgba(139,0,0,0.6)',
+      } as React.CSSProperties}
     >
       {/* Header */}
       <div className="flash-sale-header">
@@ -71,9 +77,15 @@ export function FlashSaleSection({ section }: FlashSaleSectionProps) {
           {section.countdownEndsAt && (
             <CountdownTimer endsAt={section.countdownEndsAt} />
           )}
-          <button type="button" className="flash-sale-see-all">
-            ดูเพิ่มเติม <ChevronRight size={14} />
-          </button>
+          {section.viewAllLink ? (
+            <UniversalLink link={section.viewAllLink} className="flash-sale-see-all">
+              ดูเพิ่มเติม <ChevronRight size={14} />
+            </UniversalLink>
+          ) : (
+            <button type="button" className="flash-sale-see-all">
+              ดูเพิ่มเติม <ChevronRight size={14} />
+            </button>
+          )}
         </div>
       </div>
 

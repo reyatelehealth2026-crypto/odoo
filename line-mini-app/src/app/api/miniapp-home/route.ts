@@ -30,11 +30,35 @@ export async function GET(request: NextRequest) {
       cache: 'no-store'
     })
 
-    const data = await response.json()
+    const rawText = await response.text()
+    const contentType = response.headers.get('content-type') || ''
+
+    // Safe JSON parse; on non-JSON responses surface upstream snippet for easier debugging
+    let data: unknown
+    try {
+      data = JSON.parse(rawText)
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Upstream returned non-JSON response',
+          upstream_status: response.status,
+          upstream_content_type: contentType,
+          upstream_url: url.toString(),
+          upstream_snippet: rawText.slice(0, 500)
+        },
+        { status: 502 }
+      )
+    }
+
     return NextResponse.json(data, { status: response.status })
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Proxy error' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Proxy error',
+        phpBase: PHP_API_BASE
+      },
       { status: 500 }
     )
   }

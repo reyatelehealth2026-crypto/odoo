@@ -3,6 +3,7 @@
 import { useRef, type ReactNode } from 'react'
 import { BottomNav } from '@/components/miniapp/BottomNav'
 import { MiniAppHeader } from '@/components/miniapp/MiniAppHeader'
+import { GuestBanner } from '@/components/miniapp/GuestBanner'
 import { usePullToRefresh } from '@/lib/hooks'
 import { cn } from '@/lib/utils'
 import type { OdooCustomerProfile } from '@/types/odoo-profile'
@@ -43,6 +44,7 @@ export function AppShell({
           odooProfile={odooProfile}
         />
       )}
+      <GuestBanner />
       <main ref={mainRef} className="relative flex-1 overflow-y-auto overscroll-none">
         {onRefresh && (
           <div

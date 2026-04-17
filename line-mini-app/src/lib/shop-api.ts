@@ -38,6 +38,12 @@ export type ShopProduct = {
   discount_percent?: number | null
   badges?: ShopProductBadge[]
   category_name?: string | null
+  /** Product-level publish flags from upstream e-commerce/backoffice systems. */
+  is_active?: boolean | number | null
+  is_published?: boolean | number | null
+  is_enabled?: boolean | number | null
+  catalog_visible?: boolean | number | null
+  catalog_bucket?: string | null
 }
 
 export type TransferBankRow = {
@@ -78,6 +84,10 @@ export type FetchProductsInput = {
   sort?: ProductSort
   brand?: string | null
   lineUserId?: string
+  includeZeroPrice?: boolean
+  includeInactive?: boolean
+  catalogMode?: string
+  catalogBucket?: string | null
 }
 
 export async function fetchProducts({
@@ -88,6 +98,10 @@ export async function fetchProducts({
   sort,
   brand,
   lineUserId,
+  includeZeroPrice,
+  includeInactive,
+  catalogMode,
+  catalogBucket,
 }: FetchProductsInput = {}): Promise<ProductsResponse> {
   const params = new URLSearchParams({
     action: 'products',
@@ -100,6 +114,10 @@ export async function fetchProducts({
   if (sort) params.set('sort', sort)
   if (brand && brand.trim() !== '') params.set('brand', brand.trim())
   if (lineUserId) params.set('line_user_id', lineUserId)
+  if (includeZeroPrice != null) params.set('include_zero_price', includeZeroPrice ? '1' : '0')
+  if (includeInactive != null) params.set('include_inactive', includeInactive ? '1' : '0')
+  if (catalogMode && catalogMode.trim() !== '') params.set('catalog_mode', catalogMode.trim())
+  if (catalogBucket && catalogBucket.trim() !== '') params.set('catalog_bucket', catalogBucket.trim())
   const res = await fetch(`/api/checkout?${params}`, { cache: 'no-store' })
   return res.json()
 }

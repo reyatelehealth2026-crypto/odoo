@@ -9,6 +9,7 @@ export async function bootstrapLine(): Promise<LineBootstrapState> {
     isReady: false,
     isLoggedIn: false,
     isInClient: false,
+    isGuest: false,
     profile: null,
     accessToken: null,
     error: null
@@ -23,14 +24,14 @@ export async function bootstrapLine(): Promise<LineBootstrapState> {
   }
 
   try {
-    await liff.init({ liffId: appConfig.liffId })
+    await liff.init({ liffId: appConfig.liffId, withLoginOnExternalBrowser: false })
 
     if (!liff.isLoggedIn()) {
       return {
         ...baseState,
         isReady: true,
         isLoggedIn: false,
-        needsLogin: true
+        isGuest: true
       }
     }
 
@@ -40,6 +41,7 @@ export async function bootstrapLine(): Promise<LineBootstrapState> {
       isReady: true,
       isLoggedIn: true,
       isInClient: liff.isInClient(),
+      isGuest: false,
       profile: {
         userId: profile.userId,
         displayName: profile.displayName,

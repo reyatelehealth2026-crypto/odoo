@@ -4,15 +4,20 @@ import { ChevronRight } from 'lucide-react'
 import type { HomeSection } from '@/types/miniapp-home'
 import { FlashSaleSection } from '@/components/miniapp/FlashSaleSection'
 import { ProductCard } from '@/components/miniapp/ProductCard'
+import { UniversalLink } from '@/components/miniapp/UniversalLink'
+import { cn } from '@/lib/utils'
 
 interface HomeSectionRendererProps {
   section: HomeSection
 }
 
 function SectionHeader({ section }: { section: HomeSection }) {
+  const seeAllContent = (
+    <>ดูเพิ่มเติม <ChevronRight size={14} /></>
+  )
   return (
     <div className="home-section-header">
-      <div className="home-section-header-left">
+      <div className={cn('home-section-header-left', !section.iconUrl && 'home-section-header-accent')}>
         {section.iconUrl && (
           <img src={section.iconUrl} alt="" className="home-section-icon" />
         )}
@@ -23,9 +28,15 @@ function SectionHeader({ section }: { section: HomeSection }) {
           )}
         </div>
       </div>
-      <button className="home-section-see-all" type="button">
-        ดูเพิ่มเติม <ChevronRight size={14} />
-      </button>
+      {section.viewAllLink ? (
+        <UniversalLink link={section.viewAllLink} className="home-section-see-all">
+          {seeAllContent}
+        </UniversalLink>
+      ) : (
+        <button className="home-section-see-all" type="button" aria-disabled="true">
+          {seeAllContent}
+        </button>
+      )}
     </div>
   )
 }
@@ -69,7 +80,7 @@ export function HomeSectionRenderer({ section }: HomeSectionRendererProps) {
       return (
         <section className="home-section home-section-card">
           <SectionHeader section={section} />
-          <div className="space-y-2">
+          <div className="space-y-3">
             {section.products.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
