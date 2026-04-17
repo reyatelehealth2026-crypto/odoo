@@ -30,13 +30,13 @@ if (session_status() === PHP_SESSION_NONE) {
 require_once __DIR__ . '/auth/sso-redirect.php';
 
 // ============================================================
-// LEGACY MODE: ใช้ ?legacy=1 เพื่อเข้า PHP inbox เดิม
-// เช่น domain/inbox-v2.php?legacy=1
-// สำรองไว้กรณีระบบ Next.js มีปัญหา
+// DEFAULT: PHP-based Inbox v2 (no Next.js bridge)
+// Opt-in to Next.js SSO ด้วย ?next=1 (เก่า: ?legacy=1 = PHP, ใช้ได้อยู่)
 // ============================================================
-$isLegacyMode = isset($_GET['legacy']) && $_GET['legacy'] == '1';
+$useNextJsBridge = isset($_GET['next']) && $_GET['next'] == '1';
+$isLegacyMode    = !$useNextJsBridge; // PHP UI is now the default
 
-if (!$isLegacyMode) {
+if ($useNextJsBridge) {
     // SSO MODE: Redirect ไป Next.js Inbox
 
     // Check if user is logged in

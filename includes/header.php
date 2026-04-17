@@ -306,6 +306,8 @@ $quickAccessMenus = [
 
     // ==================== Facility Setup - Facility Profile ====================
     'shop-settings' => ['icon' => 'fa-store', 'label' => 'ข้อมูลสถานพยาบาล', 'url' => '/shop/settings', 'page' => 'settings', 'color' => 'emerald', 'roles' => ['admin', 'owner']],
+    'miniapp-settings' => ['icon' => 'fa-mobile-alt', 'label' => 'ตั้งค่า Mini App', 'url' => '/admin/miniapp-settings.php', 'page' => 'miniapp-settings', 'color' => 'violet', 'roles' => ['admin', 'owner']],
+    'shop-new' => ['icon' => 'fa-bag-shopping', 'label' => 'Shop ใหม่ (Mini App)', 'url' => 'https://line-mini-app-six.vercel.app/shop', 'page' => 'shop-new', 'color' => 'pink', 'roles' => ['admin', 'owner', 'staff']],
     'landing-settings' => ['icon' => 'fa-home', 'label' => 'Landing Page', 'url' => '/admin/landing-settings', 'page' => 'landing-settings', 'color' => 'sky', 'roles' => ['admin', 'owner']],
 
     // ==================== Facility Setup - Staff & Roles ====================
@@ -428,6 +430,8 @@ $menuGroups = [
         'menus' => [
             ['title' => 'ตั้งค่าระบบ', 'icon' => '🔧', 'href' => '/settings'],
             ['title' => 'ข้อมูลร้าน', 'icon' => '🏪', 'href' => '/shop/settings'],
+            ['title' => 'ตั้งค่า Mini App', 'icon' => '📱', 'href' => '/admin/miniapp-settings.php'],
+            ['title' => 'Shop ใหม่ (Mini App)', 'icon' => '🛍️', 'href' => 'https://line-mini-app-six.vercel.app/shop'],
             ['title' => 'Landing Page', 'icon' => '🏠', 'href' => '/admin/landing-settings'],
             ['title' => 'Rich Menu', 'icon' => '🎨', 'href' => '/rich-menu'],
             ['title' => 'เช็คสถานะระบบ', 'icon' => '🔍', 'href' => '/system-status'],

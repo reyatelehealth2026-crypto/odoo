@@ -245,7 +245,7 @@ $_SESSION['current_bot_id'] = $currentBotId;
                 <div class="menu-section">
                     <div class="menu-section-title">จัดการ</div>
                     <div class="px-3">
-                        <a href="../messages.php" class="menu-item <?= $currentPage === 'messages' ? 'active' : '' ?>">
+                        <a href="../inbox-v2.php" class="menu-item <?= ($currentPage === 'messages' || $currentPage === 'inbox') ? 'active' : '' ?>">
                             <span class="menu-icon"><i class="fas fa-inbox"></i></span>
                             ข้อความ
                         </a>
