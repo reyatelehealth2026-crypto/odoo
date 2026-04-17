@@ -169,7 +169,9 @@ try {
             if ($userId <= 0 || empty($message)) {
                 throw new Exception('user_id and message required');
             }
-            if (mb_strlen($message) > 2000) {
+            // 2000-char limit applies only to plain text messages.
+            // Flex/image/video/sticker payloads are JSON and can legitimately exceed 2000 chars.
+            if ($messageType === 'text' && mb_strlen($message) > 2000) {
                 throw new Exception('Message content is too long (max 2000 characters)');
             }
 
