@@ -51,9 +51,15 @@ function out(string $line, string $type = 'info'): void
 
 function columnExists(PDO $db, string $table, string $column): bool
 {
-    $stmt = $db->prepare("SHOW COLUMNS FROM `{$table}` LIKE ?");
-    $stmt->execute([$column]);
-    return (bool) $stmt->fetchColumn();
+    // MariaDB ไม่รองรับ `?` ใน SHOW COLUMNS LIKE ต้องใช้ information_schema แทน
+    $stmt = $db->prepare(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME   = ?
+           AND COLUMN_NAME  = ?"
+    );
+    $stmt->execute([$table, $column]);
+    return ((int) $stmt->fetchColumn()) > 0;
 }
 
 function indexExists(PDO $db, string $table, string $indexName): bool
