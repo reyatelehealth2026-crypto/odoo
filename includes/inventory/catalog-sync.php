@@ -485,6 +485,10 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
             <div class="text-xs text-gray-500">
                 <i class="fas fa-info-circle mr-1"></i>ถ้า 200 รายการใช้เวลาประมาณ 30–60 วินาที
             </div>
+            <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer w-full mt-2">
+                <input type="checkbox" id="catalogSyncAutoNextRange" class="rounded border-gray-300" checked>
+                <span>หลังจบช่วงนี้ <b>รันช่วงถัดไปอัตโนมัติ</b> (เลื่อนรหัสเริ่มต่อไปจนถึง 9999)</span>
+            </label>
         </form>
     </div>
 
@@ -518,6 +522,10 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
                     class="px-5 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium">
                 <i class="fas fa-forward mr-1"></i>เริ่ม incremental
             </button>
+            <label class="flex items-center gap-2 text-xs text-gray-700 cursor-pointer w-full mt-2">
+                <input type="checkbox" id="catalogSyncAutoNextIncremental" class="rounded border-gray-300" checked>
+                <span>หลังจบรอบนี้ <b>รัน incremental รอบถัดไปอัตโนมัติ</b> (สูงสุด 50 รอบต่อครั้งที่กด — อัปเดต next_offset ทุกรอบ)</span>
+            </label>
         </form>
     </div>
 
@@ -565,7 +573,10 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
         </div>
         <p class="text-sm text-slate-700 min-h-[3rem] leading-relaxed" id="catalogSyncStatusLine">กำลังเตรียม…</p>
         <p class="text-xs text-amber-700 mt-2 hidden" id="catalogSyncTimeoutNote"></p>
-        <div class="mt-4 flex justify-end">
+        <div class="mt-4 flex flex-wrap items-center justify-end gap-2">
+            <button type="button" id="catalogSyncReloadPage" class="hidden px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">
+                <i class="fas fa-sync-alt mr-1"></i>รีเฟรชหน้า (ดูตัวเลขล่าสุด)
+            </button>
             <button type="button" id="catalogSyncOverlayClose" class="hidden px-4 py-2 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200">
                 ปิด
             </button>
@@ -609,117 +620,192 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
         return p.finally(function () { clearTimeout(t); });
     }
 
+    function sleep(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
+    }
+
+    /** จบการทำงาน: ไม่รีเฟรชอัตโนมัติ — ให้กดรีเฟรชหรือปิดเอง */
+    function finishSyncUi(ok) {
+        qs('catalogSyncOverlayClose').classList.remove('hidden');
+        var rel = qs('catalogSyncReloadPage');
+        if (rel) {
+            rel.classList.toggle('hidden', !ok);
+        }
+    }
+
     async function runRangeSyncChunked(form) {
         if (!confirm('โหลดจาก Odoo — ยืนยัน?\n(จะซิงค์ทีละช่วงและแสดงความคืบหน้า — ห้ามปิดหน้า)')) return;
 
         var fd = new FormData(form);
         var syncStart = parseInt(String(fd.get('sync_start') || '1'), 10) || 1;
         var syncLimit = parseInt(String(fd.get('sync_limit') || '100'), 10) || 100;
+        var autoNext = qs('catalogSyncAutoNextRange') && qs('catalogSyncAutoNextRange').checked;
+        var MAX_CODE = 9999;
 
         qs('catalogSyncOverlayTitle').textContent = 'โหลดช่วงตัวเลขจาก Odoo';
-        qs('catalogSyncOverlayHint').textContent = 'แต่ละกลุ่มสูงสุด 50 รหัส — รอแต่ละกลุ่มได้สูงสุด ' + (PER_CHUNK_MS / 60000) + ' นาที';
+        qs('catalogSyncOverlayHint').textContent = (autoNext
+            ? 'หลังจบแต่ละช่วงจะเลื่อนรันช่วงถัดไปอัตโนมัติจนถึงรหัส ' + MAX_CODE + ' — '
+            : '') + 'แต่ละกลุ่มสูงสุด 50 รหัส — รอแต่ละกลุ่มได้สูงสุด ' + (PER_CHUNK_MS / 60000) + ' นาที';
         qs('catalogSyncOverlayClose').classList.add('hidden');
+        if (qs('catalogSyncReloadPage')) qs('catalogSyncReloadPage').classList.add('hidden');
         showOverlay(true);
-        setProgress(0, 0, syncLimit, 'กำลังเริ่ม…', '');
 
-        var processed = 0;
-        var guard = 0;
+        var rangeRound = 0;
         try {
-            while (processed < syncLimit && guard++ < 400) {
-                var res = await abortableFetch(CHUNK_URL, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body: JSON.stringify({
-                        action: 'range_step',
-                        sync_start: syncStart,
-                        sync_limit: syncLimit,
-                        processed: processed
-                    })
-                }, PER_CHUNK_MS);
+            while (syncStart <= MAX_CODE && rangeRound < 120) {
+                rangeRound++;
+                var processed = 0;
+                var guard = 0;
+                var lastSummary = '';
+                setProgress(0, 0, syncLimit, 'ช่วงที่ ' + rangeRound + ': รหัส ' + syncStart + ' – ' + Math.min(syncStart + syncLimit - 1, MAX_CODE) + ' …', '');
 
-                var data = await res.json().catch(function () { return {}; });
-                if (!res.ok || !data.success) {
-                    throw new Error(data.message || ('HTTP ' + res.status));
+                while (processed < syncLimit && guard++ < 400) {
+                    var res = await abortableFetch(CHUNK_URL, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: JSON.stringify({
+                            action: 'range_step',
+                            sync_start: syncStart,
+                            sync_limit: syncLimit,
+                            processed: processed
+                        })
+                    }, PER_CHUNK_MS);
+
+                    var data = await res.json().catch(function () { return {}; });
+                    if (!res.ok || !data.success) {
+                        throw new Error(data.message || ('HTTP ' + res.status));
+                    }
+                    processed = data.processed;
+                    var pct = (processed / syncLimit) * 100;
+                    setProgress(pct, processed, syncLimit, data.label_th || '', '');
+                    if (data.done) {
+                        lastSummary = data.summary_th || data.label_th || 'จบช่วง';
+                        setProgress(100, syncLimit, syncLimit, lastSummary, '');
+                        break;
+                    }
                 }
-                processed = data.processed;
-                var pct = (processed / syncLimit) * 100;
-                setProgress(pct, processed, syncLimit, data.label_th || '', '');
-                if (data.done) {
-                    setProgress(100, syncLimit, syncLimit, data.summary_th || 'เสร็จแล้ว', '');
+                if (guard >= 400) {
+                    throw new Error('หยุดการซิงค์ — เกินจำนวนรอบที่อนุญาต กรุณาแจ้งผู้ดูแลระบบ');
+                }
+
+                var nextStart = syncStart + syncLimit;
+                var inputStart = form.querySelector('[name="sync_start"]');
+                if (inputStart) {
+                    inputStart.value = String(Math.min(nextStart, MAX_CODE));
+                }
+
+                if (!autoNext) {
+                    setProgress(100, syncLimit, syncLimit, (lastSummary || 'เสร็จ') + ' — หยุดที่ช่วงเดียว (เปิดติ๊กด้านบนเพื่อเลื่อนช่วงต่ออัตโนมัติ)', '');
                     break;
                 }
+                if (nextStart > MAX_CODE) {
+                    setProgress(100, syncLimit, syncLimit, (lastSummary || 'เสร็จ') + ' — ครบทุกช่วงถึงรหัส ' + MAX_CODE, '');
+                    break;
+                }
+
+                syncStart = nextStart;
+                setProgress(0, 0, syncLimit, 'เลื่อนช่วงถัดไปอัตโนมัติ: เริ่มรหัส ' + syncStart + ' …', '');
+                await sleep(450);
             }
-            if (guard >= 400) {
-                throw new Error('หยุดการซิงค์ — เกินจำนวนรอบที่อนุญาต กรุณาแจ้งผู้ดูแลระบบ');
+            if (rangeRound >= 120) {
+                throw new Error('หยุด — เกินจำนวนช่วงอัตโนมัติสูงสุด');
             }
-            setTimeout(function () { window.location.reload(); }, 600);
+            finishSyncUi(true);
         } catch (e) {
             var msg = (e && e.name === 'AbortError')
                 ? 'หมดเวลารอแต่ละช่วง — Odoo ตอบช้าหรือเครือข่ายขัดข้อง ลองลดจำนวนต่อครั้ง หรือลองใหม่ภายหลัง'
                 : ((e && e.message) ? e.message : 'เกิดข้อผิดพลาด');
             setProgress(0, 0, syncLimit, msg, msg);
-            qs('catalogSyncOverlayClose').classList.remove('hidden');
+            finishSyncUi(false);
         }
     }
 
     async function runIncrementalChunked(form) {
-        if (!confirm('โหลด incremental จาก Odoo — ยืนยัน?\n(ยิง API ทีละกลุ่มเหมือนโหลดช่วง — แสดงความคืบหน้า)')) return;
+        if (!confirm('โหลด incremental จาก Odoo — ยืนยัน?\n(ยิง API ทีละกลุ่ม — แสดงความคืบหน้า)')) return;
 
         var fd = new FormData(form);
         var incrementalLimit = parseInt(String(fd.get('incremental_limit') || '100'), 10) || 100;
         var syncMaxCode = parseInt(String(fd.get('sync_max_code') || '9999'), 10) || 9999;
+        var autoNext = qs('catalogSyncAutoNextIncremental') && qs('catalogSyncAutoNextIncremental').checked;
+        var MAX_INC_ROUNDS = 50;
 
         qs('catalogSyncOverlayTitle').textContent = 'โหลด incremental';
-        qs('catalogSyncOverlayHint').textContent = 'แต่ละกลุ่มสูงสุด 50 รหัส — รอแต่ละกลุ่มได้สูงสุด ' + (PER_CHUNK_MS / 60000) + ' นาที';
+        qs('catalogSyncOverlayHint').textContent = (autoNext
+            ? 'หลังจบแต่ละรอบจะเริ่มรอบถัดไปอัตโนมัติ (สูงสุด ' + MAX_INC_ROUNDS + ' รอบ) — '
+            : '') + 'แต่ละกลุ่มสูงสุด 50 รหัส — รอแต่ละกลุ่มได้สูงสุด ' + (PER_CHUNK_MS / 60000) + ' นาที';
         qs('catalogSyncOverlayClose').classList.add('hidden');
+        if (qs('catalogSyncReloadPage')) qs('catalogSyncReloadPage').classList.add('hidden');
         showOverlay(true);
 
-        var processed = 0;
-        var jobOffsetStart = 0;
-        var guard = 0;
         try {
-            while (processed < incrementalLimit && guard++ < 80) {
-                var body = {
-                    action: 'incremental_step',
-                    incremental_limit: incrementalLimit,
-                    sync_max_code: syncMaxCode,
-                    processed: processed
-                };
-                if (jobOffsetStart > 0) {
-                    body.job_offset_start = jobOffsetStart;
+            for (var incRound = 1; incRound <= MAX_INC_ROUNDS; incRound++) {
+                if (incRound > 1 && !autoNext) {
+                    break;
                 }
-                var res = await abortableFetch(CHUNK_URL, {
-                    method: 'POST',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    body: JSON.stringify(body)
-                }, PER_CHUNK_MS);
-                var data = await res.json().catch(function () { return {}; });
-                if (!res.ok || !data.success) {
-                    throw new Error(data.message || ('HTTP ' + res.status));
+                var processed = 0;
+                var jobOffsetStart = 0;
+                var guard = 0;
+                var lastSummary = '';
+
+                if (incRound > 1) {
+                    setProgress(0, 0, incrementalLimit, 'เริ่ม incremental รอบที่ ' + incRound + ' อัตโนมัติ (อ่าน next_offset ใหม่จากระบบ)…', '');
+                    await sleep(500);
                 }
-                if (data.job_offset_start) {
-                    jobOffsetStart = data.job_offset_start;
+
+                while (processed < incrementalLimit && guard++ < 80) {
+                    var body = {
+                        action: 'incremental_step',
+                        incremental_limit: incrementalLimit,
+                        sync_max_code: syncMaxCode,
+                        processed: processed
+                    };
+                    if (jobOffsetStart > 0) {
+                        body.job_offset_start = jobOffsetStart;
+                    }
+                    var res = await abortableFetch(CHUNK_URL, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        body: JSON.stringify(body)
+                    }, PER_CHUNK_MS);
+                    var data = await res.json().catch(function () { return {}; });
+                    if (!res.ok || !data.success) {
+                        throw new Error(data.message || ('HTTP ' + res.status));
+                    }
+                    if (data.job_offset_start) {
+                        jobOffsetStart = data.job_offset_start;
+                    }
+                    processed = data.processed;
+                    var pct = (processed / incrementalLimit) * 100;
+                    setProgress(pct, processed, incrementalLimit, data.label_th || '', '');
+                    if (data.done) {
+                        lastSummary = data.summary_th || data.label_th || 'เสร็จรอบ';
+                        setProgress(100, incrementalLimit, incrementalLimit, lastSummary, '');
+                        break;
+                    }
                 }
-                processed = data.processed;
-                var pct = (processed / incrementalLimit) * 100;
-                setProgress(pct, processed, incrementalLimit, data.label_th || '', '');
-                if (data.done) {
-                    setProgress(100, incrementalLimit, incrementalLimit, data.summary_th || data.label_th || 'เสร็จแล้ว', '');
+                if (guard >= 80) {
+                    throw new Error('หยุด — เกินจำนวนรอบที่กำหนด');
+                }
+
+                if (!autoNext) {
+                    setProgress(100, incrementalLimit, incrementalLimit, (lastSummary || 'เสร็จ') + ' — หยุดที่รอบเดียว', '');
+                    break;
+                }
+                if (incRound >= MAX_INC_ROUNDS) {
+                    setProgress(100, incrementalLimit, incrementalLimit, (lastSummary || 'เสร็จ') + ' — รันครบ ' + MAX_INC_ROUNDS + ' รอบอัตโนมัติแล้ว (กดรันใหม่เพื่อต่อ)', '');
                     break;
                 }
             }
-            if (guard >= 80) {
-                throw new Error('หยุด — เกินจำนวนรอบที่กำหนด');
-            }
-            setTimeout(function () { window.location.reload(); }, 700);
+
+            finishSyncUi(true);
         } catch (e) {
             var msg = (e && e.name === 'AbortError')
                 ? 'หมดเวลารอแต่ละช่วง — Odoo ตอบช้า ลองใหม่หรือลดจำนวนรายการต่อรอบ'
                 : ((e && e.message) ? e.message : 'เกิดข้อผิดพลาด');
             setProgress(0, 0, incrementalLimit, msg, msg);
-            qs('catalogSyncOverlayClose').classList.remove('hidden');
+            finishSyncUi(false);
         }
     }
 
@@ -729,6 +815,7 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
         qs('catalogSyncOverlayTitle').textContent = 'Re-sync รายการที่มีอยู่';
         qs('catalogSyncOverlayHint').textContent = 'แต่ละรหัส = 1 คำขอไป Odoo — รอต่อขั้นได้สูงสุด ' + (RESYNC_STEP_MS / 60000) + ' นาที';
         qs('catalogSyncOverlayClose').classList.add('hidden');
+        if (qs('catalogSyncReloadPage')) qs('catalogSyncReloadPage').classList.add('hidden');
         showOverlay(true);
 
         var offset = 0;
@@ -762,13 +849,14 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
             if (guard >= 600) {
                 throw new Error('หยุด — เกินจำนวนรอบ (500+)');
             }
-            setTimeout(function () { window.location.reload(); }, 700);
+            setProgress(100, total, total, 'เสร็จสิ้น re-sync — กด «รีเฟรชหน้า» เพื่อดูตัวเลขล่าสุด', '');
+            finishSyncUi(true);
         } catch (e) {
             var msg = (e && e.name === 'AbortError')
                 ? 'หมดเวลารอแต่ละรหัส — ลองใหม่ภายหลัง'
                 : ((e && e.message) ? e.message : 'เกิดข้อผิดพลาด');
             setProgress(0, 0, total, msg, msg);
-            qs('catalogSyncOverlayClose').classList.remove('hidden');
+            finishSyncUi(false);
         }
     }
 
@@ -786,6 +874,9 @@ $catalogSyncFormAction = htmlspecialchars($_SERVER['SCRIPT_NAME'] ?? '/inventory
     });
     document.getElementById('catalogSyncOverlayClose')?.addEventListener('click', function () {
         showOverlay(false);
+    });
+    document.getElementById('catalogSyncReloadPage')?.addEventListener('click', function () {
+        window.location.reload();
     });
 })();
 
