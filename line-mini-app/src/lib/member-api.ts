@@ -2,22 +2,30 @@ import { appConfig } from '@/lib/config'
 import { phpGet, phpPost } from '@/lib/php-bridge'
 import type { MemberCardResponse, MemberCheckResponse, MemberUpdatePayload } from '@/types/member'
 
-export function checkMember(lineUserId: string, displayName?: string, pictureUrl?: string) {
-  return phpGet<MemberCheckResponse>('/api/member.php', {
+export async function checkMember(lineUserId: string, displayName?: string, pictureUrl?: string) {
+  const res = await phpGet<MemberCheckResponse & { error?: string }>('/api/member.php', {
     action: 'check',
     line_user_id: lineUserId,
     line_account_id: appConfig.lineAccountId,
     display_name: displayName,
     picture_url: pictureUrl
   })
+  if (!res.success) {
+    throw new Error(res.message || res.error || 'member check failed')
+  }
+  return res
 }
 
-export function getMemberCard(lineUserId: string) {
-  return phpGet<MemberCardResponse>('/api/member.php', {
+export async function getMemberCard(lineUserId: string) {
+  const res = await phpGet<MemberCardResponse & { error?: string }>('/api/member.php', {
     action: 'get_card',
     line_user_id: lineUserId,
     line_account_id: appConfig.lineAccountId
   })
+  if (!res.success) {
+    throw new Error(res.message || res.error || 'ไม่พบข้อมูลสมาชิก')
+  }
+  return res
 }
 
 export function updateMemberProfile(payload: MemberUpdatePayload) {

@@ -122,10 +122,13 @@ export function ProfileClient() {
     enabled: Boolean(lineUserId)
   })
 
+  // Wait for checkQuery to confirm the user exists (auto-registers if needed)
+  // before calling get_card — otherwise get_card returns user_exists:false on
+  // first load for brand-new users and the profile page renders blank.
   const memberQuery = useQuery({
-    queryKey: ['member-card', lineUserId],
+    queryKey: ['member-card', lineUserId, checkQuery.data?.member_id ?? null],
     queryFn: () => getMemberCard(lineUserId),
-    enabled: Boolean(lineUserId)
+    enabled: Boolean(lineUserId) && Boolean(checkQuery.data?.exists)
   })
 
   const member = memberQuery.data?.member
@@ -165,16 +168,106 @@ export function ProfileClient() {
         </div>
       ) : null}
 
-      {!lineUserId || memberQuery.isLoading ? <LoadingSkeleton /> : null}
+      {/* Not logged in to LIFF */}
+      {line.isReady && !lineUserId && !line.error ? (
+        <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 shadow-soft">
+          <p className="font-semibold">ยังไม่ได้เข้าสู่ระบบ LINE</p>
+          <p className="mt-1 text-xs text-amber-700">
+            กรุณาเปิดแอปผ่าน LINE หรือเข้าสู่ระบบเพื่อใช้งานโปรไฟล์
+          </p>
+        </div>
+      ) : null}
 
-      {checkQuery.data && (!checkQuery.data.is_registered || !checkQuery.data.has_profile) ? (
+      {/* Loading state */}
+      {lineUserId && (checkQuery.isLoading || (checkQuery.data?.exists && memberQuery.isLoading)) ? (
+        <LoadingSkeleton />
+      ) : null}
+
+      {/* Check API error */}
+      {checkQuery.isError ? (
+        <div className="space-y-2 rounded-2xl bg-red-50 p-4 text-sm text-red-700 shadow-soft">
+          <p className="font-semibold">ไม่สามารถโหลดข้อมูลสมาชิกได้</p>
+          <p className="text-xs">
+            {checkQuery.error instanceof Error ? checkQuery.error.message : 'Unknown error'}
+          </p>
+          <button
+            type="button"
+            onClick={() => checkQuery.refetch()}
+            className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            ลองใหม่อีกครั้ง
+          </button>
+        </div>
+      ) : null}
+
+      {/* Member API error */}
+      {!checkQuery.isError && memberQuery.isError ? (
+        <div className="space-y-2 rounded-2xl bg-red-50 p-4 text-sm text-red-700 shadow-soft">
+          <p className="font-semibold">ไม่สามารถโหลดบัตรสมาชิกได้</p>
+          <p className="text-xs">
+            {memberQuery.error instanceof Error ? memberQuery.error.message : 'Unknown error'}
+          </p>
+          <button
+            type="button"
+            onClick={() => memberQuery.refetch()}
+            className="mt-2 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            ลองใหม่อีกครั้ง
+          </button>
+        </div>
+      ) : null}
+
+      {/* Not yet registered — prompt registration */}
+      {checkQuery.data && !checkQuery.data.exists ? (
+        <div className="rounded-2xl bg-gradient-to-br from-brand-50 to-line-soft p-5 shadow-card">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-soft">
+              <UserPlus size={22} className="text-line" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-900">ยังไม่ได้สมัครสมาชิก</p>
+              <p className="mt-0.5 text-xs text-slate-600">
+                สมัครเพื่อสะสมแต้ม รับโปรโมชันและสิทธิพิเศษ
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/register"
+            className="mt-4 flex w-full items-center justify-center rounded-xl bg-line px-4 py-2.5 text-sm font-semibold text-white shadow-soft transition-colors hover:bg-line/90"
+          >
+            สมัครสมาชิกตอนนี้
+          </Link>
+        </div>
+      ) : null}
+
+      {/* Registered but profile incomplete — soft CTA */}
+      {checkQuery.data?.exists && !checkQuery.data.has_profile ? (
         <div className="space-y-2">
           <QuickLink
             href="/register"
             icon={UserPlus}
-            title="สมัครสมาชิก / กรอกข้อมูล"
-            description="สะสมแต้มและรับสิทธิพิเศษ — หรือข้ามไปช้อปที่ร้านค้า"
+            title="กรอกข้อมูลส่วนตัวให้ครบ"
+            description="ช่วยให้เราบริการคุณได้ดียิ่งขึ้น (ไม่บังคับ)"
           />
+        </div>
+      ) : null}
+
+      {/* Loaded successfully but member data still missing (edge case) */}
+      {checkQuery.data?.exists &&
+      memberQuery.isSuccess &&
+      (!member || !tier) ? (
+        <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 shadow-soft">
+          <p className="font-semibold">ข้อมูลสมาชิกว่างเปล่า</p>
+          <p className="mt-1 text-xs">
+            ระบบตอบกลับไม่ครบถ้วน — ลองรีเฟรชหน้าอีกครั้ง หากยังไม่แสดง กรุณาติดต่อผู้ดูแล
+          </p>
+          <button
+            type="button"
+            onClick={() => memberQuery.refetch()}
+            className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+          >
+            โหลดใหม่
+          </button>
         </div>
       ) : null}
 

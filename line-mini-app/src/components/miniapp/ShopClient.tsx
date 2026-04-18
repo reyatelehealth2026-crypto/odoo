@@ -146,7 +146,9 @@ export function ShopClient() {
         brand: activeBrand ?? undefined,
         catalogMode: appConfig.shopCatalog.mode,
         catalogBucket: activeBucket ?? undefined,
-        includeZeroPrice: !appConfig.shopCatalog.hideZeroPriceProducts,
+        // Always fetch zero-price products — the product card renders them
+        // as "สอบถามราคา" (inquire) instead of hiding them.
+        includeZeroPrice: true,
         includeInactive: !appConfig.shopCatalog.hideInactiveProducts,
         offset: pageParam,
         limit: 12,
@@ -181,7 +183,9 @@ export function ShopClient() {
   const products = useMemo(() => {
     const all = pages.flatMap((page) => (page.products ?? []).map((product) => enrichShopProduct(product)))
     return filterVisibleShopProducts(all, {
-      hideZeroPrice: appConfig.shopCatalog.hideZeroPriceProducts,
+      // Keep zero-price products visible — ShopProductCard renders them as
+      // "สอบถามราคา" instead of hiding them (so an empty shop never shows).
+      hideZeroPrice: false,
       hideInactive: appConfig.shopCatalog.hideInactiveProducts,
       mode: appConfig.shopCatalog.mode,
       bucket: activeBucket,
