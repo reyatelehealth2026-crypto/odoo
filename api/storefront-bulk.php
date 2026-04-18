@@ -347,6 +347,183 @@ try {
         }
 
         // ─────────────────────────────────────────────────────────────────────
+        // update_override — แก้ไขค่า admin override (sync จะไม่เขียนทับ)
+        //   body: id, field, value
+        //   field ต้องอยู่ใน whitelist: name, generic_name, list_price, online_price, category
+        case 'update_override': {
+            $id    = (int) ($_POST['id'] ?? 0);
+            $field = trim((string) ($_POST['field'] ?? ''));
+            $value = $_POST['value'] ?? null;
+
+            $allowedFields = ['name', 'generic_name', 'list_price', 'online_price', 'category'];
+            if ($id <= 0) {
+                jsonResponse(['success' => false, 'error' => 'id required'], 400);
+            }
+            if (!in_array($field, $allowedFields, true)) {
+                jsonResponse([
+                    'success' => false,
+                    'error'   => 'field not allowed',
+                    'allowed' => $allowedFields,
+                ], 400);
+            }
+
+            // Cast numeric fields
+            if (in_array($field, ['list_price', 'online_price'], true)) {
+                if ($value === '' || $value === null) {
+                    $value = null;
+                } else {
+                    $value = (float) $value;
+                    if ($value < 0) {
+                        jsonResponse(['success' => false, 'error' => 'price must be >= 0'], 400);
+                    }
+                }
+            } else {
+                $value = $value === null ? null : trim((string) $value);
+                if ($value === '') {
+                    $value = null;
+                }
+            }
+
+            // Read current row + current overrides
+            $rowStmt = $db->prepare(
+                "SELECT id, admin_overrides, name, list_price, online_price
+                 FROM odoo_products_cache
+                 WHERE line_account_id = ? AND id = ?"
+            );
+            $rowStmt->execute([$lineAccountId, $id]);
+            $row = $rowStmt->fetch(PDO::FETCH_ASSOC);
+            if (!$row) {
+                jsonResponse(['success' => false, 'error' => 'product not found'], 404);
+            }
+
+            $overrides = [];
+            if (!empty($row['admin_overrides'])) {
+                $decoded = json_decode($row['admin_overrides'], true);
+                if (is_array($decoded)) {
+                    $overrides = $decoded;
+                }
+            }
+
+            $oldOverride = $overrides[$field] ?? null;
+            if ($value === null) {
+                // explicit NULL = revert = remove override (use clear_override action for explicit intent)
+                unset($overrides[$field]);
+            } else {
+                $overrides[$field] = $value;
+            }
+
+            $encoded = empty($overrides) ? null : json_encode($overrides, JSON_UNESCAPED_UNICODE);
+
+            $updateStmt = $db->prepare(
+                "UPDATE odoo_products_cache
+                 SET admin_overrides = ?, updated_at = NOW()
+                 WHERE line_account_id = ? AND id = ?"
+            );
+            $updateStmt->execute([$encoded, $lineAccountId, $id]);
+            $affected = $updateStmt->rowCount();
+
+            logBulkOp($logger, $action, $affected,
+                [
+                    'id'           => $id,
+                    'field'        => $field,
+                    'old_override' => $oldOverride,
+                    'new_override' => $value,
+                    'sync_value'   => $row[$field] ?? null,
+                ],
+                $adminId, $lineAccountId
+            );
+
+            jsonResponse([
+                'success'      => true,
+                'affected'     => $affected,
+                'id'           => $id,
+                'field'        => $field,
+                'override'     => $value,
+                'sync_value'   => $row[$field] ?? null,
+                'has_override' => $value !== null,
+            ]);
+            break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // clear_override — ลบ override 1 field เพื่อกลับไปใช้ค่าจาก sync
+        case 'clear_override': {
+            $id    = (int) ($_POST['id'] ?? 0);
+            $field = trim((string) ($_POST['field'] ?? ''));
+
+            if ($id <= 0 || $field === '') {
+                jsonResponse(['success' => false, 'error' => 'id and field required'], 400);
+            }
+
+            $rowStmt = $db->prepare(
+                "SELECT admin_overrides FROM odoo_products_cache
+                 WHERE line_account_id = ? AND id = ?"
+            );
+            $rowStmt->execute([$lineAccountId, $id]);
+            $currentJson = $rowStmt->fetchColumn();
+            if ($currentJson === false) {
+                jsonResponse(['success' => false, 'error' => 'product not found'], 404);
+            }
+
+            $overrides = [];
+            if (!empty($currentJson)) {
+                $decoded = json_decode((string) $currentJson, true);
+                if (is_array($decoded)) {
+                    $overrides = $decoded;
+                }
+            }
+            if (!array_key_exists($field, $overrides)) {
+                jsonResponse([
+                    'success' => true,
+                    'affected' => 0,
+                    'note'    => 'field ไม่มี override อยู่แล้ว',
+                ]);
+            }
+            $removedValue = $overrides[$field];
+            unset($overrides[$field]);
+            $encoded = empty($overrides) ? null : json_encode($overrides, JSON_UNESCAPED_UNICODE);
+
+            $updateStmt = $db->prepare(
+                "UPDATE odoo_products_cache
+                 SET admin_overrides = ?, updated_at = NOW()
+                 WHERE line_account_id = ? AND id = ?"
+            );
+            $updateStmt->execute([$encoded, $lineAccountId, $id]);
+
+            logBulkOp($logger, $action, 1,
+                ['id' => $id, 'field' => $field, 'removed_value' => $removedValue],
+                $adminId, $lineAccountId
+            );
+
+            jsonResponse([
+                'success'  => true,
+                'affected' => 1,
+                'field'    => $field,
+            ]);
+            break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // clear_all_overrides — ลบ override ทั้งแถว (revert ทุก field ไป sync)
+        case 'clear_all_overrides': {
+            $id = (int) ($_POST['id'] ?? 0);
+            if ($id <= 0) {
+                jsonResponse(['success' => false, 'error' => 'id required'], 400);
+            }
+            $updateStmt = $db->prepare(
+                "UPDATE odoo_products_cache
+                 SET admin_overrides = NULL, updated_at = NOW()
+                 WHERE line_account_id = ? AND id = ?"
+            );
+            $updateStmt->execute([$lineAccountId, $id]);
+            $affected = $updateStmt->rowCount();
+            logBulkOp($logger, $action, $affected,
+                ['id' => $id], $adminId, $lineAccountId);
+            jsonResponse(['success' => true, 'affected' => $affected, 'id' => $id]);
+            break;
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         case 'set_featured_order': {
             $id    = (int) ($_POST['id'] ?? 0);
             $order = isset($_POST['order']) && $_POST['order'] !== '' ? (int) $_POST['order'] : null;
@@ -387,6 +564,9 @@ try {
                     'bulk_disable_by_odoo_inactive',
                     'bulk_enable_by_ids',
                     'set_featured_order',
+                    'update_override',
+                    'clear_override',
+                    'clear_all_overrides',
                 ],
             ], 400);
     }

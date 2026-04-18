@@ -113,7 +113,8 @@ if (
         }
         $upsertCols .= ")";
         $upsertVals .= ")";
-        // ⚠️ ห้ามใส่ storefront_enabled / featured_order ใน UPDATE — เก็บ admin decision
+        // ⚠️ ห้ามใส่ storefront_enabled / featured_order / admin_overrides ใน UPDATE
+        //    เก็บการตัดสินใจของ admin (toggle/pin/แก้ราคา/แก้ชื่อ) ไม่ให้ sync ครั้งถัดไปเขียนทับ
 
         $upsertSql = "INSERT INTO {$cacheTable} {$upsertCols} VALUES {$upsertVals} ON DUPLICATE KEY UPDATE {$upsertUpd}";
         $upsertStmt = $db->prepare($upsertSql);

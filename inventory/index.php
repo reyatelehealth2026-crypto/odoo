@@ -26,10 +26,10 @@ try {
 } catch (Exception $e) {}
 
 // Define tabs
+// หมายเหตุ: tab 'products' (ดั้งเดิม) ถอดออก — รวมกับ 'storefront' แล้ว (edit modal + storefront toggle ในที่เดียว)
 $tabs = [
-    'storefront' => ['label' => 'สินค้าหน้าร้าน', 'icon' => 'fas fa-store'],
-    'catalog-sync' => ['label' => 'โหลดรายการสินค้าหลัก', 'icon' => 'fas fa-cloud-download-alt'],
-    'products' => ['label' => 'สินค้า (ดั้งเดิม)', 'icon' => 'fas fa-box'],
+    'storefront' => ['label' => 'จัดการสินค้า', 'icon' => 'fas fa-store'],
+    'catalog-sync' => ['label' => 'โหลดจาก Odoo', 'icon' => 'fas fa-cloud-download-alt'],
     'stock' => ['label' => 'สต็อกสินค้า', 'icon' => 'fas fa-boxes'],
     'movements' => ['label' => 'การเคลื่อนไหว', 'icon' => 'fas fa-exchange-alt'],
     'adjustment' => ['label' => 'ปรับสต็อก', 'icon' => 'fas fa-sliders-h'],
@@ -42,14 +42,13 @@ $tabs = [
     'wms' => ['label' => 'WMS', 'icon' => 'fas fa-shipping-fast'],
 ];
 
-// Get active tab — default = storefront (สินค้าที่จะวางขายหน้าร้านหลัก)
+// Get active tab — default = storefront (จัดการสินค้า + หน้าร้านในที่เดียว)
 $activeTab = getActiveTab($tabs, 'storefront');
 
 // Set page title based on active tab
 $tabTitles = [
-    'storefront' => 'สินค้าหน้าร้าน (Storefront Catalog)',
-    'catalog-sync' => 'โหลดรายการสินค้าหลักจาก Odoo',
-    'products' => 'จัดการสินค้า/บริการ (ดั้งเดิม)',
+    'storefront' => 'จัดการสินค้า & หน้าร้าน',
+    'catalog-sync' => 'โหลดรายการสินค้าจาก Odoo',
     'stock' => 'สต็อกสินค้า',
     'movements' => 'ประวัติการเคลื่อนไหวสต็อก',
     'adjustment' => 'ปรับสต็อก (Stock Adjustment)',

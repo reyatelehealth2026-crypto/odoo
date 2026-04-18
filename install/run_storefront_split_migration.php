@@ -124,6 +124,7 @@ try {
         'storefront_enabled' => "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1=แสดงบนหน้าร้านจริง, 0=ซ่อน' AFTER `is_active`",
         'drug_type'          => "VARCHAR(64) NULL DEFAULT NULL COMMENT 'ชนิดยา: OTC/Rx/Controlled/Supplement/Cosmetic/Other' AFTER `category`",
         'featured_order'     => "INT NULL DEFAULT NULL COMMENT 'ลำดับ pin (NULL=ไม่ pin)' AFTER `storefront_enabled`",
+        'admin_overrides'    => "JSON NULL DEFAULT NULL COMMENT 'admin override ต่อ field เช่น {\"list_price\":100,\"name\":\"...\"} — sync ไม่แตะ' AFTER `featured_order`",
     ];
     foreach ($columnsToAdd as $col => $def) {
         if (columnExists($db, 'odoo_products_cache', $col)) {

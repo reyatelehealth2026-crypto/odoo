@@ -19,11 +19,49 @@ $currentBotId = (int) ($_SESSION['current_bot_id'] ?? 1);
 
 // ─── Verify migration ran ──────────────────────────────────────────────────────
 $migrationReady = false;
+$hasOverridesCol = false;
 try {
     $check = $db->query("SHOW COLUMNS FROM odoo_products_cache LIKE 'storefront_enabled'");
     $migrationReady = $check && $check->rowCount() > 0;
+    $check2 = $db->query("SHOW COLUMNS FROM odoo_products_cache LIKE 'admin_overrides'");
+    $hasOverridesCol = $check2 && $check2->rowCount() > 0;
 } catch (Exception $e) {
     $migrationReady = false;
+    $hasOverridesCol = false;
+}
+
+/**
+ * รวมค่า admin_overrides (JSON) เข้ากับค่าจาก sync
+ * Return:
+ *   - effective: ค่าที่ใช้แสดง
+ *   - sync: ค่าเดิมจาก Odoo (สำหรับ tooltip "ค่าจาก sync")
+ *   - overridden: map ว่า field ไหนถูก admin override
+ */
+function mergeOverrides(array $row): array
+{
+    $overrides = [];
+    if (!empty($row['admin_overrides'])) {
+        $decoded = is_string($row['admin_overrides'])
+            ? json_decode($row['admin_overrides'], true)
+            : $row['admin_overrides'];
+        if (is_array($decoded)) {
+            $overrides = $decoded;
+        }
+    }
+    $fields = ['name', 'generic_name', 'list_price', 'online_price', 'category'];
+    $effective  = [];
+    $overridden = [];
+    foreach ($fields as $f) {
+        $hasOverride  = array_key_exists($f, $overrides) && $overrides[$f] !== null && $overrides[$f] !== '';
+        $effective[$f]  = $hasOverride ? $overrides[$f] : ($row[$f] ?? null);
+        $overridden[$f] = $hasOverride;
+    }
+    return [
+        'effective'  => $effective,
+        'sync'       => $row,
+        'overridden' => $overridden,
+        'any_override' => !empty(array_filter($overridden)),
+    ];
 }
 
 if (!$migrationReady) {
@@ -115,10 +153,11 @@ $total = (int) $countStmt->fetchColumn();
 
 $totalPages = max(1, (int) ceil(max(1, $total) / $perPage));
 
+$overridesSelect = $hasOverridesCol ? ', admin_overrides' : '';
 $listStmt = $db->prepare(
     "SELECT id, product_code, sku, name, generic_name, category, drug_type,
             list_price, online_price, saleable_qty, is_active, storefront_enabled,
-            featured_order, last_synced_at
+            featured_order, last_synced_at{$overridesSelect}
      FROM odoo_products_cache
      WHERE {$whereSql}
      ORDER BY storefront_enabled DESC,
@@ -377,12 +416,13 @@ if (!function_exists('buildStorefrontQuery')) {
                         <th class="px-3 py-3 text-center">สต็อก</th>
                         <th class="px-3 py-3 text-center">Odoo</th>
                         <th class="px-3 py-3 text-center">หน้าร้าน</th>
+                        <th class="px-3 py-3 text-center w-14">แก้ไข</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y">
                     <?php if (empty($rows)): ?>
                         <tr>
-                            <td colspan="9" class="px-4 py-10 text-center text-gray-400">
+                            <td colspan="10" class="px-4 py-10 text-center text-gray-400">
                                 <i class="fas fa-box-open text-3xl mb-2 block"></i>
                                 ไม่พบสินค้าตาม filter ที่เลือก
                                 <?php if ((int) ($stats['total_cnt'] ?? 0) === 0): ?>
@@ -398,11 +438,34 @@ if (!function_exists('buildStorefrontQuery')) {
                     <?php else: ?>
                         <?php foreach ($rows as $r):
                             $id       = (int) $r['id'];
-                            $price    = (float) ($r['online_price'] ?: $r['list_price'] ?: 0);
+                            $merged   = mergeOverrides($r);
+                            $eff      = $merged['effective'];
+                            $ovr      = $merged['overridden'];
+                            $anyOvr   = $merged['any_override'];
+                            $effPrice = (float) (($eff['online_price'] ?: $eff['list_price']) ?: 0);
                             $stock    = (float) ($r['saleable_qty'] ?? 0);
                             $enabled  = (int) ($r['storefront_enabled'] ?? 0);
                             $isActive = (int) ($r['is_active'] ?? 0);
-                            $isZero   = $price <= 0;
+                            $isZero   = $effPrice <= 0;
+                            // data payload for edit modal (JSON-safe)
+                            $modalData = [
+                                'id'           => $id,
+                                'product_code' => (string) ($r['product_code'] ?? ''),
+                                'sync'         => [
+                                    'name'         => (string) ($r['name']         ?? ''),
+                                    'generic_name' => (string) ($r['generic_name'] ?? ''),
+                                    'category'     => (string) ($r['category']     ?? ''),
+                                    'list_price'   => (float)  ($r['list_price']   ?? 0),
+                                    'online_price' => (float)  ($r['online_price'] ?? 0),
+                                ],
+                                'override'     => [
+                                    'name'         => $ovr['name']         ? $eff['name']         : null,
+                                    'generic_name' => $ovr['generic_name'] ? $eff['generic_name'] : null,
+                                    'category'     => $ovr['category']     ? $eff['category']     : null,
+                                    'list_price'   => $ovr['list_price']   ? (float) $eff['list_price']   : null,
+                                    'online_price' => $ovr['online_price'] ? (float) $eff['online_price'] : null,
+                                ],
+                            ];
                         ?>
                             <tr class="hover:bg-gray-50" :class="selectedIds.includes(<?= $id ?>) ? 'bg-blue-50' : ''">
                                 <td class="px-3 py-2 text-center">
@@ -416,15 +479,29 @@ if (!function_exists('buildStorefrontQuery')) {
                                     <div class="font-mono text-xs text-gray-500"><?= htmlspecialchars((string) ($r['sku'] ?? '-')) ?></div>
                                 </td>
                                 <td class="px-3 py-2">
-                                    <div class="font-medium text-gray-800"><?= htmlspecialchars((string) ($r['name'] ?? '-')) ?></div>
-                                    <?php if (!empty($r['generic_name'])): ?>
-                                        <div class="text-xs text-blue-600"><?= htmlspecialchars((string) $r['generic_name']) ?></div>
+                                    <div class="font-medium text-gray-800 flex items-center gap-1">
+                                        <?= htmlspecialchars((string) ($eff['name'] ?? '-')) ?>
+                                        <?php if ($ovr['name']): ?>
+                                            <span title="แอดมินแก้ไข (ค่า sync: <?= htmlspecialchars((string) ($r['name'] ?? '')) ?>)"
+                                                  class="text-amber-500 text-xs"><i class="fas fa-pen-square"></i></span>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php if (!empty($eff['generic_name'])): ?>
+                                        <div class="text-xs text-blue-600 flex items-center gap-1">
+                                            <?= htmlspecialchars((string) $eff['generic_name']) ?>
+                                            <?php if ($ovr['generic_name']): ?>
+                                                <span title="แอดมินแก้ไข" class="text-amber-500"><i class="fas fa-pen-square text-[10px]"></i></span>
+                                            <?php endif; ?>
+                                        </div>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-3 py-2">
-                                    <?php if (!empty($r['category'])): ?>
-                                        <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs">
-                                            <?= htmlspecialchars((string) $r['category']) ?>
+                                    <?php if (!empty($eff['category'])): ?>
+                                        <span class="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-xs inline-flex items-center gap-1">
+                                            <?= htmlspecialchars((string) $eff['category']) ?>
+                                            <?php if ($ovr['category']): ?>
+                                                <i class="fas fa-pen-square text-amber-500 text-[10px]"></i>
+                                            <?php endif; ?>
                                         </span>
                                     <?php else: ?>
                                         <span class="text-gray-300">—</span>
@@ -451,7 +528,12 @@ if (!function_exists('buildStorefrontQuery')) {
                                     <?php if ($isZero): ?>
                                         <span class="text-red-500 font-medium">฿0</span>
                                     <?php else: ?>
-                                        <span class="font-semibold text-gray-800">฿<?= number_format($price, 2) ?></span>
+                                        <span class="font-semibold text-gray-800 inline-flex items-center gap-1">
+                                            ฿<?= number_format($effPrice, 2) ?>
+                                            <?php if ($ovr['online_price'] || $ovr['list_price']): ?>
+                                                <span title="ราคาถูกแอดมินแก้ไข" class="text-amber-500"><i class="fas fa-pen-square text-[10px]"></i></span>
+                                            <?php endif; ?>
+                                        </span>
                                     <?php endif; ?>
                                 </td>
                                 <td class="px-3 py-2 text-center">
@@ -474,6 +556,13 @@ if (!function_exists('buildStorefrontQuery')) {
                                                    <?= $enabled ? 'bg-green-500' : 'bg-gray-300' ?>">
                                         <span class="inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
                                                      <?= $enabled ? 'translate-x-5' : 'translate-x-0.5' ?>"></span>
+                                    </button>
+                                </td>
+                                <td class="px-3 py-2 text-center">
+                                    <button type="button" @click='openEditModal(<?= json_encode($modalData, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>)'
+                                            class="w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-blue-600 transition-colors <?= $anyOvr ? 'text-amber-500 hover:text-amber-600' : '' ?>"
+                                            title="<?= $anyOvr ? 'แก้ไข (มี admin override อยู่)' : 'แก้ไข' ?>">
+                                        <i class="fas fa-pen"></i>
                                     </button>
                                 </td>
                             </tr>
@@ -510,6 +599,152 @@ if (!function_exists('buildStorefrontQuery')) {
             </div>
         </div>
     <?php endif; ?>
+
+    <!-- ─── Edit Modal (admin override) ─────────────────────────────────────── -->
+    <div x-show="editModal.open"
+         x-cloak
+         @keydown.escape.window="closeModal()"
+         class="fixed inset-0 z-50 overflow-y-auto"
+         style="display:none">
+        <div class="fixed inset-0 bg-gray-900/50" @click="closeModal()"></div>
+        <div class="relative flex items-center justify-center min-h-screen p-4">
+            <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl" @click.stop>
+                <!-- Header -->
+                <div class="flex items-center justify-between px-5 py-3 border-b">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-800">
+                            <i class="fas fa-pen-to-square mr-1 text-blue-600"></i>แก้ไขสินค้า
+                        </h3>
+                        <div class="text-xs text-gray-500 font-mono mt-1" x-text="'รหัส: ' + editModal.code"></div>
+                    </div>
+                    <button @click="closeModal()" type="button"
+                            class="text-gray-400 hover:text-gray-600 w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100">
+                        <i class="fas fa-times text-lg"></i>
+                    </button>
+                </div>
+
+                <!-- Body -->
+                <div class="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                    <div class="text-xs bg-blue-50 border border-blue-200 rounded-lg p-3 text-blue-900">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        ค่าที่แก้ไขจะถูกเก็บเป็น <b>admin override</b> —
+                        <b>การ sync ครั้งถัดไปจะไม่เขียนทับ</b> ค่านี้
+                        (กดปุ่ม <i class="fas fa-undo text-amber-600"></i> เพื่อกลับไปใช้ค่าจาก Odoo)
+                    </div>
+
+                    <!-- Text fields: name -->
+                    <div>
+                        <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1">
+                            <span>ชื่อสินค้า</span>
+                            <button type="button" x-show="isOverridden('name')" @click="clearField('name')"
+                                    class="text-xs text-amber-600 hover:text-amber-800">
+                                <i class="fas fa-undo mr-1"></i>กลับไปใช้ค่า sync
+                            </button>
+                        </label>
+                        <input type="text" x-model="editModal.form.name"
+                               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <div class="text-xs text-gray-400 mt-1">
+                            ค่าจาก sync: <span class="font-mono" x-text="editModal.sync.name || '—'"></span>
+                        </div>
+                    </div>
+
+                    <!-- generic_name -->
+                    <div>
+                        <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1">
+                            <span>ชื่อสามัญ (generic name)</span>
+                            <button type="button" x-show="isOverridden('generic_name')" @click="clearField('generic_name')"
+                                    class="text-xs text-amber-600 hover:text-amber-800">
+                                <i class="fas fa-undo mr-1"></i>กลับไปใช้ค่า sync
+                            </button>
+                        </label>
+                        <input type="text" x-model="editModal.form.generic_name"
+                               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <div class="text-xs text-gray-400 mt-1">
+                            ค่าจาก sync: <span class="font-mono" x-text="editModal.sync.generic_name || '—'"></span>
+                        </div>
+                    </div>
+
+                    <!-- category -->
+                    <div>
+                        <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1">
+                            <span>หมวดหมู่</span>
+                            <button type="button" x-show="isOverridden('category')" @click="clearField('category')"
+                                    class="text-xs text-amber-600 hover:text-amber-800">
+                                <i class="fas fa-undo mr-1"></i>กลับไปใช้ค่า sync
+                            </button>
+                        </label>
+                        <input type="text" x-model="editModal.form.category"
+                               class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                        <div class="text-xs text-gray-400 mt-1">
+                            ค่าจาก sync: <span class="font-mono" x-text="editModal.sync.category || '—'"></span>
+                        </div>
+                    </div>
+
+                    <!-- Price fields -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1">
+                                <span>ราคาปกติ (list_price)</span>
+                                <button type="button" x-show="isOverridden('list_price')" @click="clearField('list_price')"
+                                        class="text-xs text-amber-600 hover:text-amber-800">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2 text-gray-400">฿</span>
+                                <input type="number" step="0.01" min="0"
+                                       x-model.number="editModal.form.list_price"
+                                       class="w-full pl-7 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1">
+                                sync: ฿<span class="font-mono" x-text="Number(editModal.sync.list_price || 0).toFixed(2)"></span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="flex items-center justify-between text-sm font-medium text-gray-700 mb-1">
+                                <span>ราคาออนไลน์ (online_price)</span>
+                                <button type="button" x-show="isOverridden('online_price')" @click="clearField('online_price')"
+                                        class="text-xs text-amber-600 hover:text-amber-800">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                            </label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2 text-gray-400">฿</span>
+                                <input type="number" step="0.01" min="0"
+                                       x-model.number="editModal.form.online_price"
+                                       class="w-full pl-7 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div class="text-xs text-gray-400 mt-1">
+                                sync: ฿<span class="font-mono" x-text="Number(editModal.sync.online_price || 0).toFixed(2)"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="flex items-center justify-between px-5 py-3 border-t bg-gray-50 rounded-b-xl">
+                    <button @click="revertAll()" type="button"
+                            class="text-sm text-red-600 hover:text-red-800">
+                        <i class="fas fa-trash mr-1"></i>ล้าง override ทั้งหมด
+                    </button>
+                    <div class="flex gap-2">
+                        <button @click="closeModal()" type="button"
+                                class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+                            ยกเลิก
+                        </button>
+                        <button @click="saveAllChanges()" type="button"
+                                :disabled="editModal.saving"
+                                class="px-5 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                            <i class="fas fa-save mr-1" x-show="!editModal.saving"></i>
+                            <i class="fas fa-spinner fa-spin mr-1" x-show="editModal.saving"></i>
+                            บันทึก
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Alpine.js lightweight (ใช้สำหรับ Alpine directives) -->
@@ -521,6 +756,133 @@ function storefrontTab() {
         selectedIds: [],
         filterCategory: <?= json_encode($categoryFilter, JSON_UNESCAPED_UNICODE) ?>,
         filterDrugType: <?= json_encode($drugTypeFilter, JSON_UNESCAPED_UNICODE) ?>,
+
+        // Edit modal state
+        editModal: {
+            open: false,
+            id: null,
+            code: '',
+            sync: { name: '', generic_name: '', category: '', list_price: 0, online_price: 0 },
+            override: { name: null, generic_name: null, category: null, list_price: null, online_price: null },
+            form: { name: '', generic_name: '', category: '', list_price: 0, online_price: 0 },
+            saving: false,
+        },
+
+        openEditModal(data) {
+            const sync = data.sync || {};
+            const ovr = data.override || {};
+            this.editModal = {
+                open: true,
+                id: data.id,
+                code: data.product_code || '',
+                sync: {
+                    name:         String(sync.name         ?? ''),
+                    generic_name: String(sync.generic_name ?? ''),
+                    category:     String(sync.category     ?? ''),
+                    list_price:   Number(sync.list_price   ?? 0),
+                    online_price: Number(sync.online_price ?? 0),
+                },
+                override: {
+                    name:         ovr.name         ?? null,
+                    generic_name: ovr.generic_name ?? null,
+                    category:     ovr.category     ?? null,
+                    list_price:   ovr.list_price   ?? null,
+                    online_price: ovr.online_price ?? null,
+                },
+                // form = effective = override ?? sync
+                form: {
+                    name:         ovr.name         ?? String(sync.name         ?? ''),
+                    generic_name: ovr.generic_name ?? String(sync.generic_name ?? ''),
+                    category:     ovr.category     ?? String(sync.category     ?? ''),
+                    list_price:   ovr.list_price   ?? Number(sync.list_price   ?? 0),
+                    online_price: ovr.online_price ?? Number(sync.online_price ?? 0),
+                },
+                saving: false,
+            };
+        },
+
+        closeModal() { this.editModal.open = false; },
+
+        isOverridden(field) {
+            const v = this.editModal.override[field];
+            return v !== null && v !== undefined && v !== '';
+        },
+
+        async clearField(field) {
+            const res = await this.apiCall('clear_override', {
+                id: this.editModal.id,
+                field: field,
+            });
+            if (res && res.success) {
+                // revert form value to sync value in-place
+                this.editModal.form[field] = this.editModal.sync[field];
+                this.editModal.override[field] = null;
+            } else {
+                alert('Error: ' + (res?.error || 'unknown'));
+            }
+        },
+
+        async saveAllChanges() {
+            this.editModal.saving = true;
+            try {
+                const textFields    = ['name', 'generic_name', 'category'];
+                const numericFields = ['list_price', 'online_price'];
+                const fields = [...textFields, ...numericFields];
+
+                const opsToRun = [];
+                for (const f of fields) {
+                    const isNum = numericFields.includes(f);
+                    const newVal  = isNum
+                        ? Number(this.editModal.form[f] ?? 0)
+                        : String(this.editModal.form[f] ?? '').trim();
+                    const syncVal = isNum
+                        ? Number(this.editModal.sync[f] ?? 0)
+                        : String(this.editModal.sync[f] ?? '').trim();
+                    const hasOvr  = this.isOverridden(f);
+
+                    // Case 1: new == sync → ensure no override (clear if exists)
+                    if ((isNum ? newVal === syncVal : newVal === syncVal)) {
+                        if (hasOvr) {
+                            opsToRun.push({ action: 'clear_override', field: f });
+                        }
+                        continue;
+                    }
+                    // Case 2: new != sync → set override
+                    opsToRun.push({ action: 'update_override', field: f, value: newVal });
+                }
+
+                if (opsToRun.length === 0) {
+                    alert('ไม่มีการเปลี่ยนแปลง');
+                    this.closeModal();
+                    return;
+                }
+
+                let okCount = 0;
+                for (const op of opsToRun) {
+                    const res = await this.apiCall(op.action, {
+                        id: this.editModal.id,
+                        field: op.field,
+                        ...(op.value !== undefined ? { value: op.value } : {}),
+                    });
+                    if (res && res.success) okCount++;
+                }
+                alert('บันทึก ' + okCount + '/' + opsToRun.length + ' การเปลี่ยนแปลง');
+                location.reload();
+            } finally {
+                this.editModal.saving = false;
+            }
+        },
+
+        async revertAll() {
+            if (!confirm('ล้าง admin override ทั้งหมดของสินค้านี้ (กลับไปใช้ค่า sync) — ยืนยัน?')) return;
+            const res = await this.apiCall('clear_all_overrides', { id: this.editModal.id });
+            if (res && res.success) {
+                alert('ล้างทั้งหมดแล้ว');
+                location.reload();
+            } else {
+                alert('Error: ' + (res?.error || 'unknown'));
+            }
+        },
 
         get allSelected() {
             const boxes = document.querySelectorAll('.row-checkbox');
