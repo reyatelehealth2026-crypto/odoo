@@ -3547,7 +3547,7 @@ function getPendingBdoOrdersApi($db, $input)
             {$contextJoin}
             WHERE bo.partner_id = ?
               AND bo.payment_status = 'pending'
-              AND bo.created_at >= '2026-03-24'
+              AND bo.created_at >= '" . ODOO_BDO_DATA_START_DATE . "'
             ORDER BY bo.created_at DESC
             LIMIT ?
         ");

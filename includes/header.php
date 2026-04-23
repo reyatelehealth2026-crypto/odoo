@@ -7,6 +7,14 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
+// Security response headers for all admin pages
+if (!headers_sent()) {
+    header('X-Content-Type-Options: nosniff');
+    header('X-Frame-Options: DENY');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
+}
+
 // Prevent direct web access to this include file
 if (isset($_SERVER['SCRIPT_FILENAME']) && realpath($_SERVER['SCRIPT_FILENAME']) === __FILE__) {
     http_response_code(403);

@@ -82,7 +82,7 @@ class FileCache {
         foreach (glob($this->cacheDir . '*.cache') as $file) {
             $raw = @file_get_contents($file);
             if ($raw === false) continue;
-            $data = @unserialize($raw);
+            $data = @unserialize($raw, ['allowed_classes' => false]);
             if (!is_array($data) || !isset($data['key'])) continue;
             if (preg_match($regex, $data['key'])) {
                 @unlink($file);

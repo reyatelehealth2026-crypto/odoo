@@ -137,16 +137,29 @@ define('ODOO_API_RATE_LIMIT', 60); // requests per minute
 define('ODOO_WEBHOOK_TIMEOUT', 5); // seconds - must respond within this time
 define('ODOO_DASHBOARD_STALE_TTL', $odooDashboardStaleEnv !== false ? max(30, (int) $odooDashboardStaleEnv) : 300); // seconds
 
+// Cutoff date for BDO-related dashboard queries. Rows before this are
+// considered legacy/incomplete and excluded from dashboard aggregates.
+// Format: 'YYYY-MM-DD' (MySQL DATE literal, Asia/Bangkok TZ).
+define('ODOO_BDO_DATA_START_DATE', getenv('ODOO_BDO_DATA_START_DATE') ?: '2026-03-24');
+
 // Odoo Product API credentials (for /ineco_gc endpoints)
+// SECURITY: hardcoded token fallback removed 2026-04-23 (see security review).
+// Set CNY_ODOO_USER_TOKEN (or ODOO_PRODUCTION_USER_TOKEN) in the environment.
+// The previously-checked-in token MUST be rotated — it is compromised via git history.
 $defaultCnyOdooApiUser = ODOO_ENVIRONMENT === 'production' ? 'webapi_user2@cny.co' : '';
-$defaultCnyOdooUserToken = ODOO_ENVIRONMENT === 'production'
-    ? '@ewNI*4X*/4t9vgMds2Gzs3j=VG%q%ERYM-1A/utT0#CUZ&UR&$pwvuxj!MNUcruJ@RZ/p7$uN*fdqE6xktQdGxGov%?L0@@CekhyzeROSv2/qmj&%G-vlHq$4V8&AHC/XkxI$Tgkbq3p/6faPvf8wjIP#hfZM7GimVkXbvpvsrfZKOCGk?ldTpL9=5qI-eCVs29xIyr0'
-    : '';
 define('CNY_ODOO_API_USER', getenv('CNY_ODOO_API_USER') ?: (getenv('ODOO_PRODUCTION_API_USER') ?: $defaultCnyOdooApiUser));
-define('CNY_ODOO_USER_TOKEN', getenv('CNY_ODOO_USER_TOKEN') ?: (getenv('ODOO_PRODUCTION_USER_TOKEN') ?: $defaultCnyOdooUserToken));
+define('CNY_ODOO_USER_TOKEN', getenv('CNY_ODOO_USER_TOKEN') ?: (getenv('ODOO_PRODUCTION_USER_TOKEN') ?: ''));
+if (CNY_ODOO_USER_TOKEN === '' && ODOO_ENVIRONMENT === 'production') {
+    error_log('[config] WARNING: CNY_ODOO_USER_TOKEN not set — Odoo /ineco_gc endpoints will return 401');
+}
 
 // Gemini AI Chat
-define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: 'AIzaSyDvqhwWDiCg_KVLj5gT89unsuBSfbZ6Vcg');
+// SECURITY: hardcoded key fallback removed 2026-04-23. Set GEMINI_API_KEY env var.
+// Rotate the previously-checked-in key.
+define('GEMINI_API_KEY', getenv('GEMINI_API_KEY') ?: '');
+if (GEMINI_API_KEY === '') {
+    error_log('[config] WARNING: GEMINI_API_KEY not set — AI chat features will fail');
+}
 
 // Webhook URL (for Odoo team reference)
 define('ODOO_WEBHOOK_URL', APP_URL . '/api/webhook/odoo.php');
@@ -162,7 +175,12 @@ define('ODOO_LINE_ACCOUNT_MODE', 'shared');
 define('REDIS_HOST',     getenv('REDIS_HOST')     ?: 'redis-13718.fcrce172.us-east-1-1.ec2.cloud.redislabs.com');
 define('REDIS_PORT',     getenv('REDIS_PORT')     ?: 13718);
 define('REDIS_USERNAME', getenv('REDIS_USERNAME') ?: 'default');
-define('REDIS_PASSWORD', getenv('REDIS_PASSWORD') ?: '8aOsi5ZlcevxIxkXOFn4b4qshhMTHKC5');
+// SECURITY: hardcoded password fallback removed 2026-04-23. Set REDIS_PASSWORD env var.
+// Rotate the previously-checked-in password.
+define('REDIS_PASSWORD', getenv('REDIS_PASSWORD') ?: '');
+if (REDIS_PASSWORD === '') {
+    error_log('[config] WARNING: REDIS_PASSWORD not set — Redis cache authentication will fail');
+}
 define('REDIS_DB',       getenv('REDIS_DB')       ?: 0);     // DB index (0–15)
 define('REDIS_TIMEOUT',  3.0);                               // วินาที (cloud ต้องการนานกว่า local)
 define('REDIS_PREFIX',   'cny:');                            // prefix สำหรับทุก key

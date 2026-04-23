@@ -3558,7 +3558,7 @@ function getPendingBdoOrdersApi($db, $input)
             LEFT JOIN odoo_bdos b ON bo.bdo_id = b.bdo_id
             WHERE bo.partner_id = ?
               AND bo.payment_status = 'pending'
-              AND bo.created_at >= '2026-03-24'
+              AND bo.created_at >= '" . ODOO_BDO_DATA_START_DATE . "'
             ORDER BY bo.created_at DESC
             LIMIT ?
         ");
@@ -3627,7 +3627,7 @@ function getSlipCenterBdoOverview($db, $input)
             WHERE bo.payment_status IN ('pending','partial')
               AND (b.payment_state IS NULL OR b.payment_state NOT IN ('paid','reversed','in_payment'))
               AND (b.state IS NULL OR b.state NOT IN ('done','cancel','cancelled'))
-              AND bo.created_at >= '2026-03-24'
+              AND bo.created_at >= '" . ODOO_BDO_DATA_START_DATE . "'
             ORDER BY bo.created_at DESC
             LIMIT ?
         ");
@@ -3838,7 +3838,7 @@ function getSlipCenterCustomerDetail($db, $input)
                       AND bo.payment_status IN ('pending','partial')
                       AND (b.payment_state IS NULL OR b.payment_state NOT IN ('paid','reversed','in_payment'))
                       AND (b.state IS NULL OR b.state NOT IN ('done','cancel','cancelled'))
-                      AND bo.created_at >= '2026-03-24'
+                      AND bo.created_at >= '" . ODOO_BDO_DATA_START_DATE . "'
                     ORDER BY b.updated_at DESC
                     LIMIT ?
                 ");
@@ -3863,7 +3863,7 @@ function getSlipCenterCustomerDetail($db, $input)
                     WHERE bo.payment_status IN ('pending','partial')
                       AND (b.payment_state IS NULL OR b.payment_state NOT IN ('paid','reversed','in_payment'))
                       AND (b.state IS NULL OR b.state NOT IN ('done','cancel','cancelled'))
-                      AND bo.created_at >= '2026-03-24'
+                      AND bo.created_at >= '" . ODOO_BDO_DATA_START_DATE . "'
                     ORDER BY b.updated_at DESC
                     LIMIT ?
                 ");
@@ -3889,7 +3889,7 @@ function getSlipCenterCustomerDetail($db, $input)
                       AND bo.payment_status IN ('pending','partial')
                       AND (b.payment_state IS NULL OR b.payment_state NOT IN ('paid','reversed','in_payment'))
                       AND (b.state IS NULL OR b.state NOT IN ('done','cancel','cancelled'))
-                      AND bo.created_at >= '2026-03-24'
+                      AND bo.created_at >= '" . ODOO_BDO_DATA_START_DATE . "'
                     ORDER BY b.updated_at DESC
                     LIMIT ?
                 ");

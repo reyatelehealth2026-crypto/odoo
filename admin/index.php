@@ -65,7 +65,7 @@ try {
     
     $stmt = $db->query("SELECT COALESCE(SUM(grand_total), 0) FROM transactions WHERE status IN ('paid', 'confirmed', 'delivered')");
     $stats['total_revenue'] = $stmt->fetchColumn();
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 
 // Products stats
 $stats['total_products'] = 0;
@@ -78,7 +78,7 @@ try {
     
     $stmt = $db->query("SELECT COUNT(*) FROM {$productsTable} WHERE stock > 0 AND stock <= 5 AND is_active = 1");
     $stats['low_stock'] = $stmt->fetchColumn();
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 
 // Auto-reply & Broadcast stats
 $stats['auto_replies'] = 0;
@@ -89,35 +89,35 @@ try {
     
     $stmt = $db->query("SELECT COUNT(*) FROM broadcasts WHERE status = 'sent'");
     $stats['broadcasts'] = $stmt->fetchColumn();
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 
 // Pending slips count
 $stats['pending_slips'] = 0;
 try {
     $stmt = $db->query("SELECT COUNT(DISTINCT transaction_id) FROM payment_slips WHERE status = 'pending'");
     $stats['pending_slips'] = $stmt->fetchColumn();
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 
 // Recent orders
 $recentOrders = [];
 try {
     $stmt = $db->query("SELECT o.*, u.display_name FROM transactions o LEFT JOIN users u ON o.user_id = u.id ORDER BY o.created_at DESC LIMIT 5");
     $recentOrders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 
 // Recent messages
 $recentMessages = [];
 try {
     $stmt = $db->query("SELECT m.*, u.display_name, u.picture_url FROM messages m JOIN users u ON m.user_id = u.id WHERE m.direction = 'incoming' ORDER BY m.created_at DESC LIMIT 5");
     $recentMessages = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 
 // Recent users
 $recentUsers = [];
 try {
     $stmt = $db->query("SELECT * FROM users ORDER BY created_at DESC LIMIT 5");
     $recentUsers = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {}
+} catch (Exception $e) { error_log('[admin/index.php] stats query failed: ' . $e->getMessage()); }
 ?>
 
 <style>

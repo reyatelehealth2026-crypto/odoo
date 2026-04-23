@@ -548,7 +548,7 @@ if (!function_exists('getOdooBdos')) {
                 }
                 $where[] = "(b.state IS NULL OR LOWER(TRIM(b.state)) NOT IN ('cancel','cancelled'))";
                 // ไม่แสดง BDO ก่อน 24 มีนา 2569 (ถือว่าชำระครบแล้ว)
-                $where[] = "DATE(b.created_at) >= '2026-03-24'";
+                $where[] = "DATE(b.created_at) >= '" . ODOO_BDO_DATA_START_DATE . "'";
             }
 
             $whereClause = $where ? ('WHERE ' . implode(' AND ', $where)) : '';

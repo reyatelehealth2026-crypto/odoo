@@ -93,12 +93,23 @@ if (!$lineAccount) {
         }
     } catch (Exception $e) {
         logWebhookException($db, 'webhook.php', $e);
-        // Table doesn't exist, use default
+        // SECURITY: do NOT fall through to `new LineAPI()` default — if
+        // LINE_CHANNEL_SECRET constant is empty, HMAC-SHA256 signature
+        // validation can be bypassed by an attacker forging a signature
+        // against the empty key.
+        http_response_code(500);
+        exit('Account resolution failed');
     }
 }
 
-// Fallback to default config
+// Fallback to default config — only reached when $lineAccount was resolved to
+// null (no matching account) without an exception. Reject if the default
+// channel secret is unset/empty to avoid an HMAC bypass path.
 if (!$line) {
+    if (!defined('LINE_CHANNEL_SECRET') || LINE_CHANNEL_SECRET === '') {
+        http_response_code(400);
+        exit('No matching LINE account');
+    }
     $line = new LineAPI();
     if (!$line->validateSignature($body, $signature)) {
         http_response_code(400);

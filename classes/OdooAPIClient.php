@@ -61,6 +61,14 @@ class OdooAPIClient
     public function __construct($db, $lineAccountId = null)
     {
         $this->db = $db;
+        if ($lineAccountId === null) {
+            error_log(
+                '[OdooAPIClient] WARNING: constructor called without $lineAccountId; '
+                . 'defaulting to tenant 3. This is a cross-tenant data leakage risk. '
+                . 'Caller trace: ' . (debug_backtrace()[0]['file'] ?? 'unknown')
+                . ':' . (debug_backtrace()[0]['line'] ?? 0)
+            );
+        }
         $this->lineAccountId = $lineAccountId ?? 3;
         $this->apiKey = ODOO_API_KEY;
         $this->baseUrl = rtrim(ODOO_API_BASE_URL, '/');

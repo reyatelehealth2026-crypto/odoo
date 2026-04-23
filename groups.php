@@ -30,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $db->prepare("DELETE FROM user_groups WHERE user_id = ? AND group_id = ?");
         $stmt->execute([$_POST['user_id'], $_POST['group_id']]);
     }
-    header('Location: groups.php' . (isset($_POST['group_id']) ? '?view=' . $_POST['group_id'] : ''));
+    header('Location: groups.php' . (isset($_POST['group_id']) ? '?view=' . (int) $_POST['group_id'] : ''));
     exit;
 }
 
