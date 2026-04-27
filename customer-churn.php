@@ -136,6 +136,22 @@ try {
     $watchlistRows = [];
 }
 
+// ── Enrich watchlist rows with InboxSentinel flags (last 30 days) ──────────
+// Surfaces customers who are BOTH in churn segment AND complaining in inbox —
+// the highest-priority "P0" overlap discovered in the historical scan.
+// See classes/CRM/InboxSentinel.php.
+$inboxFlags = [];
+try {
+    if (!empty($watchlistRows)) {
+        require_once __DIR__ . '/classes/CRM/InboxSentinel.php';
+        $sentinel    = new \Classes\CRM\InboxSentinel($db);
+        $partnerIds  = array_column($watchlistRows, 'odoo_partner_id');
+        $inboxFlags  = $sentinel->getInboxFlagsForPartners($partnerIds, 30);
+    }
+} catch (\Throwable $e) {
+    $inboxFlags = [];
+}
+
 // ── Pure helper functions ────────────────────────────────────────────────────
 
 function churnSegmentBadgeClass(string $seg): string
@@ -332,6 +348,43 @@ $kpiDefs = [
       text-decoration:none; transition:all 0.15s;
     }
     .act-link:hover { background:#dbeafe; border-color:#93c5fd; }
+
+    /* ── Inbox sentinel flag pill ── */
+    .inbox-flag {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600;
+      cursor:help; white-space:nowrap;
+    }
+    .inbox-flag-red    { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+    .inbox-flag-orange { background:#ffedd5; color:#9a3412; border:1px solid #fed7aa; }
+    .inbox-flag-yellow { background:#fef9c3; color:#854d0e; border:1px solid #fde68a; }
+    .inbox-flag-none   { color:#d1d5db; font-size:13px; }
+
+    /* ── P0 Critical Overlap card ── */
+    .overlap-alert {
+      background:linear-gradient(135deg,#fef2f2 0%,#fff7ed 100%);
+      border:1px solid #fecaca;
+      border-left:4px solid #dc2626;
+      padding:16px 20px; border-radius:12px;
+      margin-bottom:20px;
+    }
+    .overlap-alert-title {
+      font-size:13px; font-weight:700; color:#991b1b;
+      display:flex; align-items:center; gap:8px; margin-bottom:8px;
+    }
+    .overlap-alert-list { display:flex; flex-direction:column; gap:6px; }
+    .overlap-alert-item {
+      font-size:12.5px; color:#374151; padding:6px 10px;
+      background:rgba(255,255,255,0.7); border-radius:6px;
+      display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    }
+    .overlap-alert-item .seg-tag {
+      font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;
+      background:#dc2626; color:#fff;
+    }
+    .overlap-alert-item .seg-tag.lost     { background:#dc2626; }
+    .overlap-alert-item .seg-tag.atrisk   { background:#ea580c; }
+    .overlap-alert-item .seg-tag.churned  { background:#7f1d1d; }
 
     /* ── Action button: AI variant ── */
     .act-link-ai {
@@ -550,6 +603,52 @@ $kpiDefs = [
     <?php endforeach; ?>
   </div>
 
+  <!-- ════ P0 CRITICAL OVERLAP — Inbox complaint + Churn segment ═══════ -->
+  <?php
+    // Build "P0 overlap" list: watchlist customers who ALSO have a recent
+    // inbox complaint (red/orange severity in last 30 days).
+    $p0Overlap = [];
+    foreach ($watchlistRows as $wRow) {
+        $pid = (int) $wRow['odoo_partner_id'];
+        $seg = (string) ($wRow['current_segment'] ?? '');
+        if (!isset($inboxFlags[$pid])) continue;
+        $flag = $inboxFlags[$pid];
+        if (!in_array($flag['severity'], ['red', 'orange'], true)) continue;
+        if (!in_array($seg, ['Churned', 'Lost', 'At-Risk'], true)) continue;
+        $p0Overlap[] = ['row' => $wRow, 'flag' => $flag];
+    }
+  ?>
+  <?php if (!empty($p0Overlap)): ?>
+  <div class="sec-head" style="margin-top:36px;color:#991b1b;">🚨 P0 — Critical Overlap (บ่นในกล่องข้อความ + กำลังจะหาย)</div>
+  <div class="overlap-alert">
+    <div class="overlap-alert-title">
+      🚨 ลูกค้า <?= count($p0Overlap) ?> รายที่ทั้งบ่นใน inbox และอยู่ใน Churned / Lost / At-Risk
+    </div>
+    <div style="font-size:12px;color:#7c2d12;margin-bottom:10px;">
+      ลูกค้ากลุ่มนี้คือ <b>เป้าหมายเร่งด่วนที่สุด</b> — ตอบ inbox ทันที + ใช้ปุ่ม AI วิเคราะห์ เพื่อรับ context สำหรับ Sales
+    </div>
+    <div class="overlap-alert-list">
+      <?php foreach ($p0Overlap as $p0):
+        $r = $p0['row'];
+        $f = $p0['flag'];
+        $segClass = strtolower(str_replace('-','',$r['current_segment']));
+      ?>
+      <div class="overlap-alert-item">
+        <span class="seg-tag <?= htmlspecialchars($segClass, ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($r['current_segment'], ENT_QUOTES, 'UTF-8') ?></span>
+        <span style="font-weight:600;"><?= htmlspecialchars((string) ($r['store_name'] ?? '-'), ENT_QUOTES, 'UTF-8') ?></span>
+        <?php if (!empty($r['customer_ref'])): ?>
+        <span style="color:#6b7280;font-size:11px;">(<?= htmlspecialchars($r['customer_ref'], ENT_QUOTES, 'UTF-8') ?>)</span>
+        <?php endif; ?>
+        <span class="inbox-flag inbox-flag-<?= htmlspecialchars($f['severity'], ENT_QUOTES, 'UTF-8') ?>">
+          <?= $f['severity'] === 'red' ? '🔴 ร้องเรียน' : '🟠 ไม่พอใจ' ?> (<?= (int) $f['count'] ?>)
+        </span>
+        <span style="color:#374151;font-size:12px;flex:1;min-width:200px;">"<?= htmlspecialchars(mb_substr((string) $f['latest_text'], 0, 120), ENT_QUOTES, 'UTF-8') ?>"</span>
+      </div>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
   <!-- ════ WATCHLIST TABLE ════════════════════════════════════════ -->
   <div class="sec-head" style="margin-top:36px;">รายชื่อลูกค้าที่ต้องติดตาม — เรียงตามความเร่งด่วน</div>
 
@@ -599,6 +698,7 @@ $kpiDefs = [
             <th title="ยอดซื้อสะสมตลอดอายุลูกค้า (THB)">ยอดซื้อสะสม</th>
             <th>ออเดอร์ล่าสุด</th>
             <th>สถานะ</th>
+            <th title="สัญญาณจากกล่องข้อความ LINE 30 วันล่าสุด — บ่น/ร้องเรียน/ตามผล">📬 Inbox</th>
             <th>การดำเนินการ</th>
           </tr>
         </thead>
@@ -674,6 +774,31 @@ $kpiDefs = [
               <span class="badge <?= churnSegmentBadgeClass($wSeg) ?>">
                 <?= htmlspecialchars($wSeg, ENT_QUOTES, 'UTF-8') ?>
               </span>
+            </td>
+            <td>
+              <?php
+                $wFlag = $inboxFlags[$wPartner] ?? null;
+                if ($wFlag !== null):
+                    $sevLabel = match ($wFlag['severity']) {
+                        'red'           => '🔴 ร้องเรียน',
+                        'orange'        => '🟠 ไม่พอใจ',
+                        'yellow_urgent' => '🟡 ตามผลด่วน',
+                        'yellow'        => '🟡 ตามผล',
+                        default         => '—',
+                    };
+                    $sevCss = in_array($wFlag['severity'], ['yellow', 'yellow_urgent'], true)
+                        ? 'yellow'
+                        : $wFlag['severity'];
+                    $tipText = '"' . mb_substr((string) $wFlag['latest_text'], 0, 160) . '" · '
+                             . (string) $wFlag['latest_at'];
+              ?>
+              <span class="inbox-flag inbox-flag-<?= htmlspecialchars($sevCss, ENT_QUOTES, 'UTF-8') ?>"
+                    title="<?= htmlspecialchars($tipText, ENT_QUOTES, 'UTF-8') ?>">
+                <?= $sevLabel ?> (<?= (int) $wFlag['count'] ?>)
+              </span>
+              <?php else: ?>
+              <span class="inbox-flag-none" aria-label="ไม่มีสัญญาณ">—</span>
+              <?php endif; ?>
             </td>
             <td>
               <div style="display:flex;gap:6px;flex-wrap:wrap;">
