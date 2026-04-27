@@ -359,6 +359,7 @@
     bindRefreshButton();
     bindFilterButtons();
     bindVisibilityChange();
+    wireAiBriefButtons();
 
     // Render chart immediately from PHP-bootstrapped data (avoids blank flash).
     const initial = window['__churnInitial'];
@@ -372,6 +373,261 @@
 
     // Begin 60-second KPI polling.
     startPolling();
+  }
+
+  // ── AI analyst-brief modal (admin-only, no customer push) ─────────────────
+  /**
+   * Wire .act-link-ai buttons to open modal + fetch internal analyst brief.
+   * Endpoint: api/churn-talking-points.php (output is now an internal note,
+   * NOT a customer-facing script — see TalkingPointsService.php).
+   * @returns {void}
+   */
+  function wireAiBriefButtons() {
+    const buttons = document.querySelectorAll('.act-link-ai');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const partnerId = btn.getAttribute('data-partner-id');
+        const storeName = btn.getAttribute('data-store-name') || '';
+        if (!partnerId) return;
+        openAiBriefModal(partnerId, storeName, btn);
+      });
+    });
+
+    document.querySelectorAll('[data-close-ai-modal]').forEach(function (el) {
+      el.addEventListener('click', closeAiBriefModal);
+    });
+    const overlay = document.getElementById('ai-brief-modal');
+    if (overlay) {
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeAiBriefModal();
+      });
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeAiBriefModal();
+    });
+  }
+
+  /**
+   * @param {string} partnerId
+   * @param {string} storeName
+   * @param {HTMLButtonElement} sourceBtn
+   * @returns {Promise<void>}
+   */
+  async function openAiBriefModal(partnerId, storeName, sourceBtn) {
+    const overlay  = document.getElementById('ai-brief-modal');
+    const subEl    = document.getElementById('ai-modal-sub');
+    const bodyEl   = document.getElementById('ai-modal-body');
+    const metaEl   = document.getElementById('ai-modal-meta');
+    if (!overlay || !bodyEl) return;
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    if (subEl) subEl.textContent = storeName + ' (Partner #' + partnerId + ')';
+    if (metaEl) metaEl.style.display = 'none';
+    renderAiLoading(bodyEl);
+
+    if (sourceBtn) sourceBtn.disabled = true;
+    try {
+      const r = await fetch('api/churn-talking-points.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ partner_id: Number(partnerId) }),
+      });
+      const json = await r.json();
+      if (!json || !json.success || !json.data) {
+        renderAiError(bodyEl, (json && json.error) || 'ไม่สามารถโหลดบันทึกวิเคราะห์ได้');
+        return;
+      }
+      renderAiBrief(json.data, metaEl);
+    } catch (err) {
+      renderAiError(bodyEl, 'Network error — ลองใหม่อีกครั้ง');
+    } finally {
+      if (sourceBtn) sourceBtn.disabled = false;
+    }
+  }
+
+  function closeAiBriefModal() {
+    const overlay = document.getElementById('ai-brief-modal');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  /**
+   * Build a DOM element via createElement + textContent (XSS-safe by construction).
+   * @param {string} tag
+   * @param {{class?: string, text?: string, attrs?: Object<string,string>}} [opts]
+   * @returns {HTMLElement}
+   */
+  function el(tag, opts) {
+    const node = document.createElement(tag);
+    if (opts) {
+      if (opts.class) node.className = opts.class;
+      if (opts.text != null) node.textContent = String(opts.text);
+      if (opts.attrs) {
+        Object.keys(opts.attrs).forEach(function (k) {
+          node.setAttribute(k, String(opts.attrs[k]));
+        });
+      }
+    }
+    return node;
+  }
+
+  /** Replace all children of a node with the given new children. */
+  function clearAndAppend(parent, children) {
+    while (parent.firstChild) parent.removeChild(parent.firstChild);
+    children.forEach(function (c) { if (c) parent.appendChild(c); });
+  }
+
+  /** Build a labelled section block. */
+  function buildAiSection(label, contentNode) {
+    const section = el('div', { class: 'ai-section' });
+    section.appendChild(el('div', { class: 'ai-section-label', text: label }));
+    if (contentNode) section.appendChild(contentNode);
+    return section;
+  }
+
+  /** Build a plain-text content block. */
+  function buildAiText(text) {
+    return el('div', { class: 'ai-section-text', text: text || '—' });
+  }
+
+  /** Build a string list. Empty → italic dash. */
+  function buildAiList(arr) {
+    if (!Array.isArray(arr) || arr.length === 0) {
+      const empty = el('div', { class: 'ai-section-text', text: '—' });
+      empty.style.color = '#9ca3af';
+      empty.style.fontStyle = 'italic';
+      return empty;
+    }
+    const ul = el('ul', { class: 'ai-list' });
+    arr.forEach(function (s) {
+      ul.appendChild(el('li', { text: s }));
+    });
+    return ul;
+  }
+
+  /** Build the health-signals block with severity pills. */
+  function buildAiSignals(arr) {
+    const wrap = document.createDocumentFragment();
+    (Array.isArray(arr) ? arr : []).forEach(function (sig) {
+      const sev = String(sig.severity || 'medium').toLowerCase();
+      const row = el('div', { class: 'ai-signal' });
+      row.appendChild(el('span', { class: 'ai-signal-sev ' + sev, text: sev.toUpperCase() }));
+      const body = el('div', { class: 'ai-signal-body' });
+      body.appendChild(el('div', { class: 'ai-signal-label',  text: sig.label  || '' }));
+      body.appendChild(el('div', { class: 'ai-signal-detail', text: sig.detail || '' }));
+      row.appendChild(body);
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  /** Build the recommended-actions block with priority pills. */
+  function buildAiActions(arr) {
+    const wrap = document.createDocumentFragment();
+    (Array.isArray(arr) ? arr : []).forEach(function (act) {
+      const prio = String(act.priority || 'P2').toUpperCase();
+      const row = el('div', { class: 'ai-action' });
+      row.appendChild(el('span', { class: 'ai-action-prio ' + prio, text: prio }));
+      const body = el('div', { class: 'ai-action-body', text: act.action || '' });
+      body.appendChild(el('div', { class: 'ai-action-owner', text: 'ผู้รับผิดชอบ: ' + (act.owner || '—') }));
+      row.appendChild(body);
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  /** Build the internal note + copy button block. */
+  function buildAiNote(noteText) {
+    const note = el('div', { class: 'ai-note', text: noteText || '—' });
+    const copyWrap = el('div');
+    copyWrap.style.marginTop  = '10px';
+    copyWrap.style.textAlign  = 'right';
+    const copyBtn = el('button', { class: 'ai-copy-btn', text: '📋 คัดลอกบันทึก', attrs: { type: 'button' } });
+    copyBtn.addEventListener('click', function () {
+      if (!navigator.clipboard || !navigator.clipboard.writeText) return;
+      navigator.clipboard.writeText(noteText || '').then(function () {
+        const old = copyBtn.textContent;
+        copyBtn.textContent = '✓ คัดลอกแล้ว';
+        setTimeout(function () { copyBtn.textContent = old; }, 1500);
+      });
+    });
+    copyWrap.appendChild(copyBtn);
+    note.appendChild(copyWrap);
+    return note;
+  }
+
+  /**
+   * Render the analyst brief into the modal body. Uses DOM construction +
+   * textContent throughout — no innerHTML assignment, XSS-safe by design.
+   * @param {{payload:Object, cached:boolean, tokens_used:number}} data
+   * @param {HTMLElement|null} metaEl
+   * @returns {void}
+   */
+  function renderAiBrief(data, metaEl) {
+    const bodyEl = document.getElementById('ai-modal-body');
+    if (!bodyEl) return;
+    const p = data.payload || {};
+
+    clearAndAppend(bodyEl, [
+      buildAiSection('📋 สรุปสถานการณ์',                    buildAiText(p.executive_summary)),
+      buildAiSection('🩺 สัญญาณสุขภาพลูกค้า (RFM)',         buildAiSignals(p.health_signals)),
+      buildAiSection('📊 พฤติกรรมการซื้อ',                  buildAiText(p.behavior_pattern)),
+      buildAiSection('⚠️ สาเหตุ/ความเสี่ยงที่อาจหายไป',     buildAiList(p.risk_factors)),
+      buildAiSection('💡 โอกาสที่เห็นจากข้อมูล',           buildAiList(p.opportunities)),
+      buildAiSection('✅ การดำเนินการที่แนะนำ',             buildAiActions(p.recommended_actions)),
+      buildAiSection('⚙️ ข้อจำกัดของข้อมูล',                buildAiList(p.data_quality_caveats)),
+      buildAiSection('📝 บันทึกถึง Sales',                  buildAiNote(p.internal_note_for_sales)),
+    ]);
+
+    if (metaEl) {
+      const cacheBadge  = document.getElementById('ai-meta-cache');
+      const tokensBadge = document.getElementById('ai-meta-tokens');
+      if (cacheBadge) {
+        if (data.cached) {
+          cacheBadge.textContent = 'จาก cache (TTL 24h)';
+          cacheBadge.className   = 'badge badge-blue';
+        } else {
+          cacheBadge.textContent = 'สร้างใหม่ · gemini-flash-latest';
+          cacheBadge.className   = 'badge badge-green';
+        }
+      }
+      if (tokensBadge) {
+        const t = Number(data.tokens_used || 0);
+        tokensBadge.textContent = t > 0 ? ('tokens ใช้ ' + t) : 'fallback template';
+        tokensBadge.className   = t > 0 ? 'badge badge-gray' : 'badge badge-amber';
+      }
+      metaEl.style.display = 'flex';
+    }
+  }
+
+  /** Show inline loading spinner inside the modal body. */
+  function renderAiLoading(bodyEl) {
+    const wrap = el('div', { class: 'ai-loading' });
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('class', 'spin-icon'); svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', 'M21 12a9 9 0 1 1-6.22-8.56');
+    svg.appendChild(path);
+    wrap.appendChild(svg);
+    wrap.appendChild(el('span', { text: 'กำลังให้ AI วิเคราะห์ข้อมูลลูกค้า… (โดยปกติใช้เวลา 3-8 วินาที)' }));
+    clearAndAppend(bodyEl, [wrap]);
+  }
+
+  /**
+   * @param {HTMLElement} bodyEl
+   * @param {string} message
+   * @returns {void}
+   */
+  function renderAiError(bodyEl, message) {
+    const errBox = el('div', { class: 'ai-error', text: '⚠️ ' + (message || 'เกิดข้อผิดพลาด') });
+    clearAndAppend(bodyEl, [errBox]);
   }
 
   if (document.readyState === 'loading') {

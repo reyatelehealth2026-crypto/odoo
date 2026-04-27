@@ -333,6 +333,106 @@ $kpiDefs = [
     }
     .act-link:hover { background:#dbeafe; border-color:#93c5fd; }
 
+    /* ── Action button: AI variant ── */
+    .act-link-ai {
+      background:#fef3c7; color:#92400e; border-color:#fde68a;
+      cursor:pointer; font-family:inherit;
+    }
+    .act-link-ai:hover { background:#fde68a; border-color:#fbbf24; }
+    .act-link-ai:disabled { opacity:0.6; cursor:wait; }
+    .act-link-ai .spin-icon { animation:spin 0.8s linear infinite; }
+
+    /* ── AI Brief Modal ── */
+    .ai-modal-overlay {
+      display:none; position:fixed; inset:0; z-index:100;
+      background:rgba(17,24,39,0.55); backdrop-filter:blur(3px);
+      align-items:flex-start; justify-content:center; padding:48px 16px;
+      overflow-y:auto;
+    }
+    .ai-modal-overlay.open { display:flex; }
+    .ai-modal {
+      background:#ffffff; border:1px solid #e5e7eb; border-radius:16px;
+      max-width:780px; width:100%; box-shadow:0 24px 60px rgba(0,0,0,0.18);
+      overflow:hidden;
+    }
+    .ai-modal-head {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:18px 22px; border-bottom:1px solid #f3f4f6;
+      background:linear-gradient(135deg,#fffbeb 0%,#ffffff 100%);
+    }
+    .ai-modal-title { font-size:15px; font-weight:700; color:#111827; display:flex; align-items:center; gap:8px; }
+    .ai-modal-sub   { font-size:12px; color:#6b7280; margin-top:2px; }
+    .ai-modal-close {
+      background:transparent; border:none; cursor:pointer; color:#6b7280;
+      font-size:22px; line-height:1; padding:4px 8px; border-radius:6px;
+    }
+    .ai-modal-close:hover { background:#f3f4f6; color:#111827; }
+    .ai-modal-body { padding:20px 22px; max-height:70vh; overflow-y:auto; }
+
+    .ai-section { margin-bottom:18px; }
+    .ai-section:last-child { margin-bottom:0; }
+    .ai-section-label {
+      font-size:11px; font-weight:700; letter-spacing:0.08em;
+      text-transform:uppercase; color:#6b7280; margin-bottom:8px;
+      display:flex; align-items:center; gap:6px;
+    }
+    .ai-section-text { font-size:13.5px; line-height:1.65; color:#1f2937; }
+    .ai-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; }
+    .ai-list li {
+      padding:8px 12px; background:#f9fafb; border:1px solid #f3f4f6;
+      border-radius:8px; font-size:13px; line-height:1.55; color:#374151;
+    }
+    .ai-signal {
+      display:flex; align-items:flex-start; gap:10px;
+      padding:10px 12px; background:#f9fafb; border:1px solid #f3f4f6;
+      border-radius:8px; margin-bottom:6px;
+    }
+    .ai-signal-sev {
+      flex-shrink:0; padding:2px 8px; border-radius:9999px;
+      font-size:10px; font-weight:700; letter-spacing:0.04em;
+    }
+    .ai-signal-sev.low      { background:#dcfce7; color:#166534; }
+    .ai-signal-sev.medium   { background:#fef9c3; color:#854d0e; }
+    .ai-signal-sev.high     { background:#ffedd5; color:#9a3412; }
+    .ai-signal-sev.critical { background:#fee2e2; color:#991b1b; }
+    .ai-signal-body { flex:1; }
+    .ai-signal-label { font-size:12px; font-weight:600; color:#111827; }
+    .ai-signal-detail { font-size:12.5px; color:#4b5563; margin-top:2px; }
+
+    .ai-action {
+      display:flex; align-items:flex-start; gap:10px;
+      padding:10px 12px; background:#eff6ff; border:1px solid #dbeafe;
+      border-radius:8px; margin-bottom:6px;
+    }
+    .ai-action-prio {
+      flex-shrink:0; padding:2px 8px; border-radius:6px;
+      font-size:10px; font-weight:700; background:#1e40af; color:#ffffff;
+    }
+    .ai-action-prio.P1 { background:#991b1b; }
+    .ai-action-prio.P2 { background:#1e40af; }
+    .ai-action-prio.P3 { background:#4b5563; }
+    .ai-action-body { flex:1; font-size:13px; }
+    .ai-action-owner { font-size:11px; color:#6b7280; margin-top:3px; }
+
+    .ai-note {
+      padding:14px 16px; background:#fffbeb; border:1px solid #fde68a;
+      border-radius:10px; font-size:13.5px; line-height:1.6; color:#78350f;
+    }
+    .ai-meta {
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+      padding:10px 22px; border-top:1px solid #f3f4f6;
+      background:#f9fafb; font-size:11px; color:#6b7280;
+    }
+    .ai-meta .badge { font-size:10px; }
+    .ai-error { padding:14px 16px; background:#fef2f2; border:1px solid #fecaca; border-radius:10px; color:#991b1b; font-size:13px; }
+    .ai-loading { display:flex; align-items:center; gap:10px; padding:24px; color:#6b7280; font-size:13px; justify-content:center; }
+    .ai-copy-btn {
+      background:#ffffff; border:1px solid #d1d5db; border-radius:6px;
+      font-size:11px; color:#374151; padding:4px 10px; cursor:pointer;
+      transition:all 0.15s;
+    }
+    .ai-copy-btn:hover { background:#f3f4f6; border-color:#9ca3af; }
+
     /* ── Scrollbar ── */
     * { scrollbar-width:thin; scrollbar-color:#d1d5db transparent; }
     *::-webkit-scrollbar { width:6px; height:6px; }
@@ -576,16 +676,29 @@ $kpiDefs = [
               </span>
             </td>
             <td>
-              <a class="act-link"
-                 href="odoo-customer-detail.php?<?= $detailQuery ?>"
-                 target="_blank" rel="noopener"
-                 aria-label="เปิด Odoo รายละเอียดของ <?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
-                 title="ดูออเดอร์ / ใบแจ้งหนี้ / BDO ล่าสุด">
-                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
-                </svg>
-                ดู Odoo ล่าสุด
-              </a>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <a class="act-link"
+                   href="odoo-customer-detail.php?<?= $detailQuery ?>"
+                   target="_blank" rel="noopener"
+                   aria-label="เปิด Odoo รายละเอียดของ <?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
+                   title="ดูออเดอร์ / ใบแจ้งหนี้ / BDO ล่าสุด">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
+                  </svg>
+                  ดู Odoo
+                </a>
+                <button type="button"
+                        class="act-link act-link-ai"
+                        data-partner-id="<?= $wPartner ?>"
+                        data-store-name="<?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
+                        aria-label="ขอ AI วิเคราะห์ลูกค้า <?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
+                        title="ขอ AI วิเคราะห์ลูกค้ารายนี้ — บันทึกภายในให้ทีม Sales (ไม่ส่งหาลูกค้า)">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  </svg>
+                  AI วิเคราะห์
+                </button>
+              </div>
             </td>
           </tr>
           <?php endforeach; ?>
@@ -640,6 +753,37 @@ $kpiDefs = [
   </div>
 
 </main>
+
+<!-- ════ AI BRIEF MODAL (admin-only, internal use, no customer push) ════ -->
+<div id="ai-brief-modal" class="ai-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title" aria-hidden="true">
+  <div class="ai-modal" role="document">
+    <header class="ai-modal-head">
+      <div>
+        <div id="ai-modal-title" class="ai-modal-title">
+          <span aria-hidden="true">🤖</span>
+          <span>บันทึกวิเคราะห์ลูกค้า (AI)</span>
+        </div>
+        <div id="ai-modal-sub" class="ai-modal-sub">—</div>
+      </div>
+      <button type="button" class="ai-modal-close" data-close-ai-modal aria-label="ปิดหน้าต่าง">&times;</button>
+    </header>
+
+    <div class="ai-modal-body" id="ai-modal-body">
+      <div class="ai-loading" id="ai-modal-loading">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
+        </svg>
+        <span>กำลังให้ AI วิเคราะห์ข้อมูลลูกค้า… (โดยปกติใช้เวลา 3-8 วินาที)</span>
+      </div>
+    </div>
+
+    <div class="ai-meta" id="ai-modal-meta" style="display:none;">
+      <span id="ai-meta-cache" class="badge badge-gray">—</span>
+      <span id="ai-meta-tokens" class="badge badge-gray">—</span>
+      <span style="margin-left:auto;color:#9ca3af;font-style:italic;">บันทึกภายในเท่านั้น · ไม่ส่งหาลูกค้า</span>
+    </div>
+  </div>
+</div>
 
 <script>
   /* Bootstrap: pass server-rendered counts to JS module */

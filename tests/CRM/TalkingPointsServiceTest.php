@@ -12,9 +12,12 @@
  *   T4  Counter at cap → RuntimeException(429) before calling Gemini
  *   T5  Same partner within 24h → second call is cache hit (no Gemini call)
  *   T6  validateOutput rejects missing required key
- *   T7  validateOutput rejects empty discovery_questions array
- *   T8  validateOutput accepts null warning field
- *   T9  buildPrompt contains guardrail text and real context values
+ *   T7  validateOutput rejects empty risk_factors array
+ *   T8  validateOutput rejects invalid severity enum value
+ *   T8b validateOutput rejects health_signal missing nested field
+ *   T8c validateOutput rejects recommended_action missing nested field
+ *   T8d validateOutput accepts empty data_quality_caveats array
+ *   T9  buildPrompt contains guardrail text + new analyst-brief schema keys
  *   T10 incrementCounter resets stale date then sets count to 1
  *
  * Spec: docs/plans/2026-04-27-customer-churn-tracker.md §6.4, §9
@@ -38,14 +41,31 @@ final class TalkingPointsServiceTest extends TestCase
 {
     private \PDO $db;
 
-    /** A minimal payload that satisfies validateOutput() */
+    /** A minimal analyst-brief payload that satisfies validateOutput() */
     private const VALID_PAYLOAD = [
-        'opener'              => 'สวัสดีครับ',
-        'context_reminder'    => 'ลูกค้าห่างหายมา 60 วัน',
-        'discovery_questions' => ['สนใจสินค้าใดบ้างครับ?', 'มีปัญหาอะไรไหมครับ?'],
-        'objection_handlers'  => ['เข้าใจครับ จะโทรกลับภายหลัง'],
-        'next_best_offer'     => 'ส่วนลด 5% สำหรับออเดอร์ถัดไป',
-        'warning'             => null,
+        'executive_summary' => 'ลูกค้าร้านยา A เคยซื้อทุก 21 วัน หายไป 60 วันแล้ว — เข้า segment Lost',
+        'health_signals' => [
+            ['label' => 'Recency',   'severity' => 'high',   'detail' => 'หายไป 60 วัน เทียบกับรอบปกติ 21 วัน (2.85x)'],
+            ['label' => 'Frequency', 'severity' => 'medium', 'detail' => 'เคยสั่ง 18 ครั้ง / 12 เดือน'],
+            ['label' => 'Monetary',  'severity' => 'low',    'detail' => 'LTV 85k อยู่กลาง ไม่ใช่ VIP'],
+        ],
+        'behavior_pattern' => 'สั่งสม่ำเสมอทุก 3 สัปดาห์ basket เฉลี่ย ฿4,800 เน้นวิตามินซีและพาราเซตามอล',
+        'risk_factors' => [
+            'อาจเปลี่ยนซัพพลายเออร์เพราะรอบล่าสุดมีปัญหาส่งช้า',
+            'สินค้าหลักที่ซื้อเริ่มมีคู่แข่งราคาถูกกว่า',
+        ],
+        'opportunities' => [
+            'Cross-sell วิตามินบีคอมเพล็กซ์ที่เคยทดลองซื้อ',
+            'Restock ก่อนช่วง PM2.5',
+        ],
+        'recommended_actions' => [
+            ['priority' => 'P1', 'action' => 'Sales โทรเช็คสต็อกและสาเหตุที่หายไป',     'owner' => 'Sales'],
+            ['priority' => 'P2', 'action' => 'ตรวจสลิปออเดอร์ก่อนหน้าหาข้อร้องเรียน', 'owner' => 'CS'],
+        ],
+        'data_quality_caveats' => [
+            'odoo_customer_product_stats ว่าง ใช้ odoo_order_lines แทน',
+        ],
+        'internal_note_for_sales' => 'ลูกค้านี้เป็น Lost ratio 2.85x — โทรเช็คก่อน อย่าเพิ่งเสนอขาย ฟังปัญหาจากออเดอร์ครั้งล่าสุดที่ส่งช้า แล้วค่อยเสนอ winback',
     ];
 
     protected function setUp(): void
@@ -69,7 +89,7 @@ final class TalkingPointsServiceTest extends TestCase
         $result = $this->buildService($gemini)->getForPartner($partnerId);
 
         $this->assertTrue($result['cached'], 'Expected cache hit');
-        $this->assertSame('สวัสดีครับ', $result['payload']['opener']);
+        $this->assertStringContainsString('Lost', $result['payload']['executive_summary']);
         $this->assertSame(0, $result['tokens_used']);
     }
 
@@ -88,7 +108,7 @@ final class TalkingPointsServiceTest extends TestCase
         $result = $this->buildService($gemini)->getForPartner($partnerId);
 
         $this->assertFalse($result['cached'], 'Expected cache miss');
-        $this->assertSame('สวัสดีครับ', $result['payload']['opener']);
+        $this->assertStringContainsString('Lost', $result['payload']['executive_summary']);
 
         // Cache row must now exist
         $this->assertNotNull(
@@ -117,8 +137,9 @@ final class TalkingPointsServiceTest extends TestCase
         $this->assertFalse($result['cached']);
         $this->assertSame(0, $result['tokens_used'], 'tokens_used must be 0 for fallback');
 
-        // Fallback opener contains recognisable phrase
-        $this->assertStringContainsString('โทรมาติดตาม', $result['payload']['opener']);
+        // Fallback executive_summary contains recognisable phrase
+        $this->assertStringContainsString('ข้อมูลลูกค้ารายนี้ยังไม่เพียงพอ', $result['payload']['executive_summary']);
+        $this->assertNotEmpty($result['payload']['recommended_actions'], 'Fallback must still ship recommended_actions');
 
         // Counter must NOT be incremented
         $settings = $this->fetchSettings();
@@ -172,38 +193,74 @@ final class TalkingPointsServiceTest extends TestCase
         $this->assertTrue($second['cached'],  'Second call within 24h should be a cache hit');
     }
 
-    // ── T6: validateOutput rejects missing key ────────────────────────────
+    // ── T6: validateOutput rejects missing required key ───────────────────
 
     public function testValidateOutputRejectsMissingKey(): void
     {
         $service = $this->buildService($this->createMock(\GeminiAI::class));
 
         $incomplete = self::VALID_PAYLOAD;
-        unset($incomplete['opener']);
+        unset($incomplete['executive_summary']);
 
         $this->assertFalse($service->validateOutput($incomplete));
     }
 
-    // ── T7: validateOutput rejects empty discovery_questions ─────────────
+    // ── T7: validateOutput rejects empty risk_factors ─────────────────────
 
-    public function testValidateOutputRejectsEmptyDiscoveryQuestions(): void
+    public function testValidateOutputRejectsEmptyRiskFactors(): void
     {
         $service = $this->buildService($this->createMock(\GeminiAI::class));
 
-        $bad                        = self::VALID_PAYLOAD;
-        $bad['discovery_questions'] = [];
+        $bad                  = self::VALID_PAYLOAD;
+        $bad['risk_factors']  = [];
 
         $this->assertFalse($service->validateOutput($bad));
     }
 
-    // ── T8: validateOutput accepts null warning ───────────────────────────
+    // ── T8: validateOutput rejects invalid severity ───────────────────────
 
-    public function testValidateOutputAcceptsNullWarning(): void
+    public function testValidateOutputRejectsInvalidSeverity(): void
     {
         $service = $this->buildService($this->createMock(\GeminiAI::class));
 
-        $payload            = self::VALID_PAYLOAD;
-        $payload['warning'] = null;
+        $bad = self::VALID_PAYLOAD;
+        $bad['health_signals'][0]['severity'] = 'super-mega-critical'; // not in enum
+
+        $this->assertFalse($service->validateOutput($bad));
+    }
+
+    // ── T8b: validateOutput rejects health_signal missing required field ──
+
+    public function testValidateOutputRejectsHealthSignalMissingField(): void
+    {
+        $service = $this->buildService($this->createMock(\GeminiAI::class));
+
+        $bad = self::VALID_PAYLOAD;
+        unset($bad['health_signals'][0]['detail']);
+
+        $this->assertFalse($service->validateOutput($bad));
+    }
+
+    // ── T8c: validateOutput rejects recommended_action missing field ──────
+
+    public function testValidateOutputRejectsRecommendedActionMissingField(): void
+    {
+        $service = $this->buildService($this->createMock(\GeminiAI::class));
+
+        $bad = self::VALID_PAYLOAD;
+        unset($bad['recommended_actions'][0]['priority']);
+
+        $this->assertFalse($service->validateOutput($bad));
+    }
+
+    // ── T8d: validateOutput accepts empty data_quality_caveats ────────────
+
+    public function testValidateOutputAcceptsEmptyDataQualityCaveats(): void
+    {
+        $service = $this->buildService($this->createMock(\GeminiAI::class));
+
+        $payload                          = self::VALID_PAYLOAD;
+        $payload['data_quality_caveats']  = [];
 
         $this->assertTrue($service->validateOutput($payload));
     }
@@ -248,8 +305,14 @@ final class TalkingPointsServiceTest extends TestCase
         // Salesperson name
         $this->assertStringContainsString('สมชาย', $prompt);
 
-        // JSON schema template must be present for structured output
-        $this->assertStringContainsString('discovery_questions', $prompt);
+        // JSON schema template must mention the new analyst-brief keys
+        $this->assertStringContainsString('executive_summary', $prompt);
+        $this->assertStringContainsString('health_signals', $prompt);
+        $this->assertStringContainsString('recommended_actions', $prompt);
+        $this->assertStringContainsString('internal_note_for_sales', $prompt);
+
+        // Must explicitly state output is internal-only (not customer-facing)
+        $this->assertStringContainsString('จะไม่ถูกส่งหาลูกค้า', $prompt);
     }
 
     // ── T10: incrementCounter resets stale date before incrementing ───────

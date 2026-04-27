@@ -1,6 +1,14 @@
 <?php
 /**
- * TalkingPointsService — generates and caches AI talking points for churned customers.
+ * TalkingPointsService — generates and caches an INTERNAL ANALYST BRIEF
+ * about a churned customer, for the sales / CS team to follow up on.
+ *
+ * NOTE (2026-04-27 pivot): Output is no longer a customer-facing script
+ * (opener / questions / objections). It is now a structured analysis note
+ * summarising ordering behaviour, RFM health signals, risk factors,
+ * opportunities, and recommended internal actions. Nothing here is meant
+ * to be sent to the customer directly — Sales reads it and decides what
+ * to do.
  *
  * Called by:
  *   - api/churn-talking-points.php  (~line 80, $service->getForPartner($partnerId))
@@ -15,6 +23,7 @@
  *   - No fabricated product/SKU names beyond what context provides
  *   - No invented discount codes or pricing figures
  *   - No PII beyond what is already in DB context
+ *   - Output is for INTERNAL CRM use only — must NOT be a customer-facing message
  *
  * Spec: docs/plans/2026-04-27-customer-churn-tracker.md §6.4, §9
  */
@@ -29,32 +38,46 @@ class TalkingPointsService
     private \GeminiAI $gemini;
     private PartnerContextLoader $contextLoader;
 
-    /** Required keys in every valid Gemini payload */
+    /** Required keys in every valid Gemini analyst-brief payload */
     private const REQUIRED_KEYS = [
-        'opener',
-        'context_reminder',
-        'discovery_questions',
-        'objection_handlers',
-        'next_best_offer',
-        'warning',
+        'executive_summary',
+        'health_signals',
+        'behavior_pattern',
+        'risk_factors',
+        'opportunities',
+        'recommended_actions',
+        'data_quality_caveats',
+        'internal_note_for_sales',
     ];
 
+    /** Allowed severity levels in health_signals[].severity */
+    private const SEVERITY_VALUES = ['low', 'medium', 'high', 'critical'];
+
     /**
-     * Fallback template returned when Gemini output fails schema validation.
-     * Counter is NOT incremented for fallback responses.
+     * Fallback analyst brief returned when Gemini output fails schema validation
+     * or context is too thin to analyse. Counter is NOT incremented.
      */
     private const FALLBACK_TEMPLATE = [
-        'opener'              => 'สวัสดีครับ ผมโทรมาติดตามสถานะและสอบถามความต้องการของทางร้านครับ',
-        'context_reminder'    => 'ลูกค้ารายนี้ยังไม่มีข้อมูล talking points เพียงพอ กรุณาตรวจสอบประวัติการสั่งซื้อก่อนโทร',
-        'discovery_questions' => [
-            'ช่วงนี้ทางร้านมีความต้องการสินค้าใดเป็นพิเศษไหมครับ?',
-            'มีปัญหาหรือข้อติดขัดใดๆ จากออเดอร์ครั้งก่อนไหมครับ?',
+        'executive_summary'       => 'ข้อมูลลูกค้ารายนี้ยังไม่เพียงพอสำหรับการวิเคราะห์อัตโนมัติ — Sales กรุณาตรวจประวัติการสั่งซื้อด้วยตนเองก่อนตัดสินใจ',
+        'health_signals'          => [
+            ['label' => 'Recency',   'severity' => 'medium', 'detail' => 'ระบบไม่สามารถประเมินค่า recency ได้ เพราะข้อมูลออเดอร์ไม่ครบ'],
+            ['label' => 'Frequency', 'severity' => 'medium', 'detail' => 'ไม่สามารถสรุปรอบสั่งซื้อได้ — ข้อมูลน้อยกว่าที่ควรจะเป็น'],
+            ['label' => 'Monetary',  'severity' => 'medium', 'detail' => 'ยอดซื้อสะสมยังประเมินเทียบกับ baseline ไม่ได้'],
         ],
-        'objection_handlers'  => [
-            'ถ้าบอกว่าไม่ต้องการ: รับทราบครับ ขอโทษที่รบกวน จะโทรกลับมาในภายหลังนะครับ',
+        'behavior_pattern'        => 'ยังไม่พบรูปแบบการสั่งซื้อที่ชัดเจน เนื่องจากบริบทที่โหลดมาไม่ครบ',
+        'risk_factors'            => [
+            'ข้อมูลออเดอร์/ใบแจ้งหนี้ในระบบไม่พอสำหรับการสรุปสาเหตุ',
         ],
-        'next_best_offer'     => 'ไม่มีข้อเสนอพิเศษในขณะนี้ กรุณาติดต่อฝ่ายการตลาด',
-        'warning'             => 'ข้อมูลไม่เพียงพอสำหรับการสร้าง talking points อัตโนมัติ',
+        'opportunities'           => [
+            'แนะนำให้ Sales ตรวจสอบสถานะลูกค้ารายนี้ในระบบ Odoo และ LINE inbox ก่อนติดต่อ',
+        ],
+        'recommended_actions'     => [
+            ['priority' => 'P2', 'action' => 'ตรวจประวัติการสั่งซื้อใน odoo-customer-detail.php', 'owner' => 'Sales ที่ดูแล'],
+        ],
+        'data_quality_caveats'    => [
+            'fallback template — Gemini ไม่ได้สร้างผลลัพธ์ใหม่ในรอบนี้ (อาจเพราะ schema fail หรือ quota เต็ม)',
+        ],
+        'internal_note_for_sales' => 'ข้อมูลลูกค้ารายนี้ยังไม่พอวิเคราะห์อัตโนมัติ ขอให้ Sales เปิดดูประวัติใน Odoo และ inbox ก่อนตัดสินใจติดต่อ',
     ];
 
     public function __construct(
@@ -163,36 +186,54 @@ class TalkingPointsService
         }
 
         $guardrails = <<<GUARDRAILS
-คุณเป็นผู้ช่วย Sales ของ CNY Wholesale ที่ขายส่งให้ร้านยา คลินิก และโรงพยาบาล
+คุณคือนักวิเคราะห์ลูกค้า (Customer Analyst) ภายในของ CNY Wholesale (ขายส่งให้ร้านยา คลินิก โรงพยาบาล)
+หน้าที่: สรุปสถานการณ์ลูกค้าจากข้อมูลในระบบเป็น "บันทึกภายใน" ให้ Sales/CS ใช้ตัดสินใจติดตามต่อ
+ผลลัพธ์ของคุณ "จะไม่ถูกส่งหาลูกค้า" — เป็นโน้ตภายในเท่านั้น
+
 กฎเหล็ก (ต้องปฏิบัติตามเสมอ):
-1. ห้ามสร้างชื่อสินค้าขึ้นมาเอง — ใช้เฉพาะชื่อสินค้าที่ระบุในบริบทด้านล่างเท่านั้น
-2. ห้ามสร้างรหัสส่วนลด โปรโมชั่น หรือราคาที่ไม่มีในบริบท
-3. ห้ามระบุข้อมูลส่วนตัวนอกเหนือจากที่ให้ไว้
-4. ตอบเป็น JSON เท่านั้น ไม่มี markdown code block
-5. discovery_questions และ objection_handlers ต้องเป็น array ของ string ที่ไม่ว่าง
+1. ห้ามสร้างชื่อสินค้า รหัสคูปอง โปรโมชั่น หรือราคาขึ้นเอง — ใช้เฉพาะที่อยู่ในบริบทด้านล่าง
+2. ห้ามอ้างข้อมูลส่วนบุคคลนอกเหนือจากที่ให้
+3. ห้ามเขียน "บทพูดที่จะส่งหาลูกค้า" หรือ "ข้อความ DM" — ผลลัพธ์เป็นโน้ตวิเคราะห์ภายในล้วน
+4. ตอบเป็น JSON เท่านั้น ไม่มี markdown code fence ไม่มีข้อความนำหน้า/ต่อท้าย
+5. health_signals ต้องเป็น array ของ object {label, severity, detail} โดย severity ∈ {low, medium, high, critical}
+6. recommended_actions ต้องเป็น array ของ object {priority, action, owner} โดย priority ∈ {P1, P2, P3}
+7. risk_factors / opportunities / data_quality_caveats เป็น array ของ string ที่ไม่ว่าง
+8. ถ้าข้อมูลไม่พอจริง ๆ ให้ระบุไว้ใน data_quality_caveats แทนที่จะเดา
 GUARDRAILS;
 
         $userPrompt = <<<USERPROMPT
-สร้าง talking points สำหรับ Sales โทรหาลูกค้า CNY Wholesale ที่เข้า segment "{$segment}"
+วิเคราะห์ลูกค้า CNY Wholesale รายนี้ที่เข้า segment "{$segment}" และสรุปเป็น "บันทึกภายใน" ให้ Sales/CS อ่านเพื่อตัดสินใจติดตามต่อ
 
---- บริบทลูกค้า ---
+--- บริบทลูกค้า (ข้อมูลจริงจากระบบ) ---
 ประเภทลูกค้า       : {$custType}
-Recency Ratio       : {$recencyRatio}
-รอบสั่งเฉลี่ย      : {$cycledays}
+Segment             : {$segment}
+Recency Ratio       : {$recencyRatio} (ค่า ≥ 1.5 = ผิดปกติ; ≥ 2.0 = หลุดรอบ; ≥ 3.0 = หายขาด)
+รอบสั่งเฉลี่ย      : {$cycledays} วัน
 ยอดซื้อสะสม (LTV)  : ฿{$ltv}
 จำนวนออเดอร์รวม    : {$totalOrders}
 Sales ที่ดูแล       : {$salesperson}
 
 {$skuBlock}
 {$orderBlock}
---- รูปแบบ JSON ที่ต้องการ ---
+--- งานของคุณ ---
+อ่านบริบทด้านบน แล้วเขียนบันทึกวิเคราะห์ตาม schema นี้ (ภาษาไทยกระชับ ตรงประเด็น เน้นสิ่งที่ Sales ใช้ตัดสินใจได้):
+
 {
-  "opener": "ประโยคเปิดการสนทนา (1-2 ประโยค)",
-  "context_reminder": "สรุปสิ่งที่ Sales ควรรู้ก่อนโทร",
-  "discovery_questions": ["คำถาม 1", "คำถาม 2", "คำถาม 3"],
-  "objection_handlers": ["วิธีรับมือ 1", "วิธีรับมือ 2"],
-  "next_best_offer": "ข้อเสนอถัดไป (หากไม่มีข้อมูลให้บอกว่าติดต่อฝ่ายการตลาด)",
-  "warning": "ข้อควรระวัง หรือ null ถ้าไม่มี"
+  "executive_summary": "สรุป 1-2 ประโยค: ลูกค้านี้คือใคร พฤติกรรมเด่น และสถานการณ์ปัจจุบัน",
+  "health_signals": [
+    {"label": "Recency",   "severity": "low|medium|high|critical", "detail": "อธิบายตัวเลข + เปรียบเทียบกับ baseline ของลูกค้ารายนี้เอง"},
+    {"label": "Frequency", "severity": "...", "detail": "..."},
+    {"label": "Monetary",  "severity": "...", "detail": "..."}
+  ],
+  "behavior_pattern": "พฤติกรรมการซื้อ: รอบสั่งซื้อเป็นยังไง basket size ใหญ่/เล็ก มี seasonality หรือไม่ ชอบ SKU ตระกูลไหน",
+  "risk_factors": ["สาเหตุ/สมมติฐานที่ทำให้ลูกค้าหาย เช่น เปลี่ยนซัพพลายเออร์ ราคา ปัญหาคุณภาพ ฤดูกาล", "..."],
+  "opportunities": ["โอกาสที่เห็นจากข้อมูล เช่น cross-sell SKU X เพราะเคยซื้อ Y ประจำ, หรือ restock seasonal", "..."],
+  "recommended_actions": [
+    {"priority": "P1|P2|P3", "action": "สิ่งที่ควรทำ 1 ข้อ — ระบุชัดเจน", "owner": "Sales/CS/Manager/Marketing"},
+    {"priority": "...", "action": "...", "owner": "..."}
+  ],
+  "data_quality_caveats": ["ข้อจำกัดของข้อมูลที่ใช้วิเคราะห์ เช่น 'ไม่มีข้อมูล product_stats', 'ออเดอร์ < 5 รายการ', 'ขาดข้อมูลใบแจ้งหนี้'"],
+  "internal_note_for_sales": "บันทึกย่อ 2-4 ประโยค ภาษาธรรมชาติ พร้อมส่งต่อให้ Sales ที่ดูแลอ่านเพื่อรู้ว่าต้องโฟกัสอะไร — เน้น actionable ไม่ใช่บทพูด"
 }
 USERPROMPT;
 
@@ -200,7 +241,17 @@ USERPROMPT;
     }
 
     /**
-     * Validate all required keys are present with correct non-empty values.
+     * Validate the analyst-brief shape returned by Gemini.
+     *
+     * Schema (all keys required):
+     *   - executive_summary       : non-empty string
+     *   - health_signals          : non-empty array of {label:string, severity:enum, detail:string}
+     *   - behavior_pattern        : non-empty string
+     *   - risk_factors            : non-empty array of non-empty strings
+     *   - opportunities           : non-empty array of non-empty strings
+     *   - recommended_actions     : non-empty array of {priority:string, action:string, owner:string}
+     *   - data_quality_caveats    : array of strings (may be empty array, but values non-empty)
+     *   - internal_note_for_sales : non-empty string
      *
      * @param array<string, mixed> $payload
      */
@@ -210,27 +261,66 @@ USERPROMPT;
             if (!array_key_exists($key, $payload)) {
                 return false;
             }
+        }
 
-            $value = $payload[$key];
+        // 1. Plain non-empty strings
+        foreach (['executive_summary', 'behavior_pattern', 'internal_note_for_sales'] as $key) {
+            if (!is_string($payload[$key]) || trim($payload[$key]) === '') {
+                return false;
+            }
+        }
 
-            if (in_array($key, ['discovery_questions', 'objection_handlers'], true)) {
-                if (!is_array($value) || empty($value)) {
+        // 2. health_signals — non-empty array of {label, severity ∈ enum, detail}
+        if (!is_array($payload['health_signals']) || empty($payload['health_signals'])) {
+            return false;
+        }
+        foreach ($payload['health_signals'] as $sig) {
+            if (!is_array($sig)) {
+                return false;
+            }
+            foreach (['label', 'severity', 'detail'] as $f) {
+                if (!isset($sig[$f]) || !is_string($sig[$f]) || trim($sig[$f]) === '') {
                     return false;
                 }
-                foreach ($value as $item) {
-                    if (!is_string($item) || trim($item) === '') {
-                        return false;
-                    }
+            }
+            if (!in_array(strtolower((string) $sig['severity']), self::SEVERITY_VALUES, true)) {
+                return false;
+            }
+        }
+
+        // 3. recommended_actions — non-empty array of {priority, action, owner}
+        if (!is_array($payload['recommended_actions']) || empty($payload['recommended_actions'])) {
+            return false;
+        }
+        foreach ($payload['recommended_actions'] as $act) {
+            if (!is_array($act)) {
+                return false;
+            }
+            foreach (['priority', 'action', 'owner'] as $f) {
+                if (!isset($act[$f]) || !is_string($act[$f]) || trim($act[$f]) === '') {
+                    return false;
                 }
-                continue;
             }
+        }
 
-            // 'warning' may be null or empty string — that is acceptable
-            if ($key === 'warning') {
-                continue;
+        // 4. risk_factors / opportunities — non-empty arrays of non-empty strings
+        foreach (['risk_factors', 'opportunities'] as $key) {
+            if (!is_array($payload[$key]) || empty($payload[$key])) {
+                return false;
             }
+            foreach ($payload[$key] as $item) {
+                if (!is_string($item) || trim($item) === '') {
+                    return false;
+                }
+            }
+        }
 
-            if (!is_string($value) || trim($value) === '') {
+        // 5. data_quality_caveats — array of strings (may be empty array; values must be non-empty if present)
+        if (!is_array($payload['data_quality_caveats'])) {
+            return false;
+        }
+        foreach ($payload['data_quality_caveats'] as $item) {
+            if (!is_string($item) || trim($item) === '') {
                 return false;
             }
         }
