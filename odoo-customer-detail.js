@@ -1,7 +1,18 @@
 // ===== Odoo Customer Detail Page JS =====
 // Reads ?ref=&partner_id=&name= from URL
 
-const WH_API_CANDIDATES=['api/odoo-webhooks-dashboard.php','/api/odoo-webhooks-dashboard.php','../api/odoo-webhooks-dashboard.php'];
+// Primary endpoint first (matches odoo-dashboard.js / CLAUDE.md "Odoo dashboard
+// queries — Always query cache tables ... never hit the Odoo API directly").
+// Falls through to legacy odoo-webhooks-dashboard.php only if primary is down.
+const WH_API_CANDIDATES=[
+    'api/odoo-dashboard-api.php',
+    '/api/odoo-dashboard-api.php',
+    'api/odoo-webhooks-dashboard.php',
+    '/api/odoo-webhooks-dashboard.php',
+];
+// Fast endpoint for low-latency profile lookup (parity with odoo-dashboard.js).
+const WH_API_FAST='api/odoo-dashboard-fast.php';
+const WH_FAST_ACTIONS=new Set(['customer_profile_fast']);
 let WH_API_ACTIVE=WH_API_CANDIDATES[0];
 
 // URL params
@@ -41,6 +52,16 @@ function _cacheClear(prefix){
 }
 
 async function whApiCall(data){
+    // Fast-endpoint route first for actions known to live there.
+    if(data&&data.action&&WH_FAST_ACTIONS.has(data.action)){
+        try{
+            const r=await fetch(WH_API_FAST+'?_t='+Date.now(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+            const raw=await r.text();
+            let p=null;try{p=JSON.parse(raw);}catch(_){}
+            if(p&&typeof p==='object'&&'success' in p&&p.fallback!==true)return p;
+        }catch(e){}
+        // fall through to heavy endpoint on failure / fallback flag
+    }
     const endpoints=[WH_API_ACTIVE,...WH_API_CANDIDATES.filter(u=>u!==WH_API_ACTIVE)];
     for(const url of endpoints){
         try{
@@ -167,14 +188,19 @@ async function loadAll(forceRefresh){
         }
     }
 
-    // Parallel fetch: detail + orders + invoices + slips + notes
+    // Parallel fetch: profile-fast (with customer_detail fallback) + orders + invoices + slips + notes + bdos.
+    // Action names aligned with odoo-dashboard.js modal showCustomerDetail() —
+    // primary is customer_profile_fast (DB-only, ~50ms); BDOs use odoo_bdo_list_api
+    // (NOT 'odoo_bdos' — that action does not exist on either endpoint).
+    const profilePromise=whApiCall({action:'customer_profile_fast',partner_id:pidParam,customer_ref:P_REF})
+        .then(r=>(r&&r.success)?r:whApiCall({action:'customer_detail',partner_id:pidParam,customer_ref:P_REF}));
     const [detailRes,ordRes,invRes,slipRes,notesRes,bdoRes]=await Promise.all([
-        whApiCall({action:'customer_detail',partner_id:pidParam,customer_ref:P_REF}),
+        profilePromise,
         whApiCall({action:'odoo_orders',limit:100,offset:0,partner_id:pidParam,customer_ref:P_REF}),
         whApiCall({action:'odoo_invoices',limit:100,offset:0,partner_id:pidParam,customer_ref:P_REF}),
         whApiCall({action:'odoo_slips',partner_id:pidParam}),
         whApiCall({action:'order_notes_list',partner_id:pidParam}),
-        whApiCall({action:'odoo_bdos',limit:100,offset:0,partner_id:pidParam,customer_ref:P_REF})
+        whApiCall({action:'odoo_bdo_list_api',limit:100,offset:0,partner_id:pidParam,customer_ref:P_REF})
     ]);
 
     // Store detail data for re-rendering
