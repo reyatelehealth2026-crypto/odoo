@@ -99,6 +99,7 @@ try {
         SELECT
             p.odoo_partner_id,
             COALESCE(cp.customer_name, CONCAT('Partner #', p.odoo_partner_id)) AS store_name,
+            cp.customer_ref,
             p.customer_type,
             p.avg_order_cycle_days,
             DATEDIFF(CURDATE(), p.last_order_date)  AS days_since,
@@ -195,12 +196,12 @@ $typeLabels = [
 ];
 
 $kpiDefs = [
-    'Champion'    => ['icon' => '&#9733;',  'label' => 'Champion',    'sub' => 'ซื้อตามรอบปกติ'],
-    'Watchlist'   => ['icon' => '&#128064;','label' => 'Watchlist',   'sub' => 'เริ่มช้ากว่ารอบ'],
-    'At-Risk'     => ['icon' => '&#9888;',  'label' => 'At-Risk',     'sub' => 'เลยรอบ 1.5×'],
-    'Lost'        => ['icon' => '&#128679;','label' => 'Lost',        'sub' => 'เลยรอบ 2×'],
-    'Churned'     => ['icon' => '&#128681;','label' => 'Churned HV',  'sub' => 'เลยรอบ 3× (HV)'],
-    'Hibernating' => ['icon' => '&#128739;','label' => 'Hibernating', 'sub' => 'เลยรอบ 3× (ทั่วไป)'],
+    'Champion'    => ['icon' => '&#9733;',  'label' => 'Champion · ลูกค้าขาประจำ',  'sub' => 'ซื้อตามรอบปกติ'],
+    'Watchlist'   => ['icon' => '&#128064;','label' => 'Watchlist · เริ่มห่าง',     'sub' => 'ช้ากว่ารอบเล็กน้อย'],
+    'At-Risk'     => ['icon' => '&#9888;',  'label' => 'At-Risk · เริ่มหาย',          'sub' => 'เลยรอบสั่งปกติ 1.5×'],
+    'Lost'        => ['icon' => '&#128679;','label' => 'Lost · หายไปแล้ว',           'sub' => 'เลยรอบสั่งปกติ 2× (ต้องตามด่วน)'],
+    'Churned'     => ['icon' => '&#128681;','label' => 'Churned · เลิกซื้อ (VIP)',    'sub' => 'เลยรอบ 3× + ยอดสูง (escalate)'],
+    'Hibernating' => ['icon' => '&#128739;','label' => 'Hibernating · จำศีล',         'sub' => 'เลยรอบ 3× (ยอดทั่วไป)'],
 ];
 
 ?>
@@ -217,135 +218,179 @@ $kpiDefs = [
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    /* ── Base — mirrors inbox-intelligence.html palette ── */
+    /* ── Base — light/white palette ── */
     *, *::before, *::after { box-sizing: border-box; }
     * { font-family: 'Noto Sans Thai', sans-serif; }
-    body { background: #080d18; color: #cbd5e1; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+    body { background: #f9fafb; color: #1f2937; min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
     .page { max-width: 1440px; margin: 0 auto; padding: 0 16px; }
     @media(min-width:640px) { .page { padding: 0 24px; } }
 
+    /* ── Tab nav (matches inbox-intelligence) ── */
+    .tab-nav { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+    .tab-link {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:8px 14px; border-radius:8px 8px 0 0;
+      font-size:13px; font-weight:500; color:#6b7280;
+      text-decoration:none; border:1px solid transparent;
+      border-bottom:none; transition:all 0.15s;
+    }
+    .tab-link:hover { background:#f3f4f6; color:#1f2937; }
+    .tab-link.active {
+      background:#ffffff; color:#1f2937; font-weight:600;
+      border-color:#e5e7eb;
+      box-shadow:0 -1px 0 rgba(0,0,0,0.02);
+      position:relative; top:1px;
+    }
+
     /* ── Card ── */
-    .card { background: #0f1829; border: 1px solid #1e293b; border-radius: 14px; transition: border-color 0.2s; }
-    .card:hover { border-color: #334155; }
+    .card { background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; transition:border-color 0.2s, box-shadow 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+    .card:hover { border-color:#d1d5db; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
     .p-5 { padding: 20px; }
-    .card-title { font-size: 13px; font-weight: 600; color: #e2e8f0; margin-bottom: 14px; display: flex; align-items: center; gap: 7px; }
+    .card-title { font-size:13px; font-weight:600; color:#1f2937; margin-bottom:14px; display:flex; align-items:center; gap:7px; }
 
     /* ── Section heading ── */
     .sec-head {
-      display: flex; align-items: center; gap: 10px;
-      font-size: 10px; font-weight: 700; letter-spacing: 0.14em;
-      text-transform: uppercase; color: #475569;
-      margin: 32px 0 16px;
+      display:flex; align-items:center; gap:10px;
+      font-size:11px; font-weight:700; letter-spacing:0.12em;
+      text-transform:uppercase; color:#6b7280;
+      margin:32px 0 16px;
     }
-    .sec-head::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg,#1e293b,transparent); }
+    .sec-head::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,#e5e7eb,transparent); }
 
     /* ── 6-card KPI strip ── */
-    .kpi-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; }
-    @media(min-width:640px)  { .kpi-grid { grid-template-columns: repeat(3,1fr); } }
-    @media(min-width:1024px) { .kpi-grid { grid-template-columns: repeat(6,1fr); gap: 12px; } }
+    .kpi-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+    @media(min-width:640px)  { .kpi-grid { grid-template-columns:repeat(3,1fr); } }
+    @media(min-width:1024px) { .kpi-grid { grid-template-columns:repeat(6,1fr); gap:12px; } }
 
     .kpi-card {
-      background: #0f1829; border: 1px solid #1e293b; border-radius: 12px;
-      padding: 14px; transition: border-color 0.2s, transform 0.15s;
+      background:#ffffff; border:1px solid #e5e7eb; border-radius:12px;
+      padding:14px; transition:border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow:0 1px 2px rgba(0,0,0,0.03);
     }
-    .kpi-card:hover { border-color: #334155; transform: translateY(-1px); }
-    .kpi-icon  { font-size: 18px; margin-bottom: 6px; }
-    .kpi-label { font-size: 10px; color: #64748b; font-weight: 500; letter-spacing: 0.02em; }
-    .kpi-value { font-size: 24px; font-weight: 700; line-height: 1.15; font-family: 'JetBrains Mono', monospace; margin: 3px 0; }
-    .kpi-sub   { font-size: 10px; color: #475569; }
+    .kpi-card:hover { border-color:#d1d5db; transform:translateY(-1px); box-shadow:0 4px 8px rgba(0,0,0,0.05); }
+    .kpi-icon  { font-size:20px; margin-bottom:6px; }
+    .kpi-label { font-size:11px; color:#6b7280; font-weight:600; letter-spacing:0.02em; }
+    .kpi-value { font-size:26px; font-weight:700; line-height:1.15; font-family:'JetBrains Mono',monospace; margin:3px 0; }
+    .kpi-sub   { font-size:10px; color:#9ca3af; }
 
-    /* ── Badges ── */
-    .badge { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; border: 1px solid; line-height: 1.5; white-space: nowrap; }
-    .badge-green  { background: rgba(16,185,129,0.1);   color: #34d399; border-color: rgba(16,185,129,0.2); }
-    .badge-yellow { background: rgba(245,158,11,0.1);   color: #fbbf24; border-color: rgba(245,158,11,0.2); }
-    .badge-amber  { background: rgba(251,146,60,0.12);  color: #fb923c; border-color: rgba(251,146,60,0.25); }
-    .badge-red    { background: rgba(239,68,68,0.1);    color: #f87171; border-color: rgba(239,68,68,0.2); }
-    .badge-purple { background: rgba(168,85,247,0.1);   color: #c084fc; border-color: rgba(168,85,247,0.2); }
-    .badge-gray   { background: rgba(100,116,139,0.08); color: #94a3b8; border-color: rgba(100,116,139,0.15); }
+    /* ── Badges (light theme — solid color on tinted bg) ── */
+    .badge { display:inline-flex; align-items:center; padding:2px 9px; border-radius:9999px; font-size:11px; font-weight:600; border:1px solid; line-height:1.5; white-space:nowrap; }
+    .badge-green  { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+    .badge-yellow { background:#fef9c3; color:#854d0e; border-color:#fde68a; }
+    .badge-amber  { background:#ffedd5; color:#9a3412; border-color:#fed7aa; }
+    .badge-red    { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+    .badge-purple { background:#f3e8ff; color:#6b21a8; border-color:#e9d5ff; }
+    .badge-gray   { background:#f3f4f6; color:#4b5563; border-color:#e5e7eb; }
+    .badge-blue   { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
 
     /* ── Table ── */
-    .dt { width: 100%; border-collapse: collapse; font-size: 12px; }
-    .dt thead th { padding: 8px 7px; text-align: left; color: #475569; font-weight: 500; border-bottom: 1px solid #1e293b; font-size: 11px; white-space: nowrap; }
-    .dt tbody td { padding: 8px 7px; border-bottom: 1px solid rgba(30,41,59,0.5); vertical-align: middle; }
-    .dt tbody tr:last-child td { border-bottom: none; }
-    .dt tbody tr:hover td { background: rgba(255,255,255,0.02); }
-    .row-critical td { background: rgba(239,68,68,0.04) !important; }
-    .row-warn     td { background: rgba(251,146,60,0.03) !important; }
+    .dt { width:100%; border-collapse:collapse; font-size:13px; }
+    .dt thead th { padding:10px 8px; text-align:left; color:#6b7280; font-weight:600; border-bottom:1px solid #e5e7eb; font-size:11px; white-space:nowrap; text-transform:uppercase; letter-spacing:0.05em; }
+    .dt tbody td { padding:10px 8px; border-bottom:1px solid #f3f4f6; vertical-align:middle; }
+    .dt tbody tr:last-child td { border-bottom:none; }
+    .dt tbody tr:hover td { background:#f9fafb; }
+    .row-critical td { background:#fef2f2 !important; }
+    .row-critical:hover td { background:#fee2e2 !important; }
+    .row-warn     td { background:#fff7ed !important; }
+    .row-warn:hover td { background:#ffedd5 !important; }
 
     /* ── Alert banners ── */
-    .alert { border-radius: 10px; padding: 12px 16px; }
-    .alert-amber { background: rgba(251,146,60,0.07); border: 1px solid rgba(251,146,60,0.2); color: #fb923c; }
-    .alert-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .alert { border-radius:10px; padding:14px 18px; }
+    .alert-amber { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+    .alert-title { font-weight:700; font-size:13px; display:flex; align-items:center; gap:8px; margin-bottom:4px; }
 
     /* ── Health strip ── */
-    .health-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap: 10px; margin-top: 12px; }
-    .health-box { background: #0a111d; border: 1px solid #1e293b; border-radius: 10px; padding: 12px 14px; text-align: center; }
-    .health-num   { font-size: 22px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
-    .health-label { font-size: 10px; color: #64748b; margin-top: 4px; }
+    .health-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin-top:12px; }
+    .health-box { background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px 16px; text-align:center; }
+    .health-num   { font-size:22px; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1; }
+    .health-label { font-size:11px; color:#6b7280; margin-top:6px; font-weight:500; }
 
-    /* ── Shimmer skeleton ── */
+    /* ── Shimmer skeleton (light) ── */
     @keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-    .sk { background: linear-gradient(90deg,#111d2e 25%,#1a2840 50%,#111d2e 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:8px; }
+    .sk { background:linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%); background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:8px; }
 
     /* ── Spinner ── */
     @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-    .spinning { animation: spin 0.8s linear infinite; }
+    .spinning { animation:spin 0.8s linear infinite; }
 
-    /* ── Utilities ── */
-    .c-green  { color: #34d399; } .c-amber { color: #fb923c; }
-    .c-red    { color: #f87171; } .c-blue  { color: #60a5fa; }
-    .c-slate4 { color: #94a3b8; } .c-slate5 { color: #64748b; }
-    .mono { font-family: 'JetBrains Mono', monospace; }
-    .chart-wrap { position: relative; height: 220px; }
-    .table-scroll { overflow-x: auto; }
+    /* ── Utilities (light-tone semantic colors) ── */
+    .c-green  { color:#16a34a; } .c-amber { color:#ea580c; }
+    .c-red    { color:#dc2626; } .c-blue  { color:#2563eb; }
+    .c-slate4 { color:#6b7280; } .c-slate5 { color:#9ca3af; }
+    .mono { font-family:'JetBrains Mono',monospace; }
+    .chart-wrap { position:relative; height:220px; }
+    .table-scroll { overflow-x:auto; }
+
+    /* ── Action link (table) ── */
+    .act-link {
+      display:inline-flex; align-items:center; gap:4px;
+      padding:5px 10px; border-radius:6px;
+      font-size:12px; font-weight:500;
+      background:#eff6ff; color:#1d4ed8;
+      border:1px solid #bfdbfe;
+      text-decoration:none; transition:all 0.15s;
+    }
+    .act-link:hover { background:#dbeafe; border-color:#93c5fd; }
 
     /* ── Scrollbar ── */
-    * { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+    * { scrollbar-width:thin; scrollbar-color:#d1d5db transparent; }
     *::-webkit-scrollbar { width:6px; height:6px; }
     *::-webkit-scrollbar-track { background:transparent; }
-    *::-webkit-scrollbar-thumb { background:#334155; border-radius:3px; }
-    *::-webkit-scrollbar-thumb:hover { background:#475569; }
+    *::-webkit-scrollbar-thumb { background:#d1d5db; border-radius:3px; }
+    *::-webkit-scrollbar-thumb:hover { background:#9ca3af; }
 
     /* ── Filter button active state ── */
-    .seg-filter-btn[aria-selected="true"] {
-      background: rgba(255,255,255,0.06) !important;
-      color: #e2e8f0 !important;
-      border-color: #334155 !important;
+    .seg-filter-btn {
+      padding:6px 14px; border-radius:6px; border:1px solid #e5e7eb;
+      background:#ffffff; color:#6b7280; font-size:12px; font-weight:500;
+      cursor:pointer; transition:all 0.15s;
     }
+    .seg-filter-btn:hover { background:#f9fafb; color:#1f2937; }
+    .seg-filter-btn[aria-selected="true"] {
+      background:#1f2937 !important;
+      color:#ffffff !important;
+      border-color:#1f2937 !important;
+    }
+
+    /* ── Refresh button ── */
+    .btn-refresh {
+      display:flex; align-items:center; gap:6px;
+      padding:8px 14px; border-radius:8px;
+      background:#ffffff; border:1px solid #e5e7eb;
+      cursor:pointer; font-size:12px; font-weight:500; color:#374151;
+      white-space:nowrap; transition:all 0.15s;
+    }
+    .btn-refresh:hover { background:#f9fafb; border-color:#d1d5db; }
   </style>
 </head>
 <body>
 
 <!-- ════ STICKY HEADER ════════════════════════════════════════════ -->
-<header style="position:sticky;top:0;z-index:50;background:rgba(8,13,24,0.96);backdrop-filter:blur(14px);border-bottom:1px solid #1e293b;">
-  <div class="page" style="padding-top:14px;padding-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:10px;background:rgba(239,68,68,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;" aria-hidden="true">&#128681;</div>
+<header style="position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.96);backdrop-filter:blur(14px);border-bottom:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+  <div class="page" style="padding-top:14px;padding-bottom:0;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:12px;padding-bottom:10px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:#fee2e2;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;" aria-hidden="true">&#128681;</div>
       <div>
-        <div style="font-size:15px;font-weight:700;color:#f1f5f9;display:flex;align-items:center;gap:8px;">
-          Customer Churn Tracker
+        <div style="font-size:15px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px;">
+          Customer Churn Tracker — รายงานลูกค้าหลุดรอบ
           <?php if ($softLaunch): ?>
-          <span style="font-size:10px;background:rgba(251,146,60,0.18);color:#fb923c;padding:1px 7px;border-radius:20px;font-weight:500;">soft-launch</span>
+          <span class="badge badge-amber" style="font-size:10px;">soft-launch</span>
           <?php else: ?>
-          <span style="font-size:10px;background:rgba(30,58,95,0.8);color:#60a5fa;padding:1px 7px;border-radius:20px;font-weight:500;">Read-only</span>
+          <span class="badge badge-blue" style="font-size:10px;">Read-only</span>
           <?php endif; ?>
         </div>
-        <div id="last-updated" style="font-size:11px;color:#64748b;margin-top:1px;">
+        <div id="last-updated" style="font-size:11px;color:#6b7280;margin-top:2px;">
           <?php if ($lastComputedAt): ?>
           คำนวณล่าสุด: <?= htmlspecialchars($lastComputedAt, ENT_QUOTES, 'UTF-8') ?>
           <?php else: ?>
-          ยังไม่มีข้อมูล RFM — รอ cron รอบแรก
+          ยังไม่มีข้อมูล RFM — รอ cron รอบแรก (รัน 02:00 น. ทุกคืน)
           <?php endif; ?>
         </div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:10px;">
-      <button id="refresh-btn"
-        style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid #1e293b;cursor:pointer;font-size:12px;color:#94a3b8;white-space:nowrap;"
-        onmouseover="this.style.background='rgba(255,255,255,0.08)'"
-        onmouseout="this.style.background='rgba(255,255,255,0.04)'"
-        aria-label="รีเฟรชข้อมูล">
+    <div style="display:flex;align-items:center;gap:10px;padding-bottom:10px;">
+      <button id="refresh-btn" class="btn-refresh" aria-label="รีเฟรชข้อมูล">
         <svg id="refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
         </svg>
@@ -353,23 +398,39 @@ $kpiDefs = [
       </button>
     </div>
   </div>
+  <!-- ── Tab nav: ลิงก์ระหว่างหน้ารายงานในกลุ่มเดียวกัน ── -->
+  <div class="page" style="padding-top:0;padding-bottom:0;">
+    <nav class="tab-nav" role="tablist" aria-label="กลุ่มรายงานลูกค้า">
+      <a class="tab-link" href="inbox-intelligence.html" role="tab" aria-selected="false">
+        📊 รายงานกล่องข้อความ
+      </a>
+      <a class="tab-link active" href="customer-churn.php" role="tab" aria-selected="true" aria-current="page">
+        🚩 ลูกค้าหลุดรอบ (Churn)
+      </a>
+      <?php if (function_exists('isSuperAdmin') && isSuperAdmin()): ?>
+      <a class="tab-link" href="customer-churn-settings.php" role="tab" aria-selected="false">
+        ⚙️ ตั้งค่าระบบ
+      </a>
+      <?php endif; ?>
+    </nav>
+  </div>
 </header>
 
 <main class="page" style="padding-top:24px;padding-bottom:48px;">
 
   <!-- ── Soft-launch banner ───────────────────────────────────────── -->
   <?php if ($softLaunch): ?>
-  <div class="alert alert-amber" style="margin-bottom:20px;" role="alert" aria-live="polite">
-    <div class="alert-title">&#9888;&nbsp;Soft-Launch Mode</div>
-    <div style="font-size:12px;margin-top:2px;">
-      ระบบกำลัง soft-launch — ไม่ส่ง notification อัตโนมัติ
-      ผู้ดูแลระบบสามารถตรวจสอบ segment list ได้ แต่ยังไม่มีการส่ง LINE หรือ email ออกโดยอัตโนมัติ
+  <div class="alert alert-amber" style="margin-top:20px;margin-bottom:20px;" role="alert" aria-live="polite">
+    <div class="alert-title">⚠️ โหมดเริ่มต้นใช้งาน (Soft-Launch)</div>
+    <div style="font-size:12.5px;line-height:1.6;margin-top:4px;">
+      ระบบยัง<b>ไม่ส่งข้อความหาลูกค้าอัตโนมัติ</b> — ผู้ดูแลตรวจรายชื่อในตารางด้านล่างได้ แต่ยังไม่มีการส่ง LINE / อีเมล / โทรศัพท์ออกโดยระบบ
+      เปิดใช้จริงได้ที่หน้า <b>ตั้งค่าระบบ</b> (ตั้ง <code>system_enabled = 1</code> และ <code>soft_launch = 0</code>)
     </div>
   </div>
   <?php endif; ?>
 
   <!-- ════ KPI STRIP ════════════════════════════════════════════════ -->
-  <div class="sec-head">Segment Overview</div>
+  <div class="sec-head">ภาพรวมตาม Segment — ลูกค้าทั้งหมดที่คำนวณแล้ว</div>
 
   <div class="kpi-grid" id="kpi-grid" role="list" aria-label="สรุปจำนวนลูกค้าตาม segment">
     <?php foreach ($kpiDefs as $seg => $def):
@@ -390,56 +451,55 @@ $kpiDefs = [
   </div>
 
   <!-- ════ WATCHLIST TABLE ════════════════════════════════════════ -->
-  <div class="sec-head" style="margin-top:36px;">Watchlist — ลูกค้าต้องติดตาม</div>
+  <div class="sec-head" style="margin-top:36px;">รายชื่อลูกค้าที่ต้องติดตาม — เรียงตามความเร่งด่วน</div>
 
   <div class="card p-5">
     <!-- Segment filter tabs -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:center;" role="group" aria-label="กรองตาม segment">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;align-items:center;" role="group" aria-label="กรองตาม segment">
       <?php
       $filterOptions = [
           'all'      => 'ทั้งหมด',
-          'Churned'  => 'Churned',
-          'Lost'     => 'Lost',
-          'At-Risk'  => 'At-Risk',
-          'Watchlist'=> 'Watchlist',
+          'Churned'  => '🚩 Churned (VIP)',
+          'Lost'     => '⛔ Lost',
+          'At-Risk'  => '⚠️ At-Risk',
+          'Watchlist'=> '👀 Watchlist',
       ];
       foreach ($filterOptions as $fKey => $fLabel):
       ?>
       <button class="seg-filter-btn"
         data-filter="<?= htmlspecialchars($fKey, ENT_QUOTES, 'UTF-8') ?>"
-        aria-selected="<?= $fKey === 'all' ? 'true' : 'false' ?>"
-        style="padding:4px 12px;border-radius:6px;border:1px solid #1e293b;background:transparent;color:#94a3b8;font-size:11px;cursor:pointer;transition:all 0.15s;">
+        aria-selected="<?= $fKey === 'all' ? 'true' : 'false' ?>">
         <?= htmlspecialchars($fLabel, ENT_QUOTES, 'UTF-8') ?>
       </button>
       <?php endforeach; ?>
-      <div style="margin-left:auto;font-size:11px;color:#475569;">
-        แสดง <span id="watchlist-count"><?= count($watchlistRows) ?></span> รายการ
+      <div style="margin-left:auto;font-size:12px;color:#6b7280;">
+        แสดง <span id="watchlist-count" style="font-weight:600;color:#1f2937;"><?= count($watchlistRows) ?></span> รายการ
       </div>
     </div>
 
     <?php if (empty($watchlistRows)): ?>
-    <div style="padding:48px 20px;text-align:center;color:#475569;" aria-live="polite">
-      <div style="font-size:36px;margin-bottom:14px;" aria-hidden="true">&#127881;</div>
-      <div style="font-size:14px;color:#64748b;">ยังไม่มีลูกค้าใน watchlist</div>
-      <div style="font-size:11px;margin-top:8px;color:#334155;">
-        อาจเป็นเพราะ cron ยังไม่ได้รันครั้งแรก หรือลูกค้าทุกรายอยู่ในรอบปกติ
+    <div style="padding:48px 20px;text-align:center;color:#9ca3af;" aria-live="polite">
+      <div style="font-size:40px;margin-bottom:14px;" aria-hidden="true">&#127881;</div>
+      <div style="font-size:15px;color:#374151;font-weight:500;">ยังไม่มีลูกค้าในรายการต้องติดตาม</div>
+      <div style="font-size:12px;margin-top:8px;color:#6b7280;">
+        อาจเป็นเพราะ cron ยังไม่ได้รันครั้งแรก หรือลูกค้าทุกรายยังซื้อตามรอบปกติ
       </div>
     </div>
     <?php else: ?>
 
     <div class="table-scroll">
-      <table class="dt" id="watchlist-table" aria-label="รายการลูกค้าใน watchlist">
+      <table class="dt" id="watchlist-table" aria-label="รายการลูกค้าที่ต้องติดตาม">
         <thead>
           <tr>
-            <th>ชื่อร้าน</th>
+            <th>ชื่อร้าน / Partner ID</th>
             <th>ประเภท</th>
-            <th>Avg Cycle</th>
-            <th>Days Since</th>
-            <th>Ratio</th>
-            <th>LTV</th>
-            <th>Last Order</th>
-            <th>Segment</th>
-            <th>Action</th>
+            <th title="รอบสั่งปกติ (วัน) — คำนวณจาก median ของช่วงระหว่างออเดอร์">รอบสั่งปกติ</th>
+            <th title="จำนวนวันที่หายไปจากออเดอร์ล่าสุด">หายไป</th>
+            <th title="หายไป ÷ รอบปกติ — ยิ่งสูงยิ่งหนัก (1.5×=At-Risk, 2×=Lost, 3×=Churned)">หนักแค่ไหน</th>
+            <th title="ยอดซื้อสะสมตลอดอายุลูกค้า (THB)">ยอดซื้อสะสม</th>
+            <th>ออเดอร์ล่าสุด</th>
+            <th>สถานะ</th>
+            <th>การดำเนินการ</th>
           </tr>
         </thead>
         <tbody id="watchlist-tbody">
@@ -469,49 +529,63 @@ $kpiDefs = [
                 else                     { $ratioColor = '#fbbf24'; }
             }
           ?>
+          <?php
+            // Build odoo-customer-detail URL — page expects ?partner_id=&ref=&name=
+            $wRef        = (string) ($wRow['customer_ref'] ?? '');
+            $detailQuery = http_build_query([
+                'partner_id' => $wPartner,
+                'ref'        => $wRef,
+                'name'       => $wStore,
+            ]);
+          ?>
           <tr class="<?= $rowClass ?>"
               data-segment="<?= htmlspecialchars($wSeg, ENT_QUOTES, 'UTF-8') ?>">
             <td>
-              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                 <?php if ($wSeasonal): ?>
-                <span title="ลูกค้าซื้อตามฤดูกาล — ไม่ trigger auto-action" aria-label="seasonal" style="color:#fbbf24;font-size:11px;">&#9924;</span>
+                <span title="ลูกค้าซื้อตามฤดูกาล — ระบบจะไม่ส่ง notification อัตโนมัติ" aria-label="seasonal" style="color:#d97706;font-size:13px;">&#9924;</span>
                 <?php endif; ?>
-                <span style="font-weight:500;color:#e2e8f0;"><?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?></span>
+                <span style="font-weight:600;color:#111827;"><?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?></span>
                 <?php if ($wIsHV): ?>
-                <span class="badge badge-purple" title="High-Value customer">HV</span>
+                <span class="badge badge-purple" title="ลูกค้ายอดสูง — Top 20% ของ LTV">VIP</span>
                 <?php endif; ?>
                 <?php if ($wConfidence === 'fallback'): ?>
-                <span class="badge badge-gray" title="ข้อมูลไม่เพียงพอ — ไม่ trigger auto-action" style="font-size:9px;">low conf</span>
+                <span class="badge badge-gray" title="ข้อมูลออเดอร์ยังไม่พอ — ระบบจะไม่ส่ง notification อัตโนมัติ" style="font-size:10px;">ข้อมูลน้อย</span>
                 <?php endif; ?>
               </div>
-              <div style="font-size:10px;color:#334155;margin-top:1px;">#<?= $wPartner ?></div>
+              <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
+                <?php if ($wRef): ?>
+                <span title="รหัสลูกค้า"><?= htmlspecialchars($wRef, ENT_QUOTES, 'UTF-8') ?></span> ·
+                <?php endif; ?>
+                Partner #<?= $wPartner ?>
+              </div>
             </td>
-            <td style="color:#94a3b8;"><?= htmlspecialchars($wType, ENT_QUOTES, 'UTF-8') ?></td>
-            <td><span class="mono" style="color:#cbd5e1;"><?= churnFormatCycle($wRow['avg_order_cycle_days']) ?></span></td>
-            <td><span class="mono" style="color:<?= $dayColor ?>;">
+            <td style="color:#4b5563;"><?= htmlspecialchars($wType, ENT_QUOTES, 'UTF-8') ?></td>
+            <td><span class="mono" style="color:#374151;"><?= churnFormatCycle($wRow['avg_order_cycle_days']) ?></span></td>
+            <td><span class="mono" style="color:<?= $dayColor ?>;font-weight:500;">
               <?= ($wDaysSince !== null) ? $wDaysSince . ' วัน' : '—' ?>
             </span></td>
-            <td><span class="mono" style="color:<?= $ratioColor ?>;">
+            <td><span class="mono" style="color:<?= $ratioColor ?>;font-weight:600;">
               <?= churnFormatRatio($wRow['recency_ratio']) ?>
             </span></td>
-            <td><span class="mono" style="color:#94a3b8;"><?= churnFormatThb($wRow['lifetime_value']) ?></span></td>
-            <td style="color:#64748b;"><?= $wRow['last_order_date'] ? htmlspecialchars((string) $wRow['last_order_date'], ENT_QUOTES, 'UTF-8') : '—' ?></td>
+            <td><span class="mono" style="color:#1f2937;font-weight:500;"><?= churnFormatThb($wRow['lifetime_value']) ?></span></td>
+            <td style="color:#6b7280;"><?= $wRow['last_order_date'] ? htmlspecialchars((string) $wRow['last_order_date'], ENT_QUOTES, 'UTF-8') : '—' ?></td>
             <td>
               <span class="badge <?= churnSegmentBadgeClass($wSeg) ?>">
                 <?= htmlspecialchars($wSeg, ENT_QUOTES, 'UTF-8') ?>
               </span>
             </td>
             <td>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <a href="customer-churn-detail?id=<?= $wPartner ?>"
-                   style="font-size:11px;color:#60a5fa;text-decoration:none;"
-                   aria-label="ดูรายละเอียดลูกค้า #<?= $wPartner ?>">รายละเอียด</a>
-                <?php if ($wLineUser): ?>
-                <a href="inbox?user=<?= urlencode((string) $wLineUser) ?>"
-                   style="font-size:11px;color:#34d399;text-decoration:none;"
-                   aria-label="เปิด inbox ของ <?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>">Inbox</a>
-                <?php endif; ?>
-              </div>
+              <a class="act-link"
+                 href="odoo-customer-detail.php?<?= $detailQuery ?>"
+                 target="_blank" rel="noopener"
+                 aria-label="เปิด Odoo รายละเอียดของ <?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
+                 title="ดูออเดอร์ / ใบแจ้งหนี้ / BDO ล่าสุด">
+                <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M14 3h7v7M10 14L21 3M21 14v7H3V3h7"/>
+                </svg>
+                ดู Odoo ล่าสุด
+              </a>
             </td>
           </tr>
           <?php endforeach; ?>
@@ -523,44 +597,44 @@ $kpiDefs = [
   </div>
 
   <!-- ════ COHORT RETENTION CHART ════════════════════════════════ -->
-  <div class="sec-head" style="margin-top:36px;">Cohort Retention</div>
+  <div class="sec-head" style="margin-top:36px;">การกระจายตัวของลูกค้าตาม Segment</div>
 
   <div class="card p-5">
-    <div class="card-title">&#128202;&nbsp;การกระจายตัว Segment</div>
-    <div id="cohort-loading" style="display:none;text-align:center;padding:20px;color:#475569;font-size:12px;" aria-live="polite">กำลังโหลด...</div>
+    <div class="card-title">&#128202;&nbsp;จำนวนลูกค้าในแต่ละกลุ่ม</div>
+    <div id="cohort-loading" style="display:none;text-align:center;padding:20px;color:#6b7280;font-size:12px;" aria-live="polite">กำลังโหลด...</div>
     <div class="chart-wrap">
       <canvas id="cohort-chart" aria-label="แผนภูมิการกระจายตัว segment" role="img"></canvas>
     </div>
   </div>
 
   <!-- ════ SYSTEM HEALTH MINI-STRIP ════════════════════════════════ -->
-  <div class="sec-head" style="margin-top:36px;">System Health</div>
+  <div class="sec-head" style="margin-top:36px;">สถานะการทำงานของระบบ</div>
 
   <div class="card p-5" id="health-card">
-    <div class="card-title">&#9989;&nbsp;สถานะระบบ</div>
+    <div class="card-title">&#9989;&nbsp;System Health — ภาพรวมการทำงาน</div>
     <div class="health-strip" id="health-strip">
       <div class="health-box">
         <div class="health-num c-blue" id="health-eligible"><?= $totalEligible ?></div>
-        <div class="health-label">ลูกค้าที่คำนวณแล้ว (total_eligible)</div>
+        <div class="health-label">จำนวนลูกค้าที่อยู่ใน RFM (≥3 ออเดอร์)</div>
       </div>
       <div class="health-box">
         <div class="health-num" id="health-computed"
-             style="color:#94a3b8;font-size:<?= $lastComputedAt ? '12px' : '22px' ?>;line-height:1.4;">
+             style="color:#374151;font-size:<?= $lastComputedAt ? '13px' : '22px' ?>;line-height:1.4;">
           <?= $lastComputedAt ? htmlspecialchars($lastComputedAt, ENT_QUOTES, 'UTF-8') : '—' ?>
         </div>
-        <div class="health-label">คำนวณล่าสุด (last_computed_at)</div>
+        <div class="health-label">เวลาคำนวณ RFM ครั้งล่าสุด</div>
       </div>
       <div class="health-box">
         <div class="health-num"
-             style="color:<?= ($geminiCallsToday >= $geminiDailyCap) ? '#f87171' : '#34d399' ?>;"
+             style="color:<?= ($geminiCallsToday >= $geminiDailyCap) ? '#dc2626' : '#16a34a' ?>;"
              id="health-gemini"><?= $geminiCallsToday ?> / <?= $geminiDailyCap ?></div>
-        <div class="health-label">Gemini calls วันนี้ / cap รายวัน</div>
+        <div class="health-label">การเรียก Gemini AI วันนี้ / โควตารายวัน</div>
       </div>
       <div class="health-box">
-        <div class="health-num" style="color:<?= $softLaunch ? '#fbbf24' : '#34d399' ?>;">
-          <?= $softLaunch ? 'Soft-Launch' : 'Live' ?>
+        <div class="health-num" style="color:<?= $softLaunch ? '#d97706' : '#16a34a' ?>;">
+          <?= $softLaunch ? 'Soft-Launch' : 'เปิดใช้จริง' ?>
         </div>
-        <div class="health-label">โหมดระบบ</div>
+        <div class="health-label">โหมดระบบปัจจุบัน</div>
       </div>
     </div>
   </div>

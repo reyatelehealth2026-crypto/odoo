@@ -19,12 +19,12 @@
 
   /** Segment colour palette matching inbox-intelligence.html */
   const SEGMENT_COLORS = {
-    'Champion':    '#34d399',
-    'Watchlist':   '#fbbf24',
-    'At-Risk':     '#fb923c',
-    'Lost':        '#f87171',
-    'Churned':     '#ef4444',
-    'Hibernating': '#94a3b8',
+    'Champion':    '#16a34a',
+    'Watchlist':   '#d97706',
+    'At-Risk':     '#ea580c',
+    'Lost':        '#dc2626',
+    'Churned':     '#b91c1c',
+    'Hibernating': '#6b7280',
   };
 
   /**
@@ -179,11 +179,11 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#0f1829',
-            borderColor: '#1e293b',
+            backgroundColor: '#ffffff',
+            borderColor: '#e5e7eb',
             borderWidth: 1,
-            titleColor: '#e2e8f0',
-            bodyColor: '#94a3b8',
+            titleColor: '#111827',
+            bodyColor: '#374151',
             padding: 10,
             callbacks: {
               label: function (ctx) {
@@ -194,12 +194,12 @@
         },
         scales: {
           x: {
-            grid: { color: 'rgba(30,41,59,0.5)' },
-            ticks: { color: '#64748b', font: { size: 11 } },
+            grid: { color: 'rgba(229,231,235,0.5)' },
+            ticks: { color: '#6b7280', font: { size: 11 } },
           },
           y: {
-            grid: { color: 'rgba(30,41,59,0.5)' },
-            ticks: { color: '#64748b', font: { size: 11 }, precision: 0 },
+            grid: { color: 'rgba(229,231,235,0.5)' },
+            ticks: { color: '#6b7280', font: { size: 11 }, precision: 0 },
             beginAtZero: true,
           },
         },
