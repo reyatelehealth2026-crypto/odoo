@@ -144,6 +144,51 @@ final class InboxSentinelTest extends TestCase
             'Customers with only positive messages must not appear in flag list');
     }
 
+    // ── getConversation() integration tests ─────────────────────────────────
+
+    public function testGetConversationReturnsBothDirectionsOldestFirst(): void
+    {
+        $this->seedUserAndCustomer(userId: 400, lineId: 'U_D', partnerId: 7777);
+        $this->seedMessage(400, 'ของยังไม่ได้รับเลย', '-72 hours', 'incoming');
+        $this->seedOutgoingMessage(400, 'ขออภัยค่ะ จะรีบจัดส่งให้',  '-60 hours', 'admin:Beer');
+        $this->seedMessage(400, 'ขอบคุณค่ะ',         '-48 hours', 'incoming');
+
+        $convo = $this->sentinel->getConversation(7777, 30, 100);
+
+        $this->assertCount(3, $convo);
+        $this->assertSame('incoming', $convo[0]['direction']);
+        $this->assertSame('outgoing', $convo[1]['direction']);
+        $this->assertSame('incoming', $convo[2]['direction']);
+        $this->assertSame('admin:Beer', $convo[1]['sent_by']);
+        // Customer "ของยังไม่ได้รับ" → red
+        $this->assertSame('red', $convo[0]['classification']);
+        // Outgoing not classified
+        $this->assertNull($convo[1]['classification']);
+        // "ขอบคุณ" → green
+        $this->assertSame('green', $convo[2]['classification']);
+    }
+
+    public function testGetConversationEmptyWhenPartnerInvalid(): void
+    {
+        $this->assertSame([], $this->sentinel->getConversation(0, 30));
+        $this->assertSame([], $this->sentinel->getConversation(999999, 30));
+    }
+
+    public function testGetConversationRespectsDayWindow(): void
+    {
+        $this->seedUserAndCustomer(userId: 500, lineId: 'U_E', partnerId: 8888);
+        $this->seedMessage(500, 'ส่งของผิดยา',  '-45 days', 'incoming');
+        $this->seedMessage(500, 'ขอเปลี่ยนค่ะ', '-1 days', 'incoming');
+
+        // 30-day window excludes the 45-day-old message
+        $convo30 = $this->sentinel->getConversation(8888, 30);
+        $this->assertCount(1, $convo30);
+
+        // 60-day window includes both
+        $convo60 = $this->sentinel->getConversation(8888, 60);
+        $this->assertCount(2, $convo60);
+    }
+
     // ── fixtures ──────────────────────────────────────────────────────────
 
     private function createFixtureTables(): void
@@ -155,6 +200,7 @@ final class InboxSentinelTest extends TestCase
                 direction TEXT NOT NULL,
                 message_type TEXT NOT NULL,
                 content TEXT,
+                sent_by TEXT,
                 created_at TEXT NOT NULL
             )
         ");
@@ -181,12 +227,21 @@ final class InboxSentinelTest extends TestCase
                  ->execute([$lineId, (string) $partnerId]);
     }
 
-    private function seedMessage(int $userId, string $content, string $relativeWhen): void
+    private function seedMessage(int $userId, string $content, string $relativeWhen, string $direction = 'incoming'): void
     {
         $ts = (new \DateTimeImmutable($relativeWhen))->format('Y-m-d H:i:s');
         $this->db->prepare("
-            INSERT INTO messages (user_id, direction, message_type, content, created_at)
-            VALUES (?, 'incoming', 'text', ?, ?)
-        ")->execute([$userId, $content, $ts]);
+            INSERT INTO messages (user_id, direction, message_type, content, sent_by, created_at)
+            VALUES (?, ?, 'text', ?, NULL, ?)
+        ")->execute([$userId, $direction, $content, $ts]);
+    }
+
+    private function seedOutgoingMessage(int $userId, string $content, string $relativeWhen, string $sentBy): void
+    {
+        $ts = (new \DateTimeImmutable($relativeWhen))->format('Y-m-d H:i:s');
+        $this->db->prepare("
+            INSERT INTO messages (user_id, direction, message_type, content, sent_by, created_at)
+            VALUES (?, 'outgoing', 'text', ?, ?, ?)
+        ")->execute([$userId, $content, $sentBy, $ts]);
     }
 }

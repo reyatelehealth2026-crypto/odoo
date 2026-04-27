@@ -360,6 +360,7 @@
     bindFilterButtons();
     bindVisibilityChange();
     wireAiBriefButtons();
+    wireConversationButtons();
 
     // Render chart immediately from PHP-bootstrapped data (avoids blank flash).
     const initial = window['__churnInitial'];
@@ -639,6 +640,265 @@
   function renderAiError(bodyEl, message) {
     const errBox = el('div', { class: 'ai-error', text: '⚠️ ' + (message || 'เกิดข้อผิดพลาด') });
     clearAndAppend(bodyEl, [errBox]);
+  }
+
+  // ── Conversation viewer (admin-only, read-only) ─────────────────────────
+  /**
+   * Wire .act-link-conv buttons → open conversation timeline modal.
+   * Endpoint: api/churn-conversation.php (read-only).
+   * @returns {void}
+   */
+  function wireConversationButtons() {
+    const buttons = document.querySelectorAll('.act-link-conv');
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const partnerId = btn.getAttribute('data-partner-id');
+        const storeName = btn.getAttribute('data-store-name') || '';
+        if (!partnerId) return;
+        openConversationModal(partnerId, storeName, btn);
+      });
+    });
+    document.querySelectorAll('[data-close-conv-modal]').forEach(function (el) {
+      el.addEventListener('click', closeConversationModal);
+    });
+    const overlay = document.getElementById('conv-modal');
+    if (overlay) {
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeConversationModal();
+      });
+    }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeConversationModal();
+    });
+  }
+
+  /**
+   * @param {string} partnerId
+   * @param {string} storeName
+   * @param {HTMLButtonElement} sourceBtn
+   * @returns {Promise<void>}
+   */
+  async function openConversationModal(partnerId, storeName, sourceBtn) {
+    const overlay = document.getElementById('conv-modal');
+    const subEl   = document.getElementById('conv-modal-sub');
+    const bodyEl  = document.getElementById('conv-modal-body');
+    const statsEl = document.getElementById('conv-modal-stats');
+    if (!overlay || !bodyEl) return;
+
+    overlay.classList.add('open');
+    overlay.setAttribute('aria-hidden', 'false');
+    if (subEl) subEl.textContent = storeName + ' (Partner #' + partnerId + ')';
+    if (statsEl) statsEl.style.display = 'none';
+    renderConvLoading(bodyEl);
+
+    if (sourceBtn) sourceBtn.disabled = true;
+    try {
+      const r = await fetch('api/churn-conversation.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ partner_id: Number(partnerId), days: 30 }),
+      });
+      const json = await r.json();
+      if (!json || !json.success || !json.data) {
+        renderConvError(bodyEl, (json && json.error) || 'ไม่สามารถโหลดบทสนทนาได้');
+        return;
+      }
+      renderConversation(json.data, bodyEl, statsEl);
+    } catch (err) {
+      renderConvError(bodyEl, 'Network error — ลองใหม่อีกครั้ง');
+    } finally {
+      if (sourceBtn) sourceBtn.disabled = false;
+    }
+  }
+
+  function closeConversationModal() {
+    const overlay = document.getElementById('conv-modal');
+    if (!overlay) return;
+    overlay.classList.remove('open');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  function renderConvLoading(bodyEl) {
+    const wrap = el('div', { class: 'ai-loading' });
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '16'); svg.setAttribute('height', '16');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('class', 'spin-icon'); svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', 'M21 12a9 9 0 1 1-6.22-8.56');
+    svg.appendChild(path);
+    wrap.appendChild(svg);
+    wrap.appendChild(el('span', { text: 'กำลังโหลดบทสนทนา 30 วันล่าสุด…' }));
+    clearAndAppend(bodyEl, [wrap]);
+  }
+
+  function renderConvError(bodyEl, msg) {
+    const errBox = el('div', { class: 'ai-error', text: '⚠️ ' + (msg || 'เกิดข้อผิดพลาด') });
+    clearAndAppend(bodyEl, [errBox]);
+  }
+
+  /**
+   * Render conversation timeline (oldest → newest) into modal body.
+   * Builds DOM via createElement + textContent (XSS-safe).
+   * @returns {void}
+   */
+  function renderConversation(data, bodyEl, statsEl) {
+    const messages = Array.isArray(data.messages) ? data.messages : [];
+    const stats    = data.stats || {};
+
+    // ── Stats strip ──
+    if (statsEl) {
+      const pills = [
+        ['📋 รวม',   String(stats.total || 0),     ''],
+        ['👤 ลูกค้า', String(stats.incoming || 0), ''],
+        ['💼 Sales',  String(stats.outgoing || 0), ''],
+      ];
+      if (Number(stats.flagged_red    || 0) > 0) pills.push(['🔴 ร้องเรียน', String(stats.flagged_red),    'red']);
+      if (Number(stats.flagged_orange || 0) > 0) pills.push(['🟠 ไม่พอใจ',  String(stats.flagged_orange), 'orange']);
+      if (Number(stats.flagged_yellow || 0) > 0) pills.push(['🟡 ตามผล',    String(stats.flagged_yellow), 'yellow']);
+
+      const pillEls = pills.map(function (p) {
+        const lbl = p[0], val = p[1], cls = p[2];
+        return el('span', {
+          class: 'conv-stat-pill ' + (cls || ''),
+          text: lbl + ' ' + val,
+        });
+      });
+      clearAndAppend(statsEl, pillEls);
+      statsEl.style.display = 'flex';
+    }
+
+    // ── Empty state ──
+    if (messages.length === 0) {
+      const empty = el('div', { class: 'ai-section-text', text: 'ไม่มีข้อความใน 30 วันล่าสุด' });
+      empty.style.color = '#9ca3af';
+      empty.style.fontStyle = 'italic';
+      empty.style.textAlign = 'center';
+      empty.style.padding = '40px 20px';
+      clearAndAppend(bodyEl, [empty]);
+      return;
+    }
+
+    // ── Timeline with day dividers ──
+    const fragments = [];
+    let currentDay = '';
+    messages.forEach(function (m) {
+      const day = String(m.created_at || '').slice(0, 10);
+      if (day !== currentDay) {
+        currentDay = day;
+        const divider = el('div', { class: 'conv-day-divider' });
+        divider.appendChild(el('span', { text: formatThaiDate(day) }));
+        fragments.push(divider);
+      }
+      fragments.push(buildConvRow(m));
+    });
+    clearAndAppend(bodyEl, fragments);
+    bodyEl.scrollTop = bodyEl.scrollHeight;
+  }
+
+  /**
+   * Build one conversation row (left for customer, right for outgoing).
+   * @returns {HTMLElement}
+   */
+  function buildConvRow(m) {
+    const row = el('div', { class: 'conv-row ' + (m.direction === 'outgoing' ? 'outgoing' : 'incoming') });
+
+    // Bubble
+    const bubbleClass = ['conv-bubble'];
+    if (m.classification === 'red')                                  bubbleClass.push('flagged-red');
+    else if (m.classification === 'orange')                          bubbleClass.push('flagged-orange');
+    else if (m.classification === 'yellow' || m.classification === 'yellow_urgent') bubbleClass.push('flagged-yellow');
+
+    const bubble = el('div', { class: bubbleClass.join(' ') });
+
+    // Body content
+    if (m.message_type === 'text') {
+      bubble.textContent = String(m.content || '');
+    } else {
+      // Non-text attachment placeholder (image/sticker/file/etc.)
+      const span = el('span', { class: 'conv-non-text' });
+      const labelMap = {
+        image: '📷 รูปภาพ',
+        sticker: '🟣 สติกเกอร์',
+        file: '📎 ไฟล์แนบ',
+        flex: '📦 Flex message',
+        video: '🎥 วิดีโอ',
+        audio: '🎵 เสียง',
+        location: '📍 ตำแหน่ง',
+      };
+      span.textContent = labelMap[m.message_type] || '[' + m.message_type + ']';
+      bubble.appendChild(span);
+      if (m.content && m.message_type !== 'sticker') {
+        bubble.appendChild(el('div', { text: String(m.content).slice(0, 200) }));
+      }
+    }
+
+    // Tooltip with sender + full timestamp
+    const ts = String(m.created_at || '').slice(0, 16);
+    const senderLabel = m.direction === 'outgoing'
+      ? (m.sent_by ? String(m.sent_by) : 'Sales/System')
+      : 'ลูกค้า';
+    bubble.setAttribute('title', senderLabel + ' · ' + ts);
+
+    // Meta line below bubble
+    const meta = el('div', { class: 'conv-meta' });
+
+    // Sender tag
+    let senderClass = 'customer';
+    let senderText  = '👤 ลูกค้า';
+    if (m.direction === 'outgoing') {
+      const sb = String(m.sent_by || '');
+      if (sb.indexOf('admin') === 0 || sb.indexOf('user:') === 0) {
+        senderClass = 'sales';
+        // Strip "admin:" prefix for display
+        senderText = '💼 ' + (sb.replace(/^(admin|user)[:#]?/, '') || 'Sales');
+      } else if (sb.indexOf('system') === 0 || sb === '') {
+        senderClass = 'system';
+        senderText = '🤖 ระบบ';
+      } else {
+        senderClass = 'sales';
+        senderText = '💼 ' + sb;
+      }
+    }
+    meta.appendChild(el('span', { class: 'conv-sender-tag ' + senderClass, text: senderText }));
+
+    // Classification pill (only for incoming with classification)
+    if (m.classification && m.classification !== 'green' && m.direction === 'incoming') {
+      const clsLabel = {
+        red: '🔴 ร้องเรียน',
+        orange: '🟠 ไม่พอใจ',
+        yellow: '🟡 ตามผล',
+        yellow_urgent: '🟡 ด่วน',
+      }[m.classification] || m.classification;
+      const cssCat = m.classification === 'yellow_urgent' ? 'yellow' : m.classification;
+      meta.appendChild(el('span', { class: 'conv-cls-pill ' + cssCat, text: clsLabel }));
+    }
+
+    // Time
+    meta.appendChild(el('span', { text: ts.slice(11) }));
+
+    // Wrap bubble + meta in column
+    const col = el('div');
+    col.style.display = 'flex';
+    col.style.flexDirection = 'column';
+    col.style.flex = '1';
+    col.appendChild(bubble);
+    col.appendChild(meta);
+
+    row.appendChild(col);
+    return row;
+  }
+
+  function formatThaiDate(yyyyMmDd) {
+    if (!yyyyMmDd) return '';
+    const parts = yyyyMmDd.split('-');
+    if (parts.length !== 3) return yyyyMmDd;
+    const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+    const m = parseInt(parts[1], 10);
+    return parts[2] + ' ' + (months[m - 1] || parts[1]) + ' ' + parts[0];
   }
 
   if (document.readyState === 'loading') {

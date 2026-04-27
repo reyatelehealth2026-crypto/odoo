@@ -392,6 +392,91 @@ $kpiDefs = [
       cursor:pointer; font-family:inherit;
     }
     .act-link-ai:hover { background:#fde68a; border-color:#fbbf24; }
+
+    /* ── Conversation viewer button (light blue/purple) ── */
+    .act-link-conv {
+      background:#ede9fe; color:#5b21b6; border-color:#ddd6fe;
+      cursor:pointer; font-family:inherit;
+    }
+    .act-link-conv:hover { background:#ddd6fe; border-color:#a78bfa; }
+    .act-link-conv:disabled { opacity:0.6; cursor:wait; }
+
+    /* ── Conversation modal ── */
+    .conv-modal-head {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 20px; border-bottom:1px solid #f3f4f6;
+      background:linear-gradient(135deg,#f5f3ff 0%,#ffffff 100%);
+    }
+    .conv-stat-strip {
+      display:flex; gap:8px; flex-wrap:wrap; padding:10px 20px;
+      border-bottom:1px solid #f3f4f6; background:#fafafa;
+    }
+    .conv-stat-pill {
+      font-size:11px; padding:3px 10px; border-radius:9999px;
+      background:#ffffff; border:1px solid #e5e7eb; color:#374151;
+      display:inline-flex; align-items:center; gap:4px;
+    }
+    .conv-stat-pill.red    { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+    .conv-stat-pill.orange { background:#ffedd5; color:#9a3412; border-color:#fed7aa; }
+    .conv-stat-pill.yellow { background:#fef9c3; color:#854d0e; border-color:#fde68a; }
+
+    .conv-timeline {
+      padding:16px 20px; max-height:60vh; overflow-y:auto;
+      display:flex; flex-direction:column; gap:8px;
+    }
+    .conv-row { display:flex; gap:8px; max-width:78%; }
+    .conv-row.incoming { align-self:flex-start; }
+    .conv-row.outgoing { align-self:flex-end; flex-direction:row-reverse; }
+    .conv-bubble {
+      padding:9px 13px; border-radius:14px; font-size:13px; line-height:1.5;
+      word-break:break-word; white-space:pre-wrap; flex:1;
+    }
+    .conv-row.incoming .conv-bubble {
+      background:#f3f4f6; color:#1f2937; border:1px solid #e5e7eb;
+      border-bottom-left-radius:4px;
+    }
+    .conv-row.outgoing .conv-bubble {
+      background:#dbeafe; color:#1e3a8a; border:1px solid #bfdbfe;
+      border-bottom-right-radius:4px;
+    }
+    .conv-bubble.flagged-red    { background:#fee2e2 !important; border-color:#fecaca !important; color:#991b1b !important; }
+    .conv-bubble.flagged-orange { background:#ffedd5 !important; border-color:#fed7aa !important; color:#9a3412 !important; }
+    .conv-bubble.flagged-yellow { background:#fef9c3 !important; border-color:#fde68a !important; color:#854d0e !important; }
+    .conv-meta {
+      font-size:10.5px; color:#9ca3af; margin-top:3px;
+      display:flex; gap:6px; align-items:center;
+    }
+    .conv-row.outgoing .conv-meta { justify-content:flex-end; }
+    .conv-sender-tag {
+      display:inline-block; padding:1px 6px; border-radius:4px;
+      font-size:10px; font-weight:600;
+    }
+    .conv-sender-tag.sales  { background:#dbeafe; color:#1e40af; }
+    .conv-sender-tag.system { background:#f3f4f6; color:#6b7280; }
+    .conv-sender-tag.customer { background:#f3e8ff; color:#6b21a8; }
+    .conv-cls-pill {
+      display:inline-block; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:600;
+    }
+    .conv-cls-pill.red    { background:#fecaca; color:#991b1b; }
+    .conv-cls-pill.orange { background:#fed7aa; color:#9a3412; }
+    .conv-cls-pill.yellow { background:#fde68a; color:#854d0e; }
+    .conv-cls-pill.green  { background:#bbf7d0; color:#166534; }
+
+    .conv-day-divider {
+      text-align:center; margin:12px 0; font-size:11px; color:#9ca3af;
+      position:relative;
+    }
+    .conv-day-divider::before {
+      content:''; position:absolute; top:50%; left:0; right:0; height:1px;
+      background:#f3f4f6; z-index:0;
+    }
+    .conv-day-divider span {
+      background:#ffffff; padding:0 10px; position:relative; z-index:1;
+    }
+
+    .conv-non-text {
+      font-style:italic; color:#6b7280;
+    }
     .act-link-ai:disabled { opacity:0.6; cursor:wait; }
     .act-link-ai .spin-icon { animation:spin 0.8s linear infinite; }
 
@@ -823,6 +908,17 @@ $kpiDefs = [
                   </svg>
                   AI วิเคราะห์
                 </button>
+                <button type="button"
+                        class="act-link act-link-conv"
+                        data-partner-id="<?= $wPartner ?>"
+                        data-store-name="<?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
+                        aria-label="ดูบทสนทนากับ Sales ของ <?= htmlspecialchars($wStore, ENT_QUOTES, 'UTF-8') ?>"
+                        title="ดูบทสนทนา 30 วันล่าสุดระหว่างลูกค้ากับ Sales">
+                  <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  บทสนทนา
+                </button>
               </div>
             </td>
           </tr>
@@ -878,6 +974,38 @@ $kpiDefs = [
   </div>
 
 </main>
+
+<!-- ════ CONVERSATION VIEWER MODAL (read-only, admin-only) ═══════════════════ -->
+<div id="conv-modal" class="ai-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="conv-modal-title" aria-hidden="true">
+  <div class="ai-modal" role="document" style="max-width:840px;">
+    <header class="conv-modal-head">
+      <div>
+        <div id="conv-modal-title" class="ai-modal-title">
+          <span aria-hidden="true">💬</span>
+          <span>บทสนทนากับ Sales</span>
+        </div>
+        <div id="conv-modal-sub" class="ai-modal-sub">—</div>
+      </div>
+      <button type="button" class="ai-modal-close" data-close-conv-modal aria-label="ปิดหน้าต่าง">&times;</button>
+    </header>
+
+    <div id="conv-modal-stats" class="conv-stat-strip" style="display:none;"></div>
+
+    <div id="conv-modal-body" class="conv-timeline" style="position:relative;">
+      <div class="ai-loading">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin-icon" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-6.22-8.56"/>
+        </svg>
+        <span>กำลังโหลดบทสนทนา 30 วันล่าสุด…</span>
+      </div>
+    </div>
+
+    <div class="ai-meta" style="font-size:11px;color:#6b7280;">
+      <span>📬 สีของบับเบิล = sentiment ของข้อความ · ทูลทิปแสดงเวลา/ผู้ส่ง</span>
+      <span style="margin-left:auto;font-style:italic;">read-only · ไม่ส่งหาลูกค้า</span>
+    </div>
+  </div>
+</div>
 
 <!-- ════ AI BRIEF MODAL (admin-only, internal use, no customer push) ════ -->
 <div id="ai-brief-modal" class="ai-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="ai-modal-title" aria-hidden="true">

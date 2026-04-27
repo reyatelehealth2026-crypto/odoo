@@ -190,6 +190,77 @@ class InboxSentinel
         return $out;
     }
 
+    /**
+     * Pull the recent two-way conversation between a customer and the team.
+     *
+     * Joins outgoing messages with their admin sender so Sales/CS can see who
+     * said what. Each message is annotated with classify() so the UI can show
+     * sentiment per message.
+     *
+     * @return array<int, array{
+     *   id:int, direction:string, message_type:string, content:string,
+     *   sent_by:?string, created_at:string, classification:?string
+     * }>  Oldest → newest within the window.
+     */
+    public function getConversation(int $partnerId, int $daysBack = 30, int $limit = 100): array
+    {
+        if ($partnerId <= 0) {
+            return [];
+        }
+        $daysBack = max(1, min(365, $daysBack));
+        $limit    = max(1, min(500, $limit));
+        $cutoff   = (new \DateTimeImmutable('-' . $daysBack . ' days'))->format('Y-m-d H:i:s');
+
+        // Step 1: resolve user_id from partner_id via users + odoo_customers_cache
+        $stmt = $this->db->prepare("
+            SELECT u.id AS user_id
+            FROM   odoo_customers_cache c
+            JOIN   users u ON u.line_user_id = c.line_user_id
+            WHERE  CAST(c.partner_id AS UNSIGNED) = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$partnerId]);
+        $userId = (int) ($stmt->fetchColumn() ?: 0);
+        if ($userId <= 0) {
+            return [];
+        }
+
+        // Step 2: pull both directions, oldest first
+        $stmt = $this->db->prepare("
+            SELECT id, direction, message_type, content, sent_by, created_at
+            FROM   messages
+            WHERE  user_id = ?
+              AND  created_at >= ?
+              AND  message_type IN ('text','image','sticker','file','flex','video','audio','location')
+            ORDER BY created_at ASC
+            LIMIT  ?
+        ");
+        $stmt->bindValue(1, $userId, \PDO::PARAM_INT);
+        $stmt->bindValue(2, $cutoff, \PDO::PARAM_STR);
+        $stmt->bindValue(3, $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        $out  = [];
+        foreach ($rows as $row) {
+            $content = (string) ($row['content'] ?? '');
+            $type    = (string) ($row['message_type'] ?? 'text');
+            $cls     = ($type === 'text' && $row['direction'] === 'incoming')
+                ? $this->classify($content)
+                : null;
+            $out[] = [
+                'id'             => (int) $row['id'],
+                'direction'      => (string) $row['direction'],
+                'message_type'   => $type,
+                'content'        => $content,
+                'sent_by'        => $row['sent_by'] !== null ? (string) $row['sent_by'] : null,
+                'created_at'     => (string) $row['created_at'],
+                'classification' => $cls,
+            ];
+        }
+        return $out;
+    }
+
     private function matchesAny(string $text, array $patterns): bool
     {
         foreach ($patterns as $p) {
