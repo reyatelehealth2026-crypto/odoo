@@ -439,7 +439,9 @@
         renderAiError(bodyEl, (json && json.error) || 'ไม่สามารถโหลดบันทึกวิเคราะห์ได้');
         return;
       }
-      renderAiBrief(json.data, metaEl);
+      // API envelope: { success, data: <payload-fields-flat>, cached, tokens_used, error }
+      // Pass the full envelope so renderAiBrief can read both payload + meta.
+      renderAiBrief(json, metaEl);
     } catch (err) {
       renderAiError(bodyEl, 'Network error — ลองใหม่อีกครั้ง');
     } finally {
@@ -562,14 +564,20 @@
   /**
    * Render the analyst brief into the modal body. Uses DOM construction +
    * textContent throughout — no innerHTML assignment, XSS-safe by design.
-   * @param {{payload:Object, cached:boolean, tokens_used:number}} data
+   *
+   * Envelope shape from api/churn-talking-points.php:
+   *   { success, data: <payload-fields-flat>, cached, tokens_used, error }
+   *
+   * @param {{success:boolean, data:Object, cached:boolean, tokens_used:number}} envelope
    * @param {HTMLElement|null} metaEl
    * @returns {void}
    */
-  function renderAiBrief(data, metaEl) {
+  function renderAiBrief(envelope, metaEl) {
     const bodyEl = document.getElementById('ai-modal-body');
     if (!bodyEl) return;
-    const p = data.payload || {};
+    const p = (envelope && envelope.data) || {};
+    const cached     = Boolean(envelope && envelope.cached);
+    const tokensUsed = Number((envelope && envelope.tokens_used) || 0);
 
     clearAndAppend(bodyEl, [
       buildAiSection('📋 สรุปสถานการณ์',                    buildAiText(p.executive_summary)),
@@ -586,7 +594,7 @@
       const cacheBadge  = document.getElementById('ai-meta-cache');
       const tokensBadge = document.getElementById('ai-meta-tokens');
       if (cacheBadge) {
-        if (data.cached) {
+        if (cached) {
           cacheBadge.textContent = 'จาก cache (TTL 24h)';
           cacheBadge.className   = 'badge badge-blue';
         } else {
@@ -595,9 +603,12 @@
         }
       }
       if (tokensBadge) {
-        const t = Number(data.tokens_used || 0);
-        tokensBadge.textContent = t > 0 ? ('tokens ใช้ ' + t) : 'fallback template';
-        tokensBadge.className   = t > 0 ? 'badge badge-gray' : 'badge badge-amber';
+        tokensBadge.textContent = tokensUsed > 0
+          ? ('tokens ใช้ ' + tokensUsed)
+          : (cached ? 'จาก cache' : 'fallback template');
+        tokensBadge.className   = tokensUsed > 0
+          ? 'badge badge-gray'
+          : (cached ? 'badge badge-blue' : 'badge badge-amber');
       }
       metaEl.style.display = 'flex';
     }

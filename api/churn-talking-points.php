@@ -239,10 +239,11 @@ try {
     }
 
     churnTpRespond(200, [
-        'success' => true,
-        'data'    => $result['payload'],
-        'cached'  => $result['cached'],
-        'error'   => null,
+        'success'     => true,
+        'data'        => $result['payload'],
+        'cached'      => $result['cached'],
+        'tokens_used' => (int) ($result['tokens_used'] ?? 0),
+        'error'       => null,
     ]);
 
 } catch (\RuntimeException $e) {
