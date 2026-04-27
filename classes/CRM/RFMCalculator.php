@@ -53,10 +53,18 @@ final class RFMCalculator
      */
     public function computeAvgCycle(array $orderDates): CycleResult
     {
+        // Defensive: drop nulls/empties (production data may carry NULL date_order rows).
+        $clean = [];
+        foreach ($orderDates as $d) {
+            if (is_string($d) && $d !== '') {
+                $clean[] = $d;
+            }
+        }
+
         // Merge same-day orders (E5) and sort ascending.
         $unique = array_values(array_unique(array_map(
             static fn (string $d): string => substr($d, 0, 10),
-            $orderDates
+            $clean
         )));
         sort($unique);
 

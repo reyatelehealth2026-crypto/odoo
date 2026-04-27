@@ -56,6 +56,7 @@ class RFMRepository
             FROM   odoo_orders
             WHERE  partner_id = ?
               AND  state IN ({$placeholders})
+              AND  date_order IS NOT NULL
             ORDER  BY date_order ASC
         ";
 
@@ -80,6 +81,7 @@ class RFMRepository
             FROM     odoo_orders
             WHERE    state IN ({$placeholders})
               AND    partner_id IS NOT NULL
+              AND    date_order IS NOT NULL
             GROUP BY partner_id
             HAVING   COUNT(*) >= 3
               AND    DATEDIFF(MAX(date_order), MIN(date_order)) >= 30
@@ -243,6 +245,7 @@ class RFMRepository
             FROM     odoo_orders
             WHERE    state IN ({$placeholders})
               AND    partner_id IS NOT NULL
+              AND    date_order IS NOT NULL
             GROUP BY partner_id
             HAVING   COUNT(*) >= 3
               AND    DATEDIFF(MAX(date_order), MIN(date_order)) >= 30
