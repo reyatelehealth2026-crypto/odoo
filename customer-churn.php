@@ -796,6 +796,6 @@ $kpiDefs = [
     geminiDailyCap: <?= $geminiDailyCap ?>
   };
 </script>
-<script src="assets/js/customer-churn.js"></script>
+<script src="assets/js/customer-churn.js?v=<?= filemtime(__DIR__ . '/assets/js/customer-churn.js') ?>"></script>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
