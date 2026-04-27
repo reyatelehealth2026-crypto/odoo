@@ -134,12 +134,17 @@ class GeminiAI {
         ];
 
         // ลอง models ตามลำดับพร้อม API version ที่เหมาะสม
+        // Order: latest stable → flash-lite (high free-tier quota) → legacy fallbacks.
+        // Note: gemini-3.0-flash is NOT yet released on Google's Generative AI API
+        //       (returns NOT_FOUND); 2.5-flash is the newest available as of 2026-04.
         $modelConfigs = [
-            ['model' => 'gemini-2.0-flash', 'version' => 'v1beta'],
-            ['model' => 'gemini-1.5-flash', 'version' => 'v1beta'],
-            ['model' => 'gemini-1.5-pro', 'version' => 'v1beta'],
-            ['model' => 'gemini-pro', 'version' => 'v1beta'],
-            ['model' => 'gemini-pro', 'version' => 'v1'],
+            ['model' => 'gemini-2.5-flash',      'version' => 'v1beta'],
+            ['model' => 'gemini-2.0-flash-lite', 'version' => 'v1beta'],
+            ['model' => 'gemini-2.0-flash',      'version' => 'v1beta'],
+            ['model' => 'gemini-1.5-flash',      'version' => 'v1beta'],
+            ['model' => 'gemini-1.5-pro',        'version' => 'v1beta'],
+            ['model' => 'gemini-pro',            'version' => 'v1beta'],
+            ['model' => 'gemini-pro',            'version' => 'v1'],
         ];
         $lastError = '';
         
