@@ -10,15 +10,10 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
-    /* ── Base ── */
+    /* ── Base — light/white palette ── */
     *, *::before, *::after { box-sizing: border-box; }
     * { font-family: 'Noto Sans Thai', sans-serif; }
-    body {
-      background: #080d18;
-      color: #cbd5e1;
-      min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
-    }
+    body { background: #f9fafb; color: #1f2937; min-height: 100vh; -webkit-font-smoothing: antialiased; }
 
     /* ── Layout ── */
     .page { max-width: 1440px; margin: 0 auto; padding: 0 16px; }
@@ -33,243 +28,221 @@
     .two-col-1-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
     @media(min-width:1024px) { .two-col-1-2 { grid-template-columns: 1fr 2fr; } }
 
+    /* ── Tab nav (shared with customer-churn.php) ── */
+    .tab-nav { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+    .tab-link {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:8px 14px; border-radius:8px 8px 0 0;
+      font-size:13px; font-weight:500; color:#6b7280;
+      text-decoration:none; border:1px solid transparent;
+      border-bottom:none; transition:all 0.15s;
+    }
+    .tab-link:hover { background:#f3f4f6; color:#1f2937; }
+    .tab-link.active {
+      background:#ffffff; color:#1f2937; font-weight:600;
+      border-color:#e5e7eb;
+      box-shadow:0 -1px 0 rgba(0,0,0,0.02);
+      position:relative; top:1px;
+    }
+
     /* ── Card ── */
-    .card {
-      background: #0f1829;
-      border: 1px solid #1e293b;
-      border-radius: 14px;
-      transition: border-color 0.2s;
-    }
-    .card:hover { border-color: #334155; }
-    .p-5 { padding: 20px; }
-    .card-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: #e2e8f0;
-      margin-bottom: 14px;
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
+    .card { background:#ffffff; border:1px solid #e5e7eb; border-radius:14px; transition:border-color 0.2s, box-shadow 0.2s; box-shadow:0 1px 2px rgba(0,0,0,0.04); }
+    .card:hover { border-color:#d1d5db; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
+    .p-5 { padding:20px; }
+    .card-title { font-size:13px; font-weight:600; color:#1f2937; margin-bottom:14px; display:flex; align-items:center; gap:7px; }
 
     /* ── Section heading ── */
     .sec-head {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: #475569;
-      margin: 32px 0 16px;
+      display:flex; align-items:center; gap:10px;
+      font-size:11px; font-weight:700; letter-spacing:0.12em;
+      text-transform:uppercase; color:#6b7280;
+      margin:32px 0 16px;
     }
-    .sec-head::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: linear-gradient(90deg, #1e293b, transparent);
-    }
+    .sec-head::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,#e5e7eb,transparent); }
 
     /* ── KPI grid ── */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-    @media(min-width:640px)  { .kpi-grid { grid-template-columns: repeat(3, 1fr); } }
-    @media(min-width:1024px) { .kpi-grid { grid-template-columns: repeat(6, 1fr); gap: 12px; } }
+    .kpi-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+    @media(min-width:640px)  { .kpi-grid { grid-template-columns:repeat(3,1fr); } }
+    @media(min-width:1024px) { .kpi-grid { grid-template-columns:repeat(6,1fr); gap:12px; } }
 
     .kpi-card {
-      background: #0f1829;
-      border: 1px solid #1e293b;
-      border-radius: 12px;
-      padding: 14px;
-      transition: border-color 0.2s, transform 0.15s;
+      background:#ffffff; border:1px solid #e5e7eb; border-radius:12px;
+      padding:14px; transition:border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+      box-shadow:0 1px 2px rgba(0,0,0,0.03);
     }
-    .kpi-card:hover { border-color: #334155; transform: translateY(-1px); }
-    .kpi-emoji { font-size: 18px; margin-bottom: 6px; }
-    .kpi-label { font-size: 10px; color: #64748b; font-weight: 500; letter-spacing: 0.02em; }
-    .kpi-value { font-size: 20px; font-weight: 700; line-height: 1.15; font-family: 'JetBrains Mono', monospace; margin: 3px 0; }
-    .kpi-sub   { font-size: 10px; color: #475569; }
+    .kpi-card:hover { border-color:#d1d5db; transform:translateY(-1px); box-shadow:0 4px 8px rgba(0,0,0,0.05); }
+    .kpi-emoji { font-size:20px; margin-bottom:6px; }
+    .kpi-label { font-size:11px; color:#6b7280; font-weight:600; letter-spacing:0.02em; }
+    .kpi-value { font-size:22px; font-weight:700; line-height:1.15; font-family:'JetBrains Mono',monospace; margin:3px 0; color:#111827; }
+    .kpi-sub   { font-size:10px; color:#9ca3af; }
 
     /* ── Traffic stat rows ── */
-    .stat-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(30,41,59,0.7); }
-    .stat-row:last-child { border-bottom: none; padding-bottom: 0; }
-    .stat-row-icon { font-size: 16px; width: 24px; flex-shrink: 0; text-align: center; }
+    .stat-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #f3f4f6; }
+    .stat-row:last-child { border-bottom:none; padding-bottom:0; }
+    .stat-row-icon { font-size:16px; width:24px; flex-shrink:0; text-align:center; }
 
     /* ── SLA ── */
-    .sla-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .sla-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
     .sla-box {
-      background: #0a111d;
-      border: 1px solid #1e293b;
-      border-radius: 10px;
-      padding: 14px;
-      text-align: center;
+      background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px;
+      padding:14px; text-align:center;
     }
-    .sla-num   { font-size: 30px; font-weight: 700; font-family: 'JetBrains Mono', monospace; line-height: 1; }
-    .sla-label { font-size: 10px; color: #64748b; margin-top: 5px; }
+    .sla-num   { font-size:30px; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1; color:#111827; }
+    .sla-label { font-size:11px; color:#6b7280; margin-top:5px; font-weight:500; }
 
     /* ── Workload bars ── */
-    .wl-track { height: 7px; background: #0a1020; border-radius: 4px; overflow: hidden; margin-top: 4px; }
-    .wl-fill  { height: 100%; border-radius: 4px; transition: width 0.7s ease; }
+    .wl-track { height:7px; background:#f3f4f6; border-radius:4px; overflow:hidden; margin-top:4px; }
+    .wl-fill  { height:100%; border-radius:4px; transition:width 0.7s ease; }
 
-    /* ── Badges ── */
+    /* ── Badges (light theme — solid color on tinted bg) ── */
     .badge {
-      display: inline-flex;
-      align-items: center;
-      padding: 1px 8px;
-      border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 600;
-      border: 1px solid;
-      line-height: 1.5;
-      white-space: nowrap;
+      display:inline-flex; align-items:center; padding:2px 9px;
+      border-radius:9999px; font-size:11px; font-weight:600;
+      border:1px solid; line-height:1.5; white-space:nowrap;
     }
-    .badge-green  { background: rgba(16,185,129,0.1);   color: #34d399; border-color: rgba(16,185,129,0.2); }
-    .badge-yellow { background: rgba(245,158,11,0.1);   color: #fbbf24; border-color: rgba(245,158,11,0.2); }
-    .badge-red    { background: rgba(239,68,68,0.1);    color: #f87171; border-color: rgba(239,68,68,0.2); }
-    .badge-blue   { background: rgba(99,102,241,0.1);   color: #818cf8; border-color: rgba(99,102,241,0.2); }
-    .badge-purple { background: rgba(168,85,247,0.1);   color: #c084fc; border-color: rgba(168,85,247,0.2); }
-    .badge-gray   { background: rgba(100,116,139,0.08); color: #94a3b8; border-color: rgba(100,116,139,0.15); }
+    .badge-green  { background:#dcfce7; color:#166534; border-color:#bbf7d0; }
+    .badge-yellow { background:#fef9c3; color:#854d0e; border-color:#fde68a; }
+    .badge-red    { background:#fee2e2; color:#991b1b; border-color:#fecaca; }
+    .badge-blue   { background:#dbeafe; color:#1e40af; border-color:#bfdbfe; }
+    .badge-purple { background:#f3e8ff; color:#6b21a8; border-color:#e9d5ff; }
+    .badge-gray   { background:#f3f4f6; color:#4b5563; border-color:#e5e7eb; }
 
     /* ── Tables ── */
-    .dt { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .dt { width:100%; border-collapse:collapse; font-size:13px; }
     .dt thead th {
-      padding: 8px 7px;
-      text-align: left;
-      color: #475569;
-      font-weight: 500;
-      border-bottom: 1px solid #1e293b;
-      font-size: 11px;
-      white-space: nowrap;
+      padding:10px 8px; text-align:left; color:#6b7280;
+      font-weight:600; border-bottom:1px solid #e5e7eb;
+      font-size:11px; white-space:nowrap;
+      text-transform:uppercase; letter-spacing:0.05em;
     }
-    .dt tbody td { padding: 8px 7px; border-bottom: 1px solid rgba(30,41,59,0.5); vertical-align: middle; }
-    .dt tbody tr:last-child td { border-bottom: none; }
-    .dt tbody tr:hover td { background: rgba(255,255,255,0.02); }
-    .row-critical td { background: rgba(239,68,68,0.04) !important; }
+    .dt tbody td { padding:10px 8px; border-bottom:1px solid #f3f4f6; vertical-align:middle; color:#374151; }
+    .dt tbody tr:last-child td { border-bottom:none; }
+    .dt tbody tr:hover td { background:#f9fafb; }
+    .row-critical td { background:#fef2f2 !important; }
+    .row-critical:hover td { background:#fee2e2 !important; }
 
     /* ── Alert banners ── */
-    .alert { border-radius: 10px; padding: 12px 16px; }
-    .alert-red   { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.18); }
-    .alert-green { background: rgba(16,185,129,0.06); border: 1px solid rgba(16,185,129,0.18);
-                   display: flex; align-items: center; gap: 10px; color: #34d399; font-size: 13px; }
-    .alert-title { display: flex; align-items: center; gap: 8px; font-weight: 600; color: #fca5a5; font-size: 13px; margin-bottom: 10px; }
+    .alert { border-radius:10px; padding:12px 16px; }
+    .alert-red   { background:#fef2f2; border:1px solid #fecaca; }
+    .alert-green { background:#f0fdf4; border:1px solid #bbf7d0;
+                   display:flex; align-items:center; gap:10px; color:#15803d; font-size:13px; font-weight:500; }
+    .alert-title { display:flex; align-items:center; gap:8px; font-weight:700; color:#991b1b; font-size:13px; margin-bottom:8px; }
 
     /* ── Journey ── */
-    .conv-row { display: flex; align-items: center; justify-content: space-around;
-                background: #0a111d; border: 1px solid #1e293b; border-radius: 10px; padding: 14px; }
-    .conv-cell { text-align: center; }
-    .conv-num { font-size: 24px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-    .conv-label { font-size: 10px; color: #64748b; margin-top: 3px; }
-    .conv-arrow { color: #334155; font-size: 16px; }
-    .conv-rate { display: flex; align-items: center; justify-content: space-between;
-                 margin-top: 12px; padding: 9px 12px;
-                 background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.15); border-radius: 8px; }
+    .conv-row { display:flex; align-items:center; justify-content:space-around;
+                background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:14px; }
+    .conv-cell { text-align:center; }
+    .conv-num { font-size:24px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#111827; }
+    .conv-label { font-size:11px; color:#6b7280; margin-top:3px; font-weight:500; }
+    .conv-arrow { color:#d1d5db; font-size:16px; }
+    .conv-rate { display:flex; align-items:center; justify-content:space-between;
+                 margin-top:12px; padding:9px 12px;
+                 background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; color:#15803d; }
 
     /* ── Sentiment tags ── */
-    .stag { display: inline-block; padding: 3px 9px; border-radius: 9999px; font-size: 11px; }
+    .stag { display:inline-block; padding:3px 9px; border-radius:9999px; font-size:11px; font-weight:500; }
 
     /* ── Skeleton shimmer ── */
     @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
-    .sk { background: linear-gradient(90deg, #111d2e 25%, #1a2840 50%, #111d2e 75%);
-          background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 8px; }
+    .sk { background:linear-gradient(90deg,#f3f4f6 25%,#e5e7eb 50%,#f3f4f6 75%);
+          background-size:200% 100%; animation:shimmer 1.5s infinite; border-radius:8px; }
 
     /* ── Spinner ── */
-    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .spinning { animation: spin 0.8s linear infinite; }
+    @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+    .spinning { animation:spin 0.8s linear infinite; }
 
-    /* ── Color utilities ── */
-    .c-green  { color: #34d399; }
-    .c-amber  { color: #fbbf24; }
-    .c-red    { color: #f87171; }
-    .c-blue   { color: #60a5fa; }
-    .c-indigo { color: #818cf8; }
-    .c-purple { color: #c084fc; }
-    .c-slate3 { color: #cbd5e1; }
-    .c-slate4 { color: #94a3b8; }
-    .c-slate5 { color: #64748b; }
-    .c-slate6 { color: #475569; }
-    .c-slate7 { color: #334155; }
-    .c-white  { color: #f1f5f9; }
+    /* ── Color utilities (light-tone semantic colors) ── */
+    .c-green  { color:#16a34a; }
+    .c-amber  { color:#d97706; }
+    .c-red    { color:#dc2626; }
+    .c-blue   { color:#2563eb; }
+    .c-indigo { color:#4f46e5; }
+    .c-purple { color:#9333ea; }
+    .c-slate3 { color:#374151; }
+    .c-slate4 { color:#4b5563; }
+    .c-slate5 { color:#6b7280; }
+    .c-slate6 { color:#9ca3af; }
+    .c-slate7 { color:#d1d5db; }
+    .c-white  { color:#111827; }
 
-    .fw7 { font-weight: 700; }
-    .fw6 { font-weight: 600; }
-    .fw5 { font-weight: 500; }
-    .fs11 { font-size: 11px; }
-    .fs12 { font-size: 12px; }
-    .fs10 { font-size: 10px; }
-    .mono { font-family: 'JetBrains Mono', monospace; }
+    .fw7 { font-weight:700; }
+    .fw6 { font-weight:600; }
+    .fw5 { font-weight:500; }
+    .fs11 { font-size:11px; }
+    .fs12 { font-size:12px; }
+    .fs10 { font-size:10px; }
+    .mono { font-family:'JetBrains Mono',monospace; }
 
     /* ── SLA input ── */
     .sla-inp {
-      background: #0a111d; border: 1px solid #1e293b; border-radius: 6px;
-      color: #94a3b8; padding: 3px 8px; font-size: 12px; width: 58px;
+      background:#ffffff; border:1px solid #d1d5db; border-radius:6px;
+      color:#374151; padding:5px 8px; font-size:12px; width:64px;
     }
-    .sla-inp:focus { outline: none; border-color: #6366f1; color: #e2e8f0; }
+    .sla-inp:focus { outline:none; border-color:#2563eb; color:#111827; box-shadow:0 0 0 3px rgba(37,99,235,0.1); }
 
     /* ── Strip dots ── */
-    .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .dot { width:6px; height:6px; border-radius:50%; display:inline-block; flex-shrink:0; }
 
     /* ── Gap helpers ── */
-    .gap-4 { gap: 16px; }
-    .mt-3  { margin-top: 12px; }
-    .mt-4  { margin-top: 16px; }
-    .mb-3  { margin-bottom: 12px; }
-    .mb-4  { margin-bottom: 16px; }
-  
-  /* Custom scrollbar for dark theme */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: #334155 transparent;
-  }
-  *::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  *::-webkit-scrollbar-thumb {
-    background: #334155;
-    border-radius: 3px;
-  }
-  *::-webkit-scrollbar-thumb:hover {
-    background: #475569;
-  }
-  /* Hide scrollbar until hover */
-  .card:hover::-webkit-scrollbar-thumb,
-  [style*="overflow"]::-webkit-scrollbar-thumb {
-    background: #334155;
-  }
-</style>
+    .gap-4 { gap:16px; }
+    .mt-3  { margin-top:12px; }
+    .mt-4  { margin-top:16px; }
+    .mb-3  { margin-bottom:12px; }
+    .mb-4  { margin-bottom:16px; }
+
+    /* ── Refresh button ── */
+    .btn-refresh {
+      display:flex; align-items:center; gap:6px;
+      padding:8px 14px; border-radius:8px;
+      background:#ffffff; border:1px solid #e5e7eb;
+      cursor:pointer; font-size:12px; font-weight:500; color:#374151;
+      white-space:nowrap; transition:all 0.15s;
+    }
+    .btn-refresh:hover { background:#f9fafb; border-color:#d1d5db; }
+
+    /* ── Custom scrollbar (light theme) ── */
+    * { scrollbar-width:thin; scrollbar-color:#d1d5db transparent; }
+    *::-webkit-scrollbar { width:6px; height:6px; }
+    *::-webkit-scrollbar-track { background:transparent; }
+    *::-webkit-scrollbar-thumb { background:#d1d5db; border-radius:3px; }
+    *::-webkit-scrollbar-thumb:hover { background:#9ca3af; }
+  </style>
 </head>
 <body>
 
 <!-- ════ HEADER ════════════════════════════════════════════════ -->
-<header style="position:sticky;top:0;z-index:50;background:rgba(8,13,24,0.96);backdrop-filter:blur(14px);border-bottom:1px solid #1e293b;">
-  <div class="page" style="padding-top:14px;padding-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;">
-    <div style="display:flex;align-items:center;gap:12px;">
-      <div style="width:36px;height:36px;border-radius:10px;background:rgba(99,102,241,0.18);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📊</div>
+<header style="position:sticky;top:0;z-index:50;background:rgba(255,255,255,0.96);backdrop-filter:blur(14px);border-bottom:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(0,0,0,0.03);">
+  <div class="page" style="padding-top:14px;padding-bottom:0;display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:12px;padding-bottom:10px;">
+      <div style="width:36px;height:36px;border-radius:10px;background:#dbeafe;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">📊</div>
       <div>
-        <div style="font-size:15px;font-weight:700;color:#f1f5f9;display:flex;align-items:center;gap:8px;">
-          Inbox Intelligence
-          <span style="font-size:10px;background:#6366f1;color:white;padding:1px 7px;border-radius:20px;font-weight:500;">v6</span>
+        <div style="font-size:15px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px;">
+          Inbox Intelligence — รายงานกล่องข้อความ
+          <span class="badge badge-blue" style="font-size:10px;">v6</span>
         </div>
-        <div id="last-updated" style="font-size:11px;color:#64748b;margin-top:1px;">กำลังโหลด...</div>
+        <div id="last-updated" style="font-size:11px;color:#6b7280;margin-top:2px;">กำลังโหลด...</div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:16px;">
+    <div style="display:flex;align-items:center;gap:16px;padding-bottom:10px;">
       <div id="header-stats" style="display:none;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap;"></div>
-      <button id="refresh-btn" onclick="refreshAll()"
-        style="display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid #1e293b;cursor:pointer;font-size:12px;color:#94a3b8;white-space:nowrap;"
-        onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='rgba(255,255,255,0.04)'">
-        <svg id="refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <button id="refresh-btn" class="btn-refresh" onclick="refreshAll()" aria-label="รีเฟรชข้อมูล">
+        <svg id="refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
         </svg>
-        Reload
+        รีเฟรช
       </button>
     </div>
+  </div>
+  <!-- ── Tab nav: ลิงก์ระหว่างหน้ารายงานในกลุ่มเดียวกัน ── -->
+  <div class="page" style="padding-top:0;padding-bottom:0;">
+    <nav class="tab-nav" role="tablist" aria-label="กลุ่มรายงานลูกค้า">
+      <a class="tab-link active" href="inbox-intelligence.html" role="tab" aria-selected="true" aria-current="page">
+        📊 รายงานกล่องข้อความ
+      </a>
+      <a class="tab-link" href="customer-churn.php" role="tab" aria-selected="false">
+        🚩 ลูกค้าหลุดรอบ (Churn)
+      </a>
+    </nav>
   </div>
 </header>
 
@@ -280,10 +253,10 @@
   <div class="sec-head" style="margin-top:0;">📋 &nbsp;รายงานประจำวัน</div>
 
   <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
-    <div id="exec-date" style="font-size:17px;font-weight:700;color:#f1f5f9;"></div>
+    <div id="exec-date" style="font-size:17px;font-weight:700;color:#111827;"></div>
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;">
       <div id="exec-msg-strip" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;"></div>
-      <div id="today-snapshot" style="color:#64748b;font-size:11px;"></div>
+      <div id="today-snapshot" style="color:#6b7280;font-size:11px;"></div>
     </div>
   </div>
 
@@ -312,16 +285,16 @@
 
 
   <!-- ─── FOCUS ZONE ─────────────────── -->
-  <div class="sec-head" style="color:#fbbf24;">🚨 &nbsp;จุดโฟกัส — ต้องติดตาม & Admin Workload</div>
+  <div class="sec-head" style="color:#d97706;">🚨 &nbsp;จุดโฟกัส — ต้องติดตาม & Admin Workload</div>
 
   <!-- Flagged (moved up) -->
   <div class="two-col">
     <div class="card p-5">
-      <div class="card-title" style="color:#fbbf24;">⚠️ ข้อความที่อาจเป็นปัญหา <span id="flagged-count" style="font-size:11px;color:#94a3b8;font-weight:400;"></span></div>
+      <div class="card-title" style="color:#d97706;">⚠️ ข้อความที่อาจเป็นปัญหา <span id="flagged-count" style="font-size:11px;color:#6b7280;font-weight:400;"></span></div>
       <div id="flagged-list" style="max-height:260px;overflow-y:auto;"></div>
     </div>
     <div class="card p-5">
-      <div class="card-title" style="color:#f87171;">🚫 ข้อความเซลที่ไม่เหมาะสม <span id="unprof-count" style="font-size:11px;color:#94a3b8;font-weight:400;"></span></div>
+      <div class="card-title" style="color:#dc2626;">🚫 ข้อความเซลที่ไม่เหมาะสม <span id="unprof-count" style="font-size:11px;color:#6b7280;font-weight:400;"></span></div>
       <div id="unprofessional-list" style="max-height:260px;overflow-y:auto;"></div>
     </div>
   </div>
@@ -404,7 +377,7 @@
 </main></main>
 
 <!-- ════ FOOTER ════ -->
-<footer style="border-top:1px solid #1e293b;padding:24px;text-align:center;font-size:11px;color:#334155;">
+<footer style="border-top:1px solid #e5e7eb;padding:24px;text-align:center;font-size:11px;color:#9ca3af;">
   REYA Inbox Intelligence · v6 · รายงานประจำวัน
 </footer>
 

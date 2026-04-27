@@ -129,17 +129,31 @@ class GeminiAI {
             ],
             'generationConfig' => [
                 'temperature' => 0.7,
-                'maxOutputTokens' => 500,
+                // Headroom for Gemini 3 reasoning ("thoughts") tokens — they
+                // count against maxOutputTokens before any visible text is
+                // returned. 1500 leaves comfortable room for the visible reply.
+                'maxOutputTokens' => 1500,
+                // Disable internal "thinking" so the full budget goes to the
+                // visible reply. 1.5/2.x models silently ignore this field.
+                'thinkingConfig' => [
+                    'thinkingBudget' => 0,
+                ],
             ]
         ];
 
         // ลอง models ตามลำดับพร้อม API version ที่เหมาะสม
+        // Order: gemini-flash-latest (alias auto-resolves to current flash —
+        // gemini-3-flash-preview as of 2026-04-27) → 2.5-flash → flash-lite →
+        // legacy fallbacks.
         $modelConfigs = [
-            ['model' => 'gemini-2.0-flash', 'version' => 'v1beta'],
-            ['model' => 'gemini-1.5-flash', 'version' => 'v1beta'],
-            ['model' => 'gemini-1.5-pro', 'version' => 'v1beta'],
-            ['model' => 'gemini-pro', 'version' => 'v1beta'],
-            ['model' => 'gemini-pro', 'version' => 'v1'],
+            ['model' => 'gemini-flash-latest',   'version' => 'v1beta'],
+            ['model' => 'gemini-2.5-flash',      'version' => 'v1beta'],
+            ['model' => 'gemini-2.0-flash-lite', 'version' => 'v1beta'],
+            ['model' => 'gemini-2.0-flash',      'version' => 'v1beta'],
+            ['model' => 'gemini-1.5-flash',      'version' => 'v1beta'],
+            ['model' => 'gemini-1.5-pro',        'version' => 'v1beta'],
+            ['model' => 'gemini-pro',            'version' => 'v1beta'],
+            ['model' => 'gemini-pro',            'version' => 'v1'],
         ];
         $lastError = '';
         
