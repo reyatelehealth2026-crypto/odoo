@@ -85,7 +85,7 @@ try {
         $elapsed
     ));
 
-    $devLog($db, 'cron', 'RFM recompute complete', $summary);
+    $devLog($db, 'info', 'RFM recompute complete', $summary);
 } catch (\Throwable $e) {
     $elapsed = round(microtime(true) - $startTime, 2);
 
