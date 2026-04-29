@@ -48,8 +48,11 @@ export function PaymentProcessingDashboard() {
     setSelectedFiles(files);
     
     if (uploadMode === 'single' && files.length > 0) {
+      const firstFile = files[0];
+      if (!firstFile) return;
+
       // Auto-upload single file
-      uploadSlip({ file: files[0] });
+      uploadSlip({ file: firstFile });
     }
   }, [uploadMode, uploadSlip]);
 
@@ -107,8 +110,22 @@ export function PaymentProcessingDashboard() {
   }, [selectedFiles, bulkUpload]);
 
   // Handle filter changes
-  const handleFilterChange = (newFilters: Partial<PaymentSlipFilters>) => {
-    setFilters(prev => ({ ...prev, ...newFilters, page: 1 }));
+  const handleFilterChange = (newFilters: {
+    status?: SlipStatus | undefined;
+    search?: string | undefined;
+  }) => {
+    setFilters(prev => {
+      const next: PaymentSlipFilters = { ...prev, page: 1 };
+      if ('status' in newFilters) {
+        if (newFilters.status) next.status = newFilters.status;
+        else delete next.status;
+      }
+      if ('search' in newFilters) {
+        if (newFilters.search) next.search = newFilters.search;
+        else delete next.search;
+      }
+      return next;
+    });
   };
 
   // Handle pagination
@@ -227,9 +244,11 @@ export function PaymentProcessingDashboard() {
               <label className="text-sm font-medium text-gray-700">สถานะ:</label>
               <select
                 value={filters.status || ''}
-                onChange={(e) => handleFilterChange({ 
-                  status: e.target.value as SlipStatus || undefined 
-                })}
+                onChange={(e) =>
+                  handleFilterChange(
+                    { status: e.target.value ? e.target.value as SlipStatus : undefined }
+                  )
+                }
                 className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">ทั้งหมด</option>
@@ -246,7 +265,9 @@ export function PaymentProcessingDashboard() {
                 type="text"
                 placeholder="ค้นหา..."
                 value={filters.search || ''}
-                onChange={(e) => handleFilterChange({ search: e.target.value || undefined })}
+                onChange={(e) =>
+                  handleFilterChange({ search: e.target.value || undefined })
+                }
                 className="w-48"
               />
             </div>
@@ -277,7 +298,9 @@ export function PaymentProcessingDashboard() {
           } : undefined}
           onAmountUpdate={(slipId, amount) => updateAmount({ slipId, amount })}
           onMatch={(slipId, orderId) => matchSlip({ slipId, orderId })}
-          onReject={(slipId, reason) => rejectSlip({ slipId, reason })}
+          onReject={(slipId, reason) =>
+            rejectSlip(reason ? { slipId, reason } : { slipId })
+          }
           onDelete={(slipId) => deleteSlip(slipId)}
         />
       </Card>

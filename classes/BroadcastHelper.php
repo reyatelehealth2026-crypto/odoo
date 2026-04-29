@@ -131,6 +131,98 @@ class BroadcastHelper
     }
 
     /**
+     * Phase 1A: deterministically partition LINE user IDs across A/B variants
+     * by crc32(line_user_id) % total_weight. Same user always lands on the
+     * same variant for a given variant set, so re-runs do not re-shuffle.
+     *
+     * @param string[] $lineUserIds
+     * @param array    $variants     Each item must have keys: id, weight_pct.
+     * @return array<int, string[]>  Map of variant_id => array of user IDs.
+     */
+    public static function partitionByVariants(array $lineUserIds, array $variants): array
+    {
+        $totalWeight = 0;
+        foreach ($variants as $v) { $totalWeight += max(0, (int)($v['weight_pct'] ?? 0)); }
+        if ($totalWeight <= 0 || empty($variants)) {
+            $first = $variants[0]['id'] ?? 0;
+            return [$first => $lineUserIds];
+        }
+
+        $bands = [];
+        $running = 0;
+        foreach ($variants as $v) {
+            $w = max(0, (int)($v['weight_pct'] ?? 0));
+            $running += $w;
+            $bands[] = ['id' => (int)($v['id'] ?? 0), 'cutoff' => $running];
+        }
+
+        $out = [];
+        foreach ($bands as $b) { $out[$b['id']] = []; }
+        foreach ($lineUserIds as $uid) {
+            $bucket = crc32((string)$uid) % $totalWeight;
+            foreach ($bands as $b) {
+                if ($bucket < $b['cutoff']) { $out[$b['id']][] = $uid; break; }
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Phase 1A: send a multi-variant broadcast over an already-resolved
+     * recipient list. Increments broadcast_variants.sent_count per chunk.
+     *
+     * @param PDO       $db
+     * @param object    $line          A LineAPI instance with multicastMessage().
+     * @param string[]  $lineUserIds   Resolved recipients.
+     * @param array     $variants      Rows from broadcast_variants.
+     * @return int Total sent count across all variants.
+     */
+    public static function executeVariantBroadcast($db, $line, array $lineUserIds, array $variants): int
+    {
+        if (empty($lineUserIds) || empty($variants)) { return 0; }
+        $partition = self::partitionByVariants($lineUserIds, $variants);
+        $totalSent = 0;
+
+        foreach ($variants as $v) {
+            $vid   = (int)($v['id'] ?? 0);
+            $type  = $v['message_type'] ?? 'text';
+            $body  = $v['content'] ?? '';
+            $chunk = $partition[$vid] ?? [];
+            if (empty($chunk)) { continue; }
+
+            $messages = [];
+            if ($type === 'text') {
+                $messages = [['type' => 'text', 'text' => (string)$body]];
+            } elseif ($type === 'image') {
+                $messages = [['type' => 'image', 'originalContentUrl' => $body, 'previewImageUrl' => $body]];
+            } elseif ($type === 'flex') {
+                $flex = is_array($body) ? $body : json_decode((string)$body, true);
+                if ($flex) {
+                    $messages = [['type' => 'flex', 'altText' => 'Broadcast', 'contents' => $flex]];
+                }
+            }
+            if (empty($messages)) { continue; }
+
+            $variantSent = 0;
+            foreach (array_chunk($chunk, 500) as $batch) {
+                $r = $line->multicastMessage($batch, $messages);
+                if (($r['code'] ?? 0) === 200) { $variantSent += count($batch); }
+            }
+
+            if ($variantSent > 0) {
+                try {
+                    $db->prepare("UPDATE broadcast_variants SET sent_count = sent_count + ? WHERE id = ?")
+                       ->execute([$variantSent, $vid]);
+                } catch (Exception $e) {
+                    error_log('broadcast_variants sent_count update failed: ' . $e->getMessage());
+                }
+                $totalSent += $variantSent;
+            }
+        }
+        return $totalSent;
+    }
+
+    /**
      * Process pending scheduled broadcasts
      */
     public static function processScheduled($db)

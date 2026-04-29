@@ -36,8 +36,10 @@ export class CustomersAPI {
     if (params.partnerId) searchParams.set('partnerId', params.partnerId);
     if (params.lineConnected !== undefined) searchParams.set('lineConnected', params.lineConnected.toString());
     if (params.tier) searchParams.set('tier', params.tier);
-    if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom.toISOString().split('T')[0]);
-    if (params.dateTo) searchParams.set('dateTo', params.dateTo.toISOString().split('T')[0]);
+    const dateFrom = params.dateFrom?.toISOString().split('T')[0];
+    const dateTo = params.dateTo?.toISOString().split('T')[0];
+    if (dateFrom) searchParams.set('dateFrom', dateFrom);
+    if (dateTo) searchParams.set('dateTo', dateTo);
 
     const response = await apiClient.get<PaginatedCustomers>(`/customers?${searchParams.toString()}`);
     return response.data!;
@@ -59,11 +61,15 @@ export class CustomersAPI {
   async getCustomerOrders(
     customerId: string,
     page: number = 1,
-    limit: number = 20
+    limit: number = 20,
+    sort?: string,
+    order?: 'asc' | 'desc'
   ): Promise<PaginatedCustomerOrders> {
     const searchParams = new URLSearchParams();
     searchParams.set('page', page.toString());
     searchParams.set('limit', limit.toString());
+    if (sort) searchParams.set('sort', sort);
+    if (order) searchParams.set('order', order);
 
     const response = await apiClient.get<PaginatedCustomerOrders>(
       `/customers/${customerId}/orders?${searchParams.toString()}`
@@ -92,8 +98,10 @@ export class CustomersAPI {
   async getCustomerStatistics(dateFrom?: Date, dateTo?: Date): Promise<CustomerStatistics> {
     const searchParams = new URLSearchParams();
 
-    if (dateFrom) searchParams.set('dateFrom', dateFrom.toISOString().split('T')[0]);
-    if (dateTo) searchParams.set('dateTo', dateTo.toISOString().split('T')[0]);
+    const from = dateFrom?.toISOString().split('T')[0];
+    const to = dateTo?.toISOString().split('T')[0];
+    if (from) searchParams.set('dateFrom', from);
+    if (to) searchParams.set('dateTo', to);
 
     const response = await apiClient.get<CustomerStatistics>(
       `/customers/statistics?${searchParams.toString()}`

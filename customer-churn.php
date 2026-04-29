@@ -3,7 +3,7 @@
  * customer-churn.php — CNY Wholesale Customer Churn Tracker Dashboard
  *
  * Spec: docs/plans/2026-04-27-customer-churn-tracker.md §6.5 (Phase 3)
- * Role gate: admin or super_admin only.
+ * Role gate: any authenticated user (auth via includes/header.php).
  * Data: read-only from customer_rfm_profile, churn_settings, odoo_customer_projection.
  * Charset: utf8mb4, Timezone: Asia/Bangkok (+07:00)
  *
@@ -18,12 +18,7 @@ require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/header.php'; // pulls auth_check, session, $currentUser
 
 // ── Permission gate ─────────────────────────────────────────────────────────
-if (!isAdmin()) {
-    http_response_code(403);
-    echo '<div style="padding:40px;font-family:sans-serif;color:#f87171;">ไม่มีสิทธิ์เข้าถึงหน้านี้ (Admin only)</div>';
-    require_once __DIR__ . '/includes/footer.php';
-    exit;
-}
+// Open to any authenticated user; auth_check.php (loaded via header.php) ensures login.
 
 // ── DB connection ────────────────────────────────────────────────────────────
 $db = Database::getInstance()->getConnection();

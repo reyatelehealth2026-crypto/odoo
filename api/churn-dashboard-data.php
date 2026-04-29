@@ -14,7 +14,7 @@
  *
  * Response envelope: {"success": bool, "data": mixed, "error": string|null}
  * SELECT-only — no writes.
- * Permission gate: isAdmin() only (401 otherwise).
+ * Permission gate: any authenticated user (auth_check.php enforces login).
  * Charset: utf8mb4. Timezone: Asia/Bangkok (+07:00).
  */
 
@@ -55,9 +55,7 @@ function churnApiError(int $httpCode, string $message): never
 }
 
 // ── Permission gate ──────────────────────────────────────────────────────────
-if (!isAdmin()) {
-    churnApiError(401, 'Unauthorized: admin role required');
-}
+// Open to any authenticated user; auth_check.php enforces login.
 
 // ── Input validation ─────────────────────────────────────────────────────────
 $action = isset($_GET['action']) ? trim((string) $_GET['action']) : '';

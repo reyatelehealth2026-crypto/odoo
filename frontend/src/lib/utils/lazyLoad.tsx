@@ -30,14 +30,22 @@ const ErrorFallback = ({ error, resetErrorBoundary }: any) => (
 
 // Enhanced lazy loading with error boundary and loading state
 export function lazyLoad<T extends ComponentType<any>>(
-  importFunc: () => Promise<{ default: T }>,
+  importFunc: () => Promise<any>,
   options: {
     fallback?: ComponentType;
     errorFallback?: ComponentType<any>;
     preload?: boolean;
   } = {}
 ) {
-  const LazyComponent = lazy(importFunc);
+  const normalizedImport = async (): Promise<{ default: T }> => {
+    const module = await importFunc();
+    const namedExport = Object.keys(module).find((key) => /^[A-Z]/.test(key));
+    return {
+      default: module.default || (namedExport ? module[namedExport] : undefined),
+    };
+  };
+
+  const LazyComponent = lazy(normalizedImport);
   
   // Preload the component if requested
   if (options.preload) {
@@ -96,39 +104,25 @@ export const routeComponents = {
   OrderTimeline: lazyLoad(() => import('@/components/orders/OrderTimeline')),
   
   // Payment routes
-  PaymentList: lazyLoad(() => import('@/components/payments/PaymentList')),
-  PaymentUpload: lazyLoad(() => import('@/components/payments/PaymentUpload')),
-  
-  // Webhook routes
-  WebhookLogs: lazyLoad(() => import('@/components/webhooks/WebhookLogs')),
-  WebhookDetail: lazyLoad(() => import('@/components/webhooks/WebhookDetail')),
+  PaymentProcessingDashboard: lazyLoad(() => import('@/components/payments/PaymentProcessingDashboard')),
+  PaymentSlipList: lazyLoad(() => import('@/components/payments/PaymentSlipList')),
   
   // Customer routes
-  CustomerList: lazyLoad(() => import('@/components/customers/CustomerList')),
-  CustomerDetail: lazyLoad(() => import('@/components/customers/CustomerDetail')),
+  CustomerProfile: lazyLoad(() => import('@/components/customers/CustomerProfile')),
+  CustomerOrderHistory: lazyLoad(() => import('@/components/customers/CustomerOrderHistory')),
 };
 
 // Component-based code splitting for heavy components
 export const heavyComponents = {
   // Charts and visualizations
   ChartComponent: lazyLoad(() => import('@/components/dashboard/ChartComponent')),
-  AnalyticsChart: lazyLoad(() => import('@/components/analytics/AnalyticsChart')),
   
   // Data tables
   DataTable: lazyLoad(() => import('@/components/ui/DataTable')),
-  AdvancedDataTable: lazyLoad(() => import('@/components/ui/AdvancedDataTable')),
-  
-  // Forms
-  OrderForm: lazyLoad(() => import('@/components/forms/OrderForm')),
-  PaymentForm: lazyLoad(() => import('@/components/forms/PaymentForm')),
-  
-  // Modals and overlays
-  OrderModal: lazyLoad(() => import('@/components/modals/OrderModal')),
-  PaymentModal: lazyLoad(() => import('@/components/modals/PaymentModal')),
+  PerformanceDashboard: lazyLoad(() => import('@/components/performance/PerformanceDashboard')),
   
   // File upload components
-  FileUpload: lazyLoad(() => import('@/components/ui/FileUpload')),
-  ImageUpload: lazyLoad(() => import('@/components/ui/ImageUpload')),
+  FileUploadZone: lazyLoad(() => import('@/components/payments/FileUploadZone')),
 };
 
 // Preload critical components on app start
@@ -154,17 +148,13 @@ export function preloadRouteComponents(route: string) {
       () => import('@/components/ui/DataTable'),
     ],
     '/payments': [
-      () => import('@/components/payments/PaymentList'),
-      () => import('@/components/payments/PaymentUpload'),
-      () => import('@/components/ui/FileUpload'),
-    ],
-    '/webhooks': [
-      () => import('@/components/webhooks/WebhookLogs'),
-      () => import('@/components/webhooks/WebhookDetail'),
+      () => import('@/components/payments/PaymentProcessingDashboard'),
+      () => import('@/components/payments/PaymentSlipList'),
+      () => import('@/components/payments/FileUploadZone'),
     ],
     '/customers': [
-      () => import('@/components/customers/CustomerList'),
-      () => import('@/components/customers/CustomerDetail'),
+      () => import('@/components/customers/CustomerProfile'),
+      () => import('@/components/customers/CustomerOrderHistory'),
     ],
   };
   

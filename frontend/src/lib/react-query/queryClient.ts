@@ -1,4 +1,4 @@
-import { QueryClient, DefaultOptions } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, DefaultOptions } from '@tanstack/react-query';
 import performanceMonitor from '@/lib/performance/PerformanceMonitor';
 
 // Default query options optimized for performance
@@ -43,7 +43,7 @@ const defaultOptions: DefaultOptions = {
 // Create query client with performance monitoring
 export const queryClient = new QueryClient({
   defaultOptions,
-  queryCache: {
+  queryCache: new QueryCache({
     onError: (error, query) => {
       console.error('Query error:', error, query);
       
@@ -62,8 +62,8 @@ export const queryClient = new QueryClient({
         url: query.queryKey.join(':'),
       });
     },
-  },
-  mutationCache: {
+  }),
+  mutationCache: new MutationCache({
     onError: (error, variables, context, mutation) => {
       console.error('Mutation error:', error, mutation);
       
@@ -82,7 +82,7 @@ export const queryClient = new QueryClient({
         url: mutation.options.mutationKey?.join(':') || 'unknown',
       });
     },
-  },
+  }),
 });
 
 // Query key factory for consistent cache keys

@@ -11,8 +11,9 @@ $featuredProducts = $featuredProductService->getFeaturedProducts(8);
 <section class="featured-products-section" id="featured-products">
     <div class="container">
         <div class="section-title">
-            <h2>🛍️ สินค้าแนะนำ</h2>
-            <p>สินค้าคุณภาพ คัดสรรมาเพื่อคุณ</p>
+            <span class="section-eyebrow">เลือกซื้อได้ทันทีใน LINE</span>
+            <h2>สินค้าแนะนำจากร้านยา</h2>
+            <p>สินค้าคุณภาพที่คัดไว้ให้เริ่มต้นดูแลสุขภาพได้ง่ายขึ้น</p>
         </div>
         
         <?php if (!empty($featuredProducts)): ?>
@@ -47,6 +48,9 @@ $featuredProducts = $featuredProductService->getFeaturedProducts(8);
                         <span class="price-current">฿<?= number_format($product['price'], 0) ?></span>
                         <?php endif; ?>
                     </div>
+                    <span class="product-action">
+                        ดูรายละเอียด <i class="fas fa-arrow-right" aria-hidden="true"></i>
+                    </span>
                 </div>
             </a>
             <?php endforeach; ?>
@@ -80,7 +84,20 @@ $featuredProducts = $featuredProductService->getFeaturedProducts(8);
 /* Featured Products Section */
 .featured-products-section {
     padding: 48px 0;
-    background: white;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.section-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(var(--primary-rgb, 17, 176, 166), 0.1);
+    color: var(--primary, #11B0A6);
+    font-size: 0.8rem;
+    font-weight: 700;
 }
 
 .products-grid {
@@ -108,13 +125,14 @@ $featuredProducts = $featuredProductService->getFeaturedProducts(8);
 
 /* Product Card */
 .product-card {
-    background: #f8fafc;
-    border-radius: 12px;
+    background: #fff;
+    border-radius: 18px;
     overflow: hidden;
     transition: all 0.3s ease;
     text-decoration: none;
     display: block;
-    border: 1px solid #e5e7eb;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
 }
 
 .product-card:hover {
@@ -168,7 +186,7 @@ $featuredProducts = $featuredProductService->getFeaturedProducts(8);
 }
 
 .product-info {
-    padding: 12px;
+    padding: 14px;
 }
 
 .product-name {
@@ -188,6 +206,16 @@ $featuredProducts = $featuredProductService->getFeaturedProducts(8);
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+.product-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    color: var(--primary);
+    font-size: 0.85rem;
+    font-weight: 700;
 }
 
 .price-current,

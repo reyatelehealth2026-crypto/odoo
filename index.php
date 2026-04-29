@@ -446,8 +446,35 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
         .pharm-hero__subtitle {
             font-size: 1.05rem;
             color: var(--text-muted);
-            margin-bottom: 28px;
+            margin-bottom: 18px;
             line-height: 1.55;
+        }
+
+        .pharm-hero__trust {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin: 0 auto 24px;
+            max-width: 640px;
+        }
+
+        .pharm-hero__trust-item {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border: 1px solid rgba(var(--primary-rgb), 0.16);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.78);
+            color: #334155;
+            font-size: 0.9rem;
+            font-weight: 600;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        }
+
+        .pharm-hero__trust-item i {
+            color: var(--primary);
         }
         
         .pharm-hero__cta {
@@ -727,6 +754,16 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             color: #6B7280;
             font-size: 0.9rem;
             line-height: 1.5;
+        }
+
+        .service-card__action {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 16px;
+            color: var(--primary);
+            font-size: 0.9rem;
+            font-weight: 700;
         }
         
         /* ==================== Promotions Section ==================== */
@@ -1105,6 +1142,10 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
             .pharm-hero__subtitle {
                 font-size: 1.12rem;
             }
+
+            .pharm-hero__trust {
+                grid-template-columns: repeat(3, 1fr);
+            }
             
             .pharm-hero__cta {
                 flex-direction: row;
@@ -1288,15 +1329,24 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
     
     <section class="pharm-hero" aria-labelledby="pharm-hero-title">
         <div class="container pharm-hero-inner">
-            <h1 class="pharm-hero__title" id="pharm-hero-title">ปรึกษาบุคลากรทางการแพทย์ออนไลน์ตอนนี้</h1>
-            <p class="pharm-hero__subtitle"><?= htmlspecialchars($shopName) ?> ยกร้านยาใกล้บ้าน มาไว้ใกล้คุณ</p>
+            <h1 class="pharm-hero__title" id="pharm-hero-title">ปรึกษาเภสัชกรและสั่งยากับ <?= htmlspecialchars($shopName) ?> ได้ในไม่กี่ขั้นตอน</h1>
+            <p class="pharm-hero__subtitle">คุยกับทีมร้านยา ตรวจสอบสินค้า และติดตามออเดอร์ผ่าน LINE/LIFF ในประสบการณ์เดียวที่ออกแบบมาสำหรับคนไข้ไทย</p>
+            <div class="pharm-hero__trust" aria-label="จุดเด่นบริการ">
+                <span class="pharm-hero__trust-item"><i class="fas fa-user-md" aria-hidden="true"></i> เภสัชกรดูแล</span>
+                <span class="pharm-hero__trust-item"><i class="fas fa-truck-fast" aria-hidden="true"></i> จัดส่งถึงบ้าน</span>
+                <span class="pharm-hero__trust-item"><i class="fas fa-receipt" aria-hidden="true"></i> ติดตามออเดอร์ได้</span>
+            </div>
             <div class="pharm-hero__cta">
                 <?php if ($liffUrl): ?>
                 <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
                     <i class="fab fa-line" aria-hidden="true"></i>
-                    เปิดแอปเลย
+                    เริ่มใช้งานผ่าน LINE
                 </a>
                 <?php endif; ?>
+                <a href="#featured-products" class="btn btn-solid-primary">
+                    <i class="fas fa-shopping-bag" aria-hidden="true"></i>
+                    ดูสินค้าแนะนำ
+                </a>
                 <a href="#services" class="btn btn-outline-primary">
                     <i class="fas fa-briefcase-medical" aria-hidden="true"></i>
                     ดูบริการของเรา
@@ -1383,14 +1433,16 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
                     </div>
                     <h3>ร้านค้าออนไลน์</h3>
                     <p>เลือกซื้อยาและผลิตภัณฑ์สุขภาพได้ง่ายๆ พร้อมจัดส่งถึงบ้าน</p>
+                    <span class="service-card__action">เลือกสินค้า <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
                 </a>
                 
-                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/consult' : '#' ?>" class="service-card">
+                <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/ai-chat' : '#' ?>" class="service-card">
                     <div class="service-icon">
                         <i class="fas fa-user-md"></i>
                     </div>
                     <h3>ปรึกษาเภสัชกร</h3>
                     <p>พูดคุยกับเภสัชกรผู้เชี่ยวชาญ ได้คำแนะนำที่ถูกต้อง</p>
+                    <span class="service-card__action">เริ่มปรึกษา <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
                 </a>
                 
                 <a href="<?= $liffUrl ? htmlspecialchars($liffUrl) . '#/appointments' : '#' ?>" class="service-card">
@@ -1399,6 +1451,7 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
                     </div>
                     <h3>นัดหมายออนไลน์</h3>
                     <p>จองคิวล่วงหน้า ไม่ต้องรอคิว สะดวกรวดเร็ว</p>
+                    <span class="service-card__action">จองคิว <i class="fas fa-arrow-right" aria-hidden="true"></i></span>
                 </a>
             </div>
         </div>
@@ -1502,19 +1555,20 @@ $featuredProductService = new FeaturedProductService($db, $lineAccountId);
     <!-- Mobile Fixed CTA (Requirements: 2.4) -->
     <?php if ($liffUrl): ?>
     <div class="mobile-cta">
-        <a href="admin/" class="btn" style="background:#6B7280;color:white;flex:0.5;" aria-label="จัดการระบบ Admin">
-            <i class="fas fa-cog" aria-hidden="true"></i>
+        <a href="#featured-products" class="btn btn-outline-primary">
+            <i class="fas fa-shopping-bag" aria-hidden="true"></i>
+            สินค้า
         </a>
         <a href="<?= htmlspecialchars($liffUrl) ?>" class="btn btn-line">
-            <i class="fab fa-line"></i>
-            เปิดแอป LINE
+            <i class="fab fa-line" aria-hidden="true"></i>
+            เริ่มใช้งาน
         </a>
     </div>
     <?php else: ?>
     <div class="mobile-cta">
-        <a href="admin/" class="btn" style="background:#6B7280;color:white;">
-            <i class="fas fa-cog"></i>
-            Admin
+        <a href="#services" class="btn btn-solid-primary">
+            <i class="fas fa-briefcase-medical" aria-hidden="true"></i>
+            ดูบริการ
         </a>
     </div>
     <?php endif; ?>

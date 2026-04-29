@@ -107,7 +107,7 @@ export const renderWithProviders = (
 
 // Mock API responses
 export const mockApiResponses = {
-  success: <T>(data: T) => ({
+  success: <T,>(data: T) => ({
     success: true,
     data,
     meta: {
@@ -128,7 +128,7 @@ export const mockApiResponses = {
     },
   }),
   
-  paginated: <T>(data: T[], page = 1, limit = 20) => ({
+  paginated: <T,>(data: T[], page = 1, limit = 20) => ({
     success: true,
     data,
     meta: {

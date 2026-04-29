@@ -9,11 +9,11 @@ import { ManualMatchingInterface } from './ManualMatchingInterface';
 
 interface PaymentSlipPreviewProps {
   slip: PaymentSlip;
-  potentialMatches?: PotentialMatch[];
-  onAmountUpdate?: (slipId: string, amount: number) => void;
-  onMatch?: (slipId: string, orderId: string) => void;
-  onReject?: (slipId: string, reason?: string) => void;
-  onDelete?: (slipId: string) => void;
+  potentialMatches?: PotentialMatch[] | undefined;
+  onAmountUpdate?: ((slipId: string, amount: number) => void) | undefined;
+  onMatch?: ((slipId: string, orderId: string) => void) | undefined;
+  onReject?: ((slipId: string, reason?: string) => void) | undefined;
+  onDelete?: ((slipId: string) => void) | undefined;
   className?: string;
 }
 

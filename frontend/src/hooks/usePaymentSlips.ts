@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { paymentsAPI } from '@/lib/api/payments';
 import { PaymentSlipFilters, PaymentSlip } from '@/types/payments';
 
@@ -11,7 +11,7 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
   const slipsQuery = useQuery({
     queryKey: ['payment-slips', filters],
     queryFn: () => paymentsAPI.getPaymentSlips(filters),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   });
 
   // Fetch statistics
@@ -26,8 +26,8 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
     mutationFn: ({ file, amount }: { file: File; amount?: number }) =>
       paymentsAPI.uploadPaymentSlip(file, amount),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
-      queryClient.invalidateQueries(['payment-statistics']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-statistics'] });
     },
   });
 
@@ -35,8 +35,8 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
   const bulkUploadMutation = useMutation({
     mutationFn: (files: File[]) => paymentsAPI.bulkUploadPaymentSlips(files),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
-      queryClient.invalidateQueries(['payment-statistics']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-statistics'] });
     },
   });
 
@@ -45,7 +45,7 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
     mutationFn: ({ slipId, amount }: { slipId: string; amount: number }) =>
       paymentsAPI.updateSlipAmount(slipId, amount),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
     },
   });
 
@@ -54,8 +54,8 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
     mutationFn: ({ slipId, orderId }: { slipId: string; orderId: string }) =>
       paymentsAPI.matchPaymentSlip(slipId, orderId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
-      queryClient.invalidateQueries(['payment-statistics']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-statistics'] });
     },
   });
 
@@ -64,8 +64,8 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
     mutationFn: ({ slipId, reason }: { slipId: string; reason?: string }) =>
       paymentsAPI.rejectPaymentSlip(slipId, reason),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
-      queryClient.invalidateQueries(['payment-statistics']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-statistics'] });
     },
   });
 
@@ -73,8 +73,8 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
   const deleteSlipMutation = useMutation({
     mutationFn: (slipId: string) => paymentsAPI.deletePaymentSlip(slipId),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
-      queryClient.invalidateQueries(['payment-statistics']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-statistics'] });
     },
   });
 
@@ -82,8 +82,8 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
   const autoMatchMutation = useMutation({
     mutationFn: () => paymentsAPI.performAutoMatching(),
     onSuccess: () => {
-      queryClient.invalidateQueries(['payment-slips']);
-      queryClient.invalidateQueries(['payment-statistics']);
+      queryClient.invalidateQueries({ queryKey: ['payment-slips'] });
+      queryClient.invalidateQueries({ queryKey: ['payment-statistics'] });
     },
   });
 
@@ -111,13 +111,13 @@ export function usePaymentSlips(filters: PaymentSlipFilters = {}) {
     performAutoMatch: autoMatchMutation.mutate,
     
     // Mutation states
-    isUploading: uploadMutation.isLoading,
-    isBulkUploading: bulkUploadMutation.isLoading,
-    isUpdatingAmount: updateAmountMutation.isLoading,
-    isMatching: matchSlipMutation.isLoading,
-    isRejecting: rejectSlipMutation.isLoading,
-    isDeleting: deleteSlipMutation.isLoading,
-    isAutoMatching: autoMatchMutation.isLoading,
+    isUploading: uploadMutation.isPending,
+    isBulkUploading: bulkUploadMutation.isPending,
+    isUpdatingAmount: updateAmountMutation.isPending,
+    isMatching: matchSlipMutation.isPending,
+    isRejecting: rejectSlipMutation.isPending,
+    isDeleting: deleteSlipMutation.isPending,
+    isAutoMatching: autoMatchMutation.isPending,
     
     // Refetch functions
     refetchSlips: slipsQuery.refetch,

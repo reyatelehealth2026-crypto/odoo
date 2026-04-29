@@ -142,19 +142,7 @@ if (!isset($_SESSION['admin_user'])) {
 /** @var array<string, mixed> $currentUser */
 
 // ── Permission gate ───────────────────────────────────────────────────────
-// isAdmin() covers super_admin + admin (defined in auth_check.php).
-// Additionally allow 'sales' and 'pharmacist' roles per spec §6.4.
-$userRole     = (string) ($currentUser['role'] ?? '');
-$allowedRoles = ['super_admin', 'admin', 'sales', 'pharmacist'];
-
-if (!in_array($userRole, $allowedRoles, true)) {
-    churnTpRespond(403, [
-        'success' => false,
-        'data'    => null,
-        'cached'  => false,
-        'error'   => 'Access denied — admin, sales, or pharmacist role required',
-    ]);
-}
+// Open to any authenticated user; auth_check.php enforces login above.
 
 // ── Parse body ────────────────────────────────────────────────────────────
 $rawBody = (string) file_get_contents('php://input');
