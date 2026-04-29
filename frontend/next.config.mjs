@@ -1,4 +1,5 @@
 import bundleAnalyzer from '@next/bundle-analyzer';
+import path from 'node:path';
 
 const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -8,9 +9,9 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig = {
   // Docker optimization - standalone output
   output: 'standalone',
+  typedRoutes: true,
   
   experimental: {
-    typedRoutes: true,
     // Enable optimized package imports
     optimizePackageImports: ['@tanstack/react-query', 'socket.io-client'],
   },
@@ -78,7 +79,7 @@ const nextConfig = {
     // Optimize imports
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': require('path').resolve(__dirname, 'src'),
+      '@': path.resolve(process.cwd(), 'src'),
     };
 
     return config;
@@ -118,13 +119,13 @@ const nextConfig = {
           },
         ],
       },
-      // Cache API responses
+      // Authenticated API responses should not be cached by browsers or CDNs.
       {
         source: '/api/(.*)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=300, s-maxage=300', // 5 minutes
+            value: 'no-store',
           },
         ],
       },
@@ -137,7 +138,6 @@ const nextConfig = {
   // Performance optimizations
   poweredByHeader: false,
   reactStrictMode: true,
-  swcMinify: true,
   
   // Environment variables
   env: {
@@ -161,7 +161,7 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/v1/:path*`,
+        destination: `${process.env.INTERNAL_API_ORIGIN || 'http://backend:4000'}/api/v1/:path*`,
       },
     ];
   },

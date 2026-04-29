@@ -41,7 +41,7 @@ export function DashboardLayout({
           {/* Logo */}
           <div className="flex h-16 items-center justify-center border-b border-secondary-200 px-6">
             <h1 className="text-xl font-bold text-primary-600">
-              Odoo Dashboard
+              CLINICYA Admin
             </h1>
           </div>
 

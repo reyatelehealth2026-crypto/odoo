@@ -419,6 +419,67 @@ app.get('/status', (req, res) => {
     });
 });
 
+// ─────────────────────────────────────────────────────────────────
+// Phase 3: /video-call namespace — WebRTC signaling relay
+// Replaces the 3-second HTTP polling against api/video-call.php for
+// clients that opt in via the use_ws_video_signaling feature flag.
+// ─────────────────────────────────────────────────────────────────
+const videoNs = io.of('/video-call');
+
+videoNs.on('connection', async (socket) => {
+    const token = socket.handshake.auth && socket.handshake.auth.token;
+    const user = await authenticateToken(token);
+    if (!user) {
+        socket.emit('error', { message: 'Authentication failed' });
+        socket.disconnect();
+        return;
+    }
+    socket.userId        = user.id;
+    socket.lineAccountId = user.line_account_id;
+
+    let joinedRoom = null;
+    let role       = null; // 'customer' | 'pharmacist'
+
+    socket.on('presence:join', ({ room_id, role: r } = {}) => {
+        if (!room_id) { return; }
+        joinedRoom = String(room_id);
+        role       = (r === 'pharmacist') ? 'pharmacist' : 'customer';
+        socket.join(joinedRoom);
+        socket.to(joinedRoom).emit('presence:join', { role, userId: user.id, ts: Date.now() });
+    });
+
+    const persistAudit = (signalType, payload) => {
+        // Skip ICE — too high volume; late joiners do an ICE restart.
+        if (signalType === 'ice' || !joinedRoom) { return; }
+        const fromWho = role === 'pharmacist' ? 'pharmacist' : 'customer';
+        pool.query(
+            `INSERT INTO video_call_signals (room_id, signal_type, signal_data, from_who, processed, created_at)
+             VALUES (?, ?, ?, ?, 0, NOW())`,
+            [joinedRoom, signalType, JSON.stringify(payload || {}), fromWho]
+        ).catch((e) => {
+            console.error('[video-call] audit insert failed:', e.message);
+        });
+    };
+
+    const relay = (eventName, signalType) => (payload) => {
+        if (!joinedRoom) { return; }
+        socket.to(joinedRoom).emit(eventName, payload);
+        persistAudit(signalType, payload);
+    };
+
+    socket.on('signal:offer',   relay('signal:offer',   'offer'));
+    socket.on('signal:answer',  relay('signal:answer',  'answer'));
+    socket.on('signal:ice',     relay('signal:ice',     'ice'));
+    socket.on('signal:hangup',  relay('signal:hangup',  'hangup'));
+    socket.on('signal:message', relay('signal:message', 'message'));
+
+    socket.on('disconnect', () => {
+        if (joinedRoom) {
+            socket.to(joinedRoom).emit('presence:leave', { role, userId: user.id, ts: Date.now() });
+        }
+    });
+});
+
 // Start server
 const PORT = process.env.WEBSOCKET_PORT || 3000;
 const HOST = process.env.WEBSOCKET_HOST || '0.0.0.0';

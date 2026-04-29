@@ -11,10 +11,15 @@ export function CartSummaryBar() {
   if (itemCount === 0) return null
 
   return (
-    <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2.5 z-40 safe-bottom">
-      <button onClick={() => navigate('/cart')} className="w-full flex items-center justify-between bg-primary text-white rounded-xl px-4 py-2.5 active:scale-[0.98] transition-transform">
+    <div className="fixed bottom-16 left-0 right-0 bg-white border-t border-gray-100 px-4 py-2.5 z-40 safe-bottom" role="region" aria-label="สรุปตะกร้าสินค้า">
+      <button
+        type="button"
+        onClick={() => navigate('/cart')}
+        aria-label={`ไปตะกร้าสินค้า ${itemCount} รายการ ยอดรวม ${formatCurrency(subtotal)}`}
+        className="w-full flex items-center justify-between bg-primary text-white rounded-xl px-4 py-2.5 active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
         <div className="flex items-center gap-2">
-          <ShoppingCart className="w-4 h-4" />
+          <ShoppingCart aria-hidden="true" className="w-4 h-4" />
           <span className="text-sm font-medium">{itemCount} รายการ</span>
         </div>
         <span className="text-sm font-bold">{formatCurrency(subtotal)}</span>

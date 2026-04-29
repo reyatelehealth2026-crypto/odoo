@@ -14,11 +14,11 @@ interface PaymentSlipListProps {
     pageSize: number;
     total: number;
     onChange: (page: number, pageSize: number) => void;
-  };
-  onAmountUpdate?: (slipId: string, amount: number) => void;
-  onMatch?: (slipId: string, orderId: string) => void;
-  onReject?: (slipId: string, reason?: string) => void;
-  onDelete?: (slipId: string) => void;
+  } | undefined;
+  onAmountUpdate?: ((slipId: string, amount: number) => void) | undefined;
+  onMatch?: ((slipId: string, orderId: string) => void) | undefined;
+  onReject?: ((slipId: string, reason?: string) => void) | undefined;
+  onDelete?: ((slipId: string) => void) | undefined;
   className?: string;
 }
 

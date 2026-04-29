@@ -22,16 +22,16 @@ export interface DataTableProps<T> {
     pageSize: number;
     total: number;
     onChange: (page: number, pageSize: number) => void;
-  };
-  onRowClick?: (record: T, index: number) => void;
+  } | undefined;
+  onRowClick?: ((record: T, index: number) => void) | undefined;
   rowKey?: keyof T | ((record: T) => string);
   className?: string;
   emptyText?: string;
   sortConfig?: {
     key: string;
     direction: 'asc' | 'desc';
-  };
-  onSort?: (key: string, direction: 'asc' | 'desc') => void;
+  } | undefined;
+  onSort?: ((key: string, direction: 'asc' | 'desc') => void) | undefined;
 }
 
 export function DataTable<T extends Record<string, any>>({

@@ -38,12 +38,13 @@ export const useCustomer = (customerId: string | null) => {
  */
 export const useCustomerOrders = (
   customerId: string | null,
-  page: number = 1,
-  limit: number = 20
+  options: { page?: number; limit?: number; sort?: string; order?: 'asc' | 'desc' } = {}
 ) => {
+  const { page = 1, limit = 20, sort, order } = options;
+
   return useQuery<PaginatedCustomerOrders>({
-    queryKey: ['customers', customerId, 'orders', page, limit],
-    queryFn: () => customersAPI.getCustomerOrders(customerId!, page, limit),
+    queryKey: ['customers', customerId, 'orders', page, limit, sort, order],
+    queryFn: () => customersAPI.getCustomerOrders(customerId!, page, limit, sort, order),
     enabled: !!customerId,
     staleTime: 30 * 1000,
   });

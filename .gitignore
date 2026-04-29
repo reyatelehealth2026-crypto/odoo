@@ -46,6 +46,10 @@ vendor/
 composer.lock
 node_modules/
 package-lock.json
+!package-lock.json
+!backend/package-lock.json
+!frontend/package-lock.json
+!liff-app/package-lock.json
 !line-mini-app/package-lock.json
 
 # Next.js build

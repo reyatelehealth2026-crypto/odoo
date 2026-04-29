@@ -2,18 +2,18 @@
 # Optimized for real-time performance and minimal resource usage
 
 # Stage 1: Dependencies
-FROM node:18-alpine AS deps
+FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Install dependencies
 COPY websocket-dashboard-server.js package.json package-lock.json* ./
 RUN \
   if [ -f package-lock.json ]; then npm ci --only=production; \
-  else npm install --only=production; \
+  else echo "Lockfile not found." && exit 1; \
   fi
 
 # Stage 2: Runner (Production)
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Create non-root user for security
@@ -36,7 +36,7 @@ EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -f http://localhost:3001/health || exit 1
+  CMD node -e "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Start the WebSocket server
 CMD ["node", "websocket-dashboard-server.js"]

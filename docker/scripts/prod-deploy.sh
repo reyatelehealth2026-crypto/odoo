@@ -15,7 +15,7 @@ fi
 
 # Validate required environment variables
 source .env.prod
-required_vars=("DB_PASSWORD" "JWT_SECRET" "DOMAIN_NAME")
+required_vars=("DB_PASSWORD" "JWT_SECRET" "JWT_REFRESH_SECRET" "DOMAIN_NAME")
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
         echo "❌ Required environment variable $var is not set in .env.prod"
@@ -41,7 +41,7 @@ docker-compose -f docker-compose.prod.yml --env-file .env.prod build --no-cache
 
 # Run database migrations
 echo "🗄️  Running database migrations..."
-docker-compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend npm run prisma:migrate
+docker-compose -f docker-compose.prod.yml --env-file .env.prod run --rm backend npm run prisma:deploy
 
 # Start services with rolling update
 echo "🔄 Starting production services..."

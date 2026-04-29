@@ -45,8 +45,10 @@ export class OrderAPI {
     if (params.status?.length) searchParams.set('status', params.status.join(','));
     if (params.customerRef) searchParams.set('customerRef', params.customerRef);
     if (params.customerName) searchParams.set('customerName', params.customerName);
-    if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom.toISOString().split('T')[0]);
-    if (params.dateTo) searchParams.set('dateTo', params.dateTo.toISOString().split('T')[0]);
+    const dateFrom = params.dateFrom?.toISOString().split('T')[0];
+    const dateTo = params.dateTo?.toISOString().split('T')[0];
+    if (dateFrom) searchParams.set('dateFrom', dateFrom);
+    if (dateTo) searchParams.set('dateTo', dateTo);
     if (params.search) searchParams.set('search', params.search);
     if (params.lineAccountId) searchParams.set('lineAccountId', params.lineAccountId);
 
@@ -92,8 +94,10 @@ export class OrderAPI {
   async getOrderStatistics(dateFrom?: Date, dateTo?: Date, lineAccountId?: string): Promise<OrderStatistics> {
     const searchParams = new URLSearchParams();
     
-    if (dateFrom) searchParams.set('dateFrom', dateFrom.toISOString().split('T')[0]);
-    if (dateTo) searchParams.set('dateTo', dateTo.toISOString().split('T')[0]);
+    const from = dateFrom?.toISOString().split('T')[0];
+    const to = dateTo?.toISOString().split('T')[0];
+    if (from) searchParams.set('dateFrom', from);
+    if (to) searchParams.set('dateTo', to);
     if (lineAccountId) searchParams.set('lineAccountId', lineAccountId);
 
     const response = await apiClient.get<OrderStatistics>(`/orders/statistics?${searchParams.toString()}`);

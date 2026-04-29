@@ -335,6 +335,31 @@ class LineAPI
     }
 
     /**
+     * Phase 1B: get the number of multicast / push / broadcast messages
+     * actually delivered by LINE on a given calendar date.
+     *
+     * @param string $yyyymmdd Date in 'YYYYMMDD' format, e.g. '20260428'.
+     * @return array { code: int, body: { status: string, success?: int } }
+     *               status is 'ready' once stats are available, 'unready' otherwise.
+     */
+    public function getNumberOfSentMessages(string $yyyymmdd): array
+    {
+        $url = $this->apiEndpoint . '/message/delivery/multicast?date=' . urlencode($yyyymmdd);
+        $headers = ['Authorization: Bearer ' . $this->channelAccessToken];
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        return ['code' => $httpCode, 'body' => json_decode($response, true) ?: []];
+    }
+
+    /**
      * Generate unique retry key for narrowcast
      */
     private function generateRetryKey()

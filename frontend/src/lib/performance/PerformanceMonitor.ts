@@ -122,7 +122,7 @@ class PerformanceMonitor {
           // DOM content loaded time
           this.recordMetric({
             name: 'dom_content_loaded_time',
-            value: navigation.domContentLoadedEventEnd - navigation.navigationStart,
+            value: navigation.domContentLoadedEventEnd - navigation.startTime,
             timestamp: Date.now(),
             url: window.location.href,
           });
@@ -130,7 +130,7 @@ class PerformanceMonitor {
           // Page load time
           this.recordMetric({
             name: 'page_load_time',
-            value: navigation.loadEventEnd - navigation.navigationStart,
+            value: navigation.loadEventEnd - navigation.startTime,
             timestamp: Date.now(),
             url: window.location.href,
           });
@@ -243,7 +243,7 @@ class PerformanceMonitor {
   /**
    * Flush metrics to the server
    */
-  private async flush(): void {
+  private async flush(): Promise<void> {
     if (this.metrics.length === 0) return;
 
     const metricsToSend = [...this.metrics];

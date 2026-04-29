@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Bell, Bot, Sparkles, ChevronRight, Stethoscope } from 'lucide-react'
+import { Bell, Bot, Sparkles, ChevronRight, Stethoscope, ShoppingBag, ClipboardList } from 'lucide-react'
 import { MemberCard } from '@/components/shared/MemberCard'
 import { ServiceGrid } from '@/components/shared/ServiceGrid'
 import { PharmacistCard } from '@/components/shared/PharmacistCard'
@@ -20,10 +20,15 @@ export function HomePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-white text-lg font-bold tracking-tight">Re-Ya Pharmacy</h1>
-            <p className="text-white/60 text-[11px] mt-0.5">สุขภาพดี เริ่มต้นที่นี่</p>
+            <p className="text-white/70 text-[11px] mt-0.5">ปรึกษา สั่งยา ติดตามออเดอร์ใน LINE</p>
           </div>
-          <button onClick={() => navigate('/notifications')} className="w-10 h-10 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center cursor-pointer active:scale-90 transition-transform">
-            <Bell className="w-[18px] h-[18px] text-white" strokeWidth={1.8} />
+          <button
+            type="button"
+            onClick={() => navigate('/notifications')}
+            aria-label="เปิดการแจ้งเตือน"
+            className="w-10 h-10 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center cursor-pointer active:scale-90 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+          >
+            <Bell aria-hidden="true" className="w-[18px] h-[18px] text-white" strokeWidth={1.8} />
           </button>
         </div>
       </div>
@@ -31,6 +36,27 @@ export function HomePage() {
       {/* Content - pulled up over header */}
       <div className="px-4 -mt-10 space-y-4 pb-6">
         <MemberCard />
+
+        <div className="grid grid-cols-2 gap-2.5">
+          <button
+            type="button"
+            onClick={() => navigate('/shop')}
+            className="rounded-2xl bg-white border border-emerald-100 p-3.5 text-left shadow-sm active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <ShoppingBag aria-hidden="true" className="w-5 h-5 text-primary mb-2" />
+            <p className="text-sm font-semibold text-slate-900">สั่งยา/สินค้า</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">เลือกซื้อแล้วส่งถึงบ้าน</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/orders')}
+            className="rounded-2xl bg-white border border-orange-100 p-3.5 text-left shadow-sm active:scale-[0.98] transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            <ClipboardList aria-hidden="true" className="w-5 h-5 text-orange-500 mb-2" />
+            <p className="text-sm font-semibold text-slate-900">ติดตามออเดอร์</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">ดูสถานะชำระเงิน/จัดส่ง</p>
+          </button>
+        </div>
 
         {/* Service Grid */}
         <div>
@@ -42,21 +68,23 @@ export function HomePage() {
 
         {/* AI CTA */}
         <button
+          type="button"
           onClick={() => navigate('/ai-chat')}
-          className="w-full relative overflow-hidden bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white rounded-2xl p-4 flex items-center gap-3.5 cursor-pointer active:scale-[0.98] transition-all duration-150 shadow-[0_4px_16px_rgba(124,58,237,0.3)]"
+          aria-label="ปรึกษาเภสัชกร AI"
+          className="w-full relative overflow-hidden bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-600 text-white rounded-2xl p-4 flex items-center gap-3.5 cursor-pointer active:scale-[0.98] transition-all duration-150 shadow-[0_4px_16px_rgba(124,58,237,0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 focus-visible:ring-offset-2"
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_60%)]" />
           <div className="w-12 h-12 rounded-2xl bg-white/15 backdrop-blur-sm flex items-center justify-center shrink-0">
-            <Bot className="w-6 h-6" />
+            <Bot aria-hidden="true" className="w-6 h-6" />
           </div>
           <div className="text-left flex-1 relative">
             <div className="flex items-center gap-1.5 mb-0.5">
               <p className="font-semibold text-sm">ปรึกษาเภสัชกร AI</p>
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <Sparkles aria-hidden="true" className="w-3.5 h-3.5 text-amber-300" />
             </div>
             <p className="text-[11px] text-white/70">ถามเรื่องยาและสุขภาพได้ตลอด 24 ชม.</p>
           </div>
-          <ChevronRight className="w-4 h-4 text-white/40 shrink-0" />
+          <ChevronRight aria-hidden="true" className="w-4 h-4 text-white/40 shrink-0" />
         </button>
 
         {/* Online Pharmacists */}
@@ -64,10 +92,10 @@ export function HomePage() {
           <div>
             <div className="flex items-center justify-between mb-2.5">
               <div className="flex items-center gap-2">
-                <Stethoscope className="w-4 h-4 text-primary" />
+                <Stethoscope aria-hidden="true" className="w-4 h-4 text-primary" />
                 <h2 className="text-[13px] font-semibold text-slate-800">เภสัชกรออนไลน์</h2>
               </div>
-              <button onClick={() => navigate('/video-call')} className="text-[11px] text-primary font-medium cursor-pointer">
+              <button type="button" onClick={() => navigate('/video-call')} className="text-[11px] text-primary font-medium cursor-pointer focus-visible:outline-none focus-visible:underline">
                 ดูทั้งหมด
               </button>
             </div>

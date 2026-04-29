@@ -331,6 +331,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             break;
             
+        case 'check_interactions':
+            // Phase 2A: pre-approval safety check. Reuses existing AIChat DrugInteractionChecker.
+            $userId = (int)($input['user_id'] ?? 0);
+            $drugs = $input['drugs'] ?? [];
+            if (!$userId || empty($drugs)) {
+                echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
+                exit;
+            }
+            try {
+                $patientData = pharmacistBuildPatientData($db, $userId);
+                $drugsNormalized = pharmacistNormalizeDrugsForChecker($drugs);
+                require_once __DIR__ . '/../modules/AIChat/Services/DrugInteractionChecker.php';
+                $checker = new \Modules\AIChat\Services\DrugInteractionChecker();
+                $report = $checker->generateSafetyReport($drugsNormalized, $patientData);
+                echo json_encode(['success' => true, 'report' => $report]);
+            } catch (Exception $e) {
+                error_log('check_interactions error: ' . $e->getMessage());
+                echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+            break;
+
+        case 'get_batches_for_drug':
+            // Phase 2B: list available batches for a drug, FEFO-ordered.
+            // Returns empty list if drug_batches table is absent — UI degrades to no-tracking mode.
+            $drugId = (int)($input['drug_id'] ?? 0);
+            $lineAccountId = (int)($input['line_account_id'] ?? 0);
+            if (!$drugId) {
+                echo json_encode(['success' => false, 'error' => 'Invalid drug_id']);
+                exit;
+            }
+            try {
+                $sql = "SELECT id, batch_number, expiry_date, quantity_on_hand
+                        FROM drug_batches
+                        WHERE drug_id = ?
+                          AND quantity_on_hand > 0
+                          " . ($lineAccountId ? "AND line_account_id = ?" : "") . "
+                        ORDER BY expiry_date ASC, id ASC";
+                $stmt = $db->prepare($sql);
+                $stmt->execute($lineAccountId ? [$drugId, $lineAccountId] : [$drugId]);
+                $batches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                echo json_encode(['success' => true, 'batches' => $batches]);
+            } catch (Exception $e) {
+                // Table may not exist on this install. Tell the UI gracefully.
+                echo json_encode(['success' => true, 'batches' => [], 'tracking_disabled' => true]);
+            }
+            break;
+
         case 'approve_drugs':
             // Support both notification_id (old) and session_id (new)
             $sessionId = (int)($input['session_id'] ?? $input['notification_id'] ?? 0);
@@ -339,13 +386,234 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pharmacistNote = $input['note'] ?? '';
             $pharmacistName = $input['pharmacist_name'] ?? '';
             $pharmacistLicense = $input['pharmacist_license'] ?? '';
-            
+            $acknowledgedInteractions = array_map('strtolower', (array)($input['acknowledged_interactions'] ?? []));
+
             if (!$sessionId || !$userId || empty($drugs)) {
                 echo json_encode(['success' => false, 'error' => 'Invalid parameters']);
                 exit;
             }
-            
+
             try {
+                // Phase 2C: prescription enforcement.
+                // For any drug flagged requires_prescription, demand a valid prescription_approvals row.
+                $rxApprovalId = (int)($input['prescription_approval_id'] ?? 0);
+                $rxRequiredDrugs = [];
+                try {
+                    $drugIds = array_values(array_filter(array_map(
+                        function ($d) { return (int)($d['id'] ?? 0); },
+                        array_filter($drugs, function ($d) { return empty($d['isNonDrug']); })
+                    )));
+                    if (!empty($drugIds)) {
+                        $placeholders = implode(',', array_fill(0, count($drugIds), '?'));
+                        $stmt = $db->prepare("SELECT id, name FROM business_items
+                            WHERE id IN ({$placeholders}) AND requires_prescription = 1");
+                        $stmt->execute($drugIds);
+                        $rxRequiredDrugs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    }
+                } catch (Exception $rxColErr) {
+                    // requires_prescription column missing on this install — skip enforcement.
+                    $rxRequiredDrugs = [];
+                }
+
+                if (!empty($rxRequiredDrugs)) {
+                    if (!$rxApprovalId) {
+                        http_response_code(422);
+                        echo json_encode([
+                            'success' => false,
+                            'error' => 'rx_required',
+                            'message' => 'ต้องแนบใบสั่งยาที่อนุมัติแล้วก่อนจ่ายยาที่ต้องสั่งโดยแพทย์',
+                            'requires_rx' => $rxRequiredDrugs,
+                        ]);
+                        exit;
+                    }
+                    try {
+                        $stmt = $db->prepare("SELECT id, status, expires_at, line_account_id, user_id
+                            FROM prescription_approvals WHERE id = ?");
+                        $stmt->execute([$rxApprovalId]);
+                        $approval = $stmt->fetch(PDO::FETCH_ASSOC);
+                        if (!$approval || $approval['status'] !== 'approved'
+                            || ($approval['expires_at'] && strtotime($approval['expires_at']) < time())
+                            || (int)$approval['user_id'] !== $userId) {
+                            http_response_code(422);
+                            echo json_encode([
+                                'success' => false,
+                                'error' => 'rx_invalid',
+                                'message' => 'ใบสั่งยาที่แนบไม่ถูกต้องหรือหมดอายุ',
+                            ]);
+                            exit;
+                        }
+                    } catch (Exception $rxLookupErr) {
+                        error_log('prescription_approvals lookup failed: ' . $rxLookupErr->getMessage());
+                        http_response_code(422);
+                        echo json_encode([
+                            'success' => false,
+                            'error' => 'rx_lookup_failed',
+                            'message' => 'ไม่สามารถตรวจสอบใบสั่งยาได้',
+                        ]);
+                        exit;
+                    }
+                }
+
+                // Phase 2A: server-side safety guard. Block severe/contraindicated unless acknowledged.
+                $patientData = pharmacistBuildPatientData($db, $userId);
+                $drugsNormalized = pharmacistNormalizeDrugsForChecker($drugs);
+                require_once __DIR__ . '/../modules/AIChat/Services/DrugInteractionChecker.php';
+                $checker = new \Modules\AIChat\Services\DrugInteractionChecker();
+                $safetyReport = $checker->generateSafetyReport($drugsNormalized, $patientData);
+
+                $blocking = [];
+                foreach (($safetyReport['interactions'] ?? []) as $intx) {
+                    if (in_array($intx['severity'] ?? '', ['severe', 'contraindicated'], true)) {
+                        $key = strtolower(($intx['drug1'] ?? '') . '|' . ($intx['drug2'] ?? ''));
+                        if (!in_array($key, $acknowledgedInteractions, true)) {
+                            $blocking[] = ['type' => 'interaction'] + $intx;
+                        }
+                    }
+                }
+                foreach (($safetyReport['allergies'] ?? []) as $a) {
+                    if (($a['severity'] ?? '') === 'contraindicated') {
+                        $key = strtolower(($a['drug'] ?? '') . '|allergy|' . ($a['allergy'] ?? ''));
+                        if (!in_array($key, $acknowledgedInteractions, true)) {
+                            $blocking[] = ['type' => 'allergy'] + $a;
+                        }
+                    }
+                }
+                if (!empty($blocking)) {
+                    http_response_code(422);
+                    echo json_encode([
+                        'success' => false,
+                        'error' => 'interaction_ack_required',
+                        'message' => 'พบยาตีกัน/ข้อห้ามใช้ที่ต้องรับทราบก่อนจ่ายยา',
+                        'blocking' => $blocking,
+                        'report' => $safetyReport,
+                    ]);
+                    exit;
+                }
+
+                // Record interaction acknowledgments (best-effort; severity collapses to schema enum).
+                $lineUserIdForAck = $patientData['_line_user_id'] ?? null;
+                foreach (($safetyReport['interactions'] ?? []) as $intx) {
+                    $key = strtolower(($intx['drug1'] ?? '') . '|' . ($intx['drug2'] ?? ''));
+                    if (in_array($key, $acknowledgedInteractions, true)) {
+                        try {
+                            $sev = $intx['severity'] ?? 'moderate';
+                            if ($sev === 'contraindicated') { $sev = 'severe'; }
+                            $ackStmt = $db->prepare("INSERT INTO drug_interaction_acknowledgments (user_id, line_user_id, drug1_id, drug2_id, drug1_name, drug2_name, severity, acknowledged_at) VALUES (?, ?, 0, 0, ?, ?, ?, NOW())");
+                            $ackStmt->execute([
+                                $userId,
+                                $lineUserIdForAck,
+                                substr((string)($intx['drug1'] ?? ''), 0, 255),
+                                substr((string)($intx['drug2'] ?? ''), 0, 255),
+                                $sev,
+                            ]);
+                        } catch (Exception $ackErr) {
+                            error_log('drug_interaction_acknowledgments insert failed: ' . $ackErr->getMessage());
+                        }
+                    }
+                }
+
+                // Phase 2B: atomically decrement stock for drugs picked from a batch,
+                // and write an audit row to drug_dispense_lines. Graceful when tables
+                // are absent (older installs without the migration applied).
+                $batchAccountId = null;
+                try {
+                    $stmtAcc = $db->prepare("SELECT line_account_id FROM triage_sessions WHERE id = ?");
+                    $stmtAcc->execute([$sessionId]);
+                    $batchAccountId = $stmtAcc->fetchColumn() ?: null;
+                    if (!$batchAccountId) {
+                        $stmtAcc = $db->prepare("SELECT line_account_id FROM users WHERE id = ?");
+                        $stmtAcc->execute([$userId]);
+                        $batchAccountId = $stmtAcc->fetchColumn() ?: null;
+                    }
+                } catch (Exception $accErr) {
+                    error_log('Phase 2B account lookup failed: ' . $accErr->getMessage());
+                }
+
+                $inventoryError = null;
+                $inTx = false;
+                try {
+                    $db->beginTransaction();
+                    $inTx = true;
+                } catch (Exception $txErr) {
+                    error_log('Phase 2B beginTransaction failed: ' . $txErr->getMessage());
+                }
+
+                foreach ($drugs as $drug) {
+                    if (!empty($drug['isNonDrug'])) { continue; }
+                    $drugId   = (int)($drug['id'] ?? 0);
+                    $drugName = (string)($drug['name'] ?? '');
+                    $qty      = max(1, (int)($drug['quantity'] ?? 1));
+                    $batchId  = isset($drug['batch_id']) && (int)$drug['batch_id'] > 0 ? (int)$drug['batch_id'] : null;
+                    $expiryAt = null;
+
+                    if ($batchId) {
+                        try {
+                            $upd = $db->prepare("UPDATE drug_batches
+                                SET quantity_on_hand = quantity_on_hand - ?
+                                WHERE id = ? AND quantity_on_hand >= ?");
+                            $upd->execute([$qty, $batchId, $qty]);
+                            if ($upd->rowCount() === 0) {
+                                $inventoryError = [
+                                    'error'     => 'insufficient_stock',
+                                    'message'   => "สต๊อกไม่พอสำหรับ batch #{$batchId}",
+                                    'drug_id'   => $drugId,
+                                    'batch_id'  => $batchId,
+                                    'requested' => $qty,
+                                ];
+                                break;
+                            }
+                            $exp = $db->prepare("SELECT expiry_date FROM drug_batches WHERE id = ?");
+                            $exp->execute([$batchId]);
+                            $expiryAt = $exp->fetchColumn() ?: null;
+                        } catch (Exception $e) {
+                            // drug_batches table absent on this install — fall through without decrement.
+                            error_log('drug_batches UPDATE failed: ' . $e->getMessage());
+                            $batchId = null;
+                        }
+                    }
+
+                    try {
+                        $insLine = $db->prepare("INSERT INTO drug_dispense_lines
+                            (session_id, user_id, line_account_id, drug_id, drug_name, batch_id, quantity, expiry_at_dispense, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())");
+                        $insLine->execute([
+                            $sessionId,
+                            $userId,
+                            $batchAccountId,
+                            $drugId,
+                            substr($drugName, 0, 255),
+                            $batchId,
+                            $qty,
+                            $expiryAt,
+                        ]);
+                    } catch (Exception $lineErr) {
+                        // drug_dispense_lines table absent on this install — log and continue.
+                        error_log('drug_dispense_lines insert failed: ' . $lineErr->getMessage());
+                    }
+                }
+
+                if ($inventoryError) {
+                    if ($inTx && $db->inTransaction()) { $db->rollBack(); }
+                    http_response_code(422);
+                    echo json_encode(['success' => false] + $inventoryError);
+                    exit;
+                }
+                if ($inTx && $db->inTransaction()) {
+                    $db->commit();
+                }
+
+                // Phase 2C: mark the prescription_approvals row as used (best-effort).
+                if (!empty($rxApprovalId)) {
+                    try {
+                        $rxUsed = $db->prepare("UPDATE prescription_approvals
+                            SET status = 'used', used_at = NOW()
+                            WHERE id = ? AND status = 'approved'");
+                        $rxUsed->execute([$rxApprovalId]);
+                    } catch (Exception $rxUseErr) {
+                        error_log('prescription_approvals mark-used failed: ' . $rxUseErr->getMessage());
+                    }
+                }
+
                 // Get triage data from session directly
                 $stmt = $db->prepare("SELECT triage_data, line_account_id FROM triage_sessions WHERE id = ?");
                 $stmt->execute([$sessionId]);
@@ -512,16 +780,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'get_drugs':
             // Get ALL items from business_items - no limit, no is_active filter for pharmacist
             try {
+                // Phase 2C: include requires_prescription flag (NULL-safe via COALESCE in case col missing).
+                $hasRx = false;
+                try {
+                    $cols = $db->query("SHOW COLUMNS FROM business_items LIKE 'requires_prescription'")->fetchAll();
+                    $hasRx = !empty($cols);
+                } catch (Exception $colErr) {}
+                $rxSelect = $hasRx ? ', requires_prescription' : ', 0 AS requires_prescription';
                 $stmt = $db->query("
-                    SELECT id, name, price, generic_name, description, usage_instructions, sku
-                    FROM business_items 
+                    SELECT id, name, price, generic_name, description, usage_instructions, sku{$rxSelect}
+                    FROM business_items
                     ORDER BY name
                 ");
                 $drugs = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
+
                 echo json_encode(['success' => true, 'drugs' => $drugs, 'count' => count($drugs)]);
             } catch (Exception $e) {
                 echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+            }
+            break;
+
+        case 'get_pending_rx':
+            // Phase 2C: list approved-but-unused prescription_approvals for a patient
+            // so the dispense UI can attach one when dispensing Rx-only drugs.
+            $userId = (int)($input['user_id'] ?? 0);
+            if (!$userId) {
+                echo json_encode(['success' => false, 'error' => 'Invalid user_id']);
+                exit;
+            }
+            try {
+                $stmt = $db->prepare("SELECT id, approved_items, status, video_call_id, expires_at, created_at
+                    FROM prescription_approvals
+                    WHERE user_id = ?
+                      AND status = 'approved'
+                      AND (expires_at IS NULL OR expires_at > NOW())
+                    ORDER BY created_at DESC
+                    LIMIT 20");
+                $stmt->execute([$userId]);
+                $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                echo json_encode(['success' => true, 'approvals' => $rows]);
+            } catch (Exception $e) {
+                echo json_encode(['success' => true, 'approvals' => [], 'tracking_disabled' => true]);
             }
             break;
             
@@ -532,3 +831,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 echo json_encode(['success' => false, 'error' => 'Invalid request method']);
+
+// ─────────────────────────────────────────────────────────────────
+// Phase 2A helpers — drug interaction safety report inputs
+// ─────────────────────────────────────────────────────────────────
+
+/**
+ * Build the patient data array consumed by Modules\AIChat\Services\DrugInteractionChecker.
+ * Returns an extra non-public key '_line_user_id' for downstream INSERT into
+ * drug_interaction_acknowledgments (which does not have line_account_id).
+ */
+function pharmacistBuildPatientData(PDO $db, int $userId): array
+{
+    $allergies = [];
+    $medicalConditions = [];
+    $currentMedications = [];
+    $lineUserId = null;
+
+    try {
+        $stmt = $db->prepare("SELECT line_user_id, drug_allergies, medical_conditions FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $u = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $lineUserId = $u['line_user_id'] ?? null;
+        $allergies = array_values(array_filter(array_map('trim', explode(',', (string)($u['drug_allergies'] ?? '')))));
+        $medicalConditions = array_values(array_filter(array_map('trim', explode(',', (string)($u['medical_conditions'] ?? '')))));
+    } catch (Exception $e) {
+        error_log('pharmacistBuildPatientData users lookup failed: ' . $e->getMessage());
+    }
+
+    if ($lineUserId) {
+        try {
+            $stmt = $db->prepare("SELECT medication_name FROM user_current_medications WHERE line_user_id = ? AND is_active = 1");
+            $stmt->execute([$lineUserId]);
+            $currentMedications = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        } catch (Exception $e) {
+            // user_current_medications may not exist on every install — non-fatal.
+        }
+    }
+
+    return [
+        'current_medications' => $currentMedications,
+        'medical_conditions'  => $medicalConditions,
+        'allergies'           => $allergies,
+        '_line_user_id'       => $lineUserId,
+    ];
+}
+
+/**
+ * Normalize the dispense UI's camelCase drug payload to the snake_case shape
+ * Modules\AIChat\Services\DrugInteractionChecker expects.
+ */
+function pharmacistNormalizeDrugsForChecker(array $drugs): array
+{
+    $out = [];
+    foreach ($drugs as $d) {
+        if (!empty($d['isNonDrug'])) { continue; } // skip non-pharmaceutical line items
+        $out[] = [
+            'id'           => $d['id']           ?? null,
+            'name'         => $d['name']         ?? '',
+            'generic_name' => $d['generic_name'] ?? $d['genericName'] ?? '',
+        ];
+    }
+    return $out;
+}

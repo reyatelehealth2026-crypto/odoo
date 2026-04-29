@@ -292,9 +292,17 @@ function showSearchResults(drugs) {
     container.innerHTML = drugs.map(drug => {
         const name = (drug.name || '').trim();
         const genericName = (drug.generic_name || '').trim();
+        const requiresPrescription = !!parseInt(drug.requires_prescription || 0, 10);
+        const rxFlag = requiresPrescription
+            ? `<span class="ml-2 px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs">⚕️ Rx</span>`
+            : '';
+        const payload = JSON.stringify({
+            id: drug.id, name: name, genericName: genericName,
+            price: drug.price || 0, requiresPrescription: requiresPrescription
+        });
         return `
-        <div class="drug-item" onclick='selectDrug(${JSON.stringify({id: drug.id, name: name, genericName: genericName, price: drug.price || 0})})'>
-            <div class="font-medium">${name}</div>
+        <div class="drug-item" onclick='selectDrug(${payload})'>
+            <div class="font-medium">${name}${rxFlag}</div>
             ${genericName ? `<div class="generic-name">${genericName}</div>` : ''}
             <div class="text-sm text-gray-500">฿${drug.price || 0}</div>
         </div>`;
@@ -306,13 +314,145 @@ function selectDrug(drug) {
     if (selectedDrugs.find(d => d.id === drug.id)) { alert('รายการนี้ถูกเลือกแล้ว'); return; }
     selectedDrugs.push({
         id: drug.id, name: drug.name, genericName: drug.genericName, price: drug.price,
+        requiresPrescription: !!drug.requiresPrescription, // Phase 2C
         isNonDrug: false, indication: '', dosage: '1', unit: 'เม็ด',
         morning: false, noon: false, evening: false, bedtime: false,
-        instructions: '', warning: '', quantity: 1
+        instructions: '', warning: '', quantity: 1,
+        // Phase 2B: batch tracking (loaded async after selection)
+        batches: null, batchId: null, batchTrackingDisabled: false
     });
     document.getElementById('drugSearch').value = '';
     document.getElementById('searchResults').classList.remove('show');
     renderSelectedDrugs();
+    loadBatchesForDrug(drug.id);
+    // Phase 2C: lazy-load Rx pool the first time an Rx-flagged drug is added.
+    if (drug.requiresPrescription) { loadPendingRxOnce(); }
+}
+
+// ── Phase 2C: prescription approvals ────────────────────────────────────
+let pendingRx = null;          // null = not yet loaded; [] = loaded empty
+let selectedRxApprovalId = null;
+let rxLoadInflight = false;
+
+function loadPendingRxOnce() {
+    if (pendingRx !== null || rxLoadInflight) return;
+    rxLoadInflight = true;
+    fetch('api/pharmacist.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_pending_rx', user_id: userId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        pendingRx = data.success ? (data.approvals || []) : [];
+        rxLoadInflight = false;
+        renderSelectedDrugs();
+    })
+    .catch(() => { pendingRx = []; rxLoadInflight = false; renderSelectedDrugs(); });
+}
+
+function selectRxApproval(approvalId) {
+    selectedRxApprovalId = approvalId ? parseInt(approvalId, 10) : null;
+}
+
+function rxPickerHtml() {
+    const anyRx = selectedDrugs.some(d => d.requiresPrescription && !d.isNonDrug);
+    if (!anyRx) return '';
+    if (pendingRx === null) {
+        return `<div class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mt-3 text-sm">กำลังโหลดใบสั่งยา...</div>`;
+    }
+    if (pendingRx.length === 0) {
+        return `
+        <div class="bg-red-50 border border-red-300 rounded-lg p-3 mt-3 text-sm">
+            <div class="font-semibold text-red-700">⚠️ ไม่พบใบสั่งยาที่อนุมัติแล้วสำหรับลูกค้านี้</div>
+            <div class="text-red-600 mt-1">รายการที่เลือกมียาที่ต้องสั่งโดยแพทย์ ต้องมีการอนุมัติใบสั่งยาก่อนจ่าย</div>
+        </div>`;
+    }
+    const options = pendingRx.map(rx => {
+        const sel = rx.id === selectedRxApprovalId ? 'selected' : '';
+        const exp = rx.expires_at ? ` — หมดอายุ ${rx.expires_at}` : '';
+        return `<option value="${rx.id}" ${sel}>ใบสั่งยา #${rx.id} (${rx.created_at})${exp}</option>`;
+    }).join('');
+    return `
+        <div class="bg-yellow-50 border border-yellow-300 rounded-lg p-3 mt-3 text-sm">
+            <div class="font-semibold text-yellow-800 mb-2">📋 ต้องแนบใบสั่งยา</div>
+            <select onchange="selectRxApproval(this.value)" class="w-full px-2 py-1.5 border rounded">
+                <option value="">— เลือกใบสั่งยา —</option>
+                ${options}
+            </select>
+        </div>`;
+}
+
+function loadBatchesForDrug(drugId) {
+    fetch('api/pharmacist.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_batches_for_drug', drug_id: drugId })
+    })
+    .then(r => r.json())
+    .then(data => {
+        const idx = selectedDrugs.findIndex(d => d.id === drugId);
+        if (idx === -1) return;
+        if (data.success) {
+            selectedDrugs[idx].batches = data.batches || [];
+            selectedDrugs[idx].batchTrackingDisabled = !!data.tracking_disabled;
+            // Auto-pick the FEFO batch (first one, since API orders by expiry ASC) if any
+            if (selectedDrugs[idx].batches.length > 0) {
+                selectedDrugs[idx].batchId = selectedDrugs[idx].batches[0].id;
+            }
+        } else {
+            selectedDrugs[idx].batches = [];
+            selectedDrugs[idx].batchTrackingDisabled = true;
+        }
+        renderSelectedDrugs();
+    })
+    .catch(() => {
+        const idx = selectedDrugs.findIndex(d => d.id === drugId);
+        if (idx !== -1) {
+            selectedDrugs[idx].batches = [];
+            selectedDrugs[idx].batchTrackingDisabled = true;
+            renderSelectedDrugs();
+        }
+    });
+}
+
+function selectBatch(idx, batchId) {
+    selectedDrugs[idx].batchId = batchId ? parseInt(batchId, 10) : null;
+}
+
+function batchDropdownHtml(drug, idx) {
+    if (drug.batches === null) {
+        return `<div class="text-xs text-gray-400 mt-2">กำลังโหลด batch...</div>`;
+    }
+    if (drug.batchTrackingDisabled || drug.batches.length === 0) {
+        return `<div class="text-xs text-gray-400 mt-2">ไม่มี batch ลงทะเบียน — จะจ่ายโดยไม่ตัดสต๊อก</div>`;
+    }
+    const today = new Date(); today.setHours(0,0,0,0);
+    const options = drug.batches.map(b => {
+        const exp = new Date(b.expiry_date);
+        const days = Math.floor((exp - today) / 86400000);
+        const expWarn = days < 90;
+        const label = `${b.batch_number} — หมดอายุ ${b.expiry_date} (คงเหลือ ${b.quantity_on_hand})`;
+        const sel = b.id === drug.batchId ? 'selected' : '';
+        return `<option value="${b.id}" ${sel} data-warn="${expWarn ? '1' : '0'}">${label}</option>`;
+    }).join('');
+    const selectedBatch = drug.batches.find(b => b.id === drug.batchId);
+    let warnHtml = '';
+    if (selectedBatch) {
+        const exp = new Date(selectedBatch.expiry_date);
+        const days = Math.floor((exp - today) / 86400000);
+        if (days < 90) {
+            warnHtml = `<div class="text-xs text-red-600 mt-1">⚠️ หมดอายุใน ${days} วัน</div>`;
+        }
+    }
+    return `
+        <div class="mt-2">
+            <label class="text-xs text-gray-600">Batch (FEFO)</label>
+            <select onchange="selectBatch(${idx}, this.value)" class="w-full px-2 py-1.5 border rounded text-sm">
+                ${options}
+            </select>
+            ${warnHtml}
+        </div>`;
 }
 
 function renderSelectedDrugs() {
@@ -331,12 +471,16 @@ function renderSelectedDrugs() {
     container.innerHTML = selectedDrugs.map((drug, idx) => {
         total += (parseFloat(drug.price) || 0) * (parseInt(drug.quantity) || 1);
         const isNonDrug = drug.isNonDrug;
-        
+
+        const rxRibbon = drug.requiresPrescription && !isNonDrug
+            ? `<span class="ml-2 px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 text-xs font-semibold">⚕️ ต้องมีใบสั่งยา</span>`
+            : '';
+
         return `
         <div class="selected-drug-card" data-idx="${idx}">
             <div class="flex justify-between items-start mb-3">
                 <div>
-                    <div class="font-bold text-gray-800">${drug.name}</div>
+                    <div class="font-bold text-gray-800">${drug.name}${rxRibbon}</div>
                     ${drug.genericName ? `<div class="generic-name">${drug.genericName}</div>` : ''}
                     <div class="text-gray-500 text-sm">฿${drug.price} x ${drug.quantity} = ฿${(drug.price * drug.quantity).toLocaleString()}</div>
                 </div>
@@ -410,12 +554,22 @@ function renderSelectedDrugs() {
                     <input type="number" min="1" value="${drug.quantity}" onchange="updateDrug(${idx}, 'quantity', this.value)"
                            class="w-full px-2 py-1.5 border rounded mt-1">
                 </div>
+                <div class="md:col-span-2">${batchDropdownHtml(drug, idx)}</div>
             </div>
             `}
         </div>`;
     }).join('');
     
     document.getElementById('totalPrice').textContent = '฿' + total.toLocaleString();
+
+    // Phase 2C: render Rx picker beneath the drugs list when any Rx-flagged drug is present.
+    let rxContainer = document.getElementById('rxPickerContainer');
+    if (!rxContainer) {
+        rxContainer = document.createElement('div');
+        rxContainer.id = 'rxPickerContainer';
+        container.parentElement.appendChild(rxContainer);
+    }
+    rxContainer.innerHTML = rxPickerHtml();
 }
 
 function updateDrug(idx, field, value) { selectedDrugs[idx][field] = value; if (field === 'quantity') renderSelectedDrugs(); }
@@ -438,15 +592,13 @@ function approveAndSend() {
     if (selectedDrugs.length === 0) { alert('กรุณาเลือกรายการอย่างน้อย 1 รายการ'); return; }
     const pharmacistName = document.getElementById('pharmacistName').value;
     if (!pharmacistName) { alert('กรุณากรอกชื่อเภสัชกร'); return; }
-    if (!confirm('ยืนยันอนุมัติและเพิ่มลงตะกร้าลูกค้า?')) return;
-    
+
     const drugsWithDetails = selectedDrugs.map(drug => {
         const timing = [];
         if (drug.morning) timing.push('เช้า');
         if (drug.noon) timing.push('กลางวัน');
         if (drug.evening) timing.push('เย็น');
         if (drug.bedtime) timing.push('ก่อนนอน');
-        
         return {
             id: drug.id, name: drug.name, genericName: drug.genericName || '',
             price: drug.price, quantity: drug.quantity || 1,
@@ -454,10 +606,43 @@ function approveAndSend() {
             indication: drug.indication || '',
             dosage: drug.dosage || '1', unit: drug.unit || 'เม็ด',
             timing: timing.join(', ') || 'ตามอาการ',
-            instructions: drug.instructions || '', warning: drug.warning || ''
+            instructions: drug.instructions || '', warning: drug.warning || '',
+            batch_id: drug.batchId || null
         };
     });
-    
+
+    // Phase 2A: pre-flight safety check before approval.
+    fetch('api/pharmacist.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'check_interactions', user_id: userId, drugs: drugsWithDetails })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('ไม่สามารถตรวจสอบยาตีกันได้: ' + (data.error || 'Unknown') + '\nกรุณาลองใหม่');
+            return;
+        }
+        const findings = collectFindings(data.report || {});
+        if (findings.length === 0) {
+            if (!confirm('ยืนยันอนุมัติและเพิ่มลงตะกร้าลูกค้า?')) return;
+            submitApprove(drugsWithDetails, pharmacistName, []);
+            return;
+        }
+        showInteractionModal(findings, (acknowledgedKeys) => {
+            submitApprove(drugsWithDetails, pharmacistName, acknowledgedKeys);
+        });
+    })
+    .catch(e => { alert('เกิดข้อผิดพลาด: ' + e.message); });
+}
+
+function submitApprove(drugsWithDetails, pharmacistName, acknowledgedInteractions) {
+    // Phase 2C client-side pre-check: if any Rx drug is selected, require an attached approval.
+    const anyRx = selectedDrugs.some(d => d.requiresPrescription && !d.isNonDrug);
+    if (anyRx && !selectedRxApprovalId) {
+        alert('โปรดเลือกใบสั่งยาที่อนุมัติแล้วก่อนจ่ายยา');
+        return;
+    }
     fetch('api/pharmacist.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -468,19 +653,138 @@ function approveAndSend() {
             note: document.getElementById('pharmacistNote').value,
             pharmacist_name: pharmacistName,
             pharmacist_license: document.getElementById('pharmacistLicense').value,
-            add_to_cart: true
+            add_to_cart: true,
+            acknowledged_interactions: acknowledgedInteractions,
+            prescription_approval_id: selectedRxApprovalId
         })
     })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
+    .then(r => r.json().then(j => ({ status: r.status, body: j })))
+    .then(({ status, body }) => {
+        if (body.success) {
             alert('อนุมัติเรียบร้อย สินค้าถูกเพิ่มลงตะกร้าลูกค้าแล้ว');
             window.location.href = 'pharmacy.php?tab=dashboard';
+        } else if (status === 422 && body.error === 'interaction_ack_required') {
+            // Server-side caught a finding the client missed — re-open modal with server's findings.
+            const findings = collectFindings(body.report || {});
+            showInteractionModal(findings, (acknowledgedKeys) => {
+                submitApprove(drugsWithDetails, pharmacistName, acknowledgedKeys);
+            });
         } else {
-            alert('เกิดข้อผิดพลาด: ' + (data.error || 'Unknown'));
+            alert('เกิดข้อผิดพลาด: ' + (body.error || body.message || 'Unknown'));
         }
     })
     .catch(e => { alert('เกิดข้อผิดพลาด: ' + e.message); });
+}
+
+function collectFindings(report) {
+    const findings = [];
+    (report.interactions || []).forEach(i => {
+        findings.push({
+            kind: 'interaction',
+            severity: i.severity || 'moderate',
+            drug1: i.drug1 || '', drug2: i.drug2 || '',
+            effect: i.effect || i.description || '',
+            recommendation: i.recommendation || '',
+            key: ((i.drug1 || '') + '|' + (i.drug2 || '')).toLowerCase()
+        });
+    });
+    (report.allergies || []).forEach(a => {
+        findings.push({
+            kind: 'allergy',
+            severity: a.severity || 'severe',
+            drug1: a.drug || '', drug2: 'แพ้ ' + (a.allergy || ''),
+            effect: a.message || '',
+            recommendation: '',
+            key: ((a.drug || '') + '|allergy|' + (a.allergy || '')).toLowerCase()
+        });
+    });
+    (report.contraindications || []).forEach(c => {
+        findings.push({
+            kind: 'contraindication',
+            severity: c.severity || 'warning',
+            drug1: c.drug || '', drug2: c.condition || '',
+            effect: c.reason || '',
+            recommendation: '',
+            key: ((c.drug || '') + '|contra|' + (c.condition || '')).toLowerCase()
+        });
+    });
+    return findings;
+}
+
+function severityBadge(sev) {
+    const map = {
+        contraindicated: { c: 'bg-red-600 text-white',    label: 'ห้ามใช้' },
+        severe:          { c: 'bg-red-500 text-white',    label: 'รุนแรง' },
+        moderate:        { c: 'bg-yellow-500 text-white', label: 'ปานกลาง' },
+        mild:            { c: 'bg-blue-500 text-white',   label: 'เล็กน้อย' },
+        warning:         { c: 'bg-orange-500 text-white', label: 'ระวัง' }
+    };
+    const m = map[sev] || map.moderate;
+    return `<span class="px-2 py-0.5 rounded-full text-xs font-medium ${m.c}">${m.label}</span>`;
+}
+
+function showInteractionModal(findings, onConfirm) {
+    const modalId = 'interactionModal_' + Date.now();
+    const blocking = findings.filter(f => ['severe', 'contraindicated'].includes(f.severity));
+    const advisory = findings.filter(f => !['severe', 'contraindicated'].includes(f.severity));
+
+    const rowHtml = (f) => `
+        <div class="border rounded-lg p-3 mb-2" data-key="${f.key}">
+            <div class="flex items-start justify-between gap-2">
+                <div class="flex-1">
+                    <div class="font-semibold text-gray-800">${f.drug1} ⇄ ${f.drug2}</div>
+                    <div class="text-sm text-gray-600 mt-1">${f.effect || ''}</div>
+                    ${f.recommendation ? `<div class="text-xs text-gray-500 mt-1">คำแนะนำ: ${f.recommendation}</div>` : ''}
+                </div>
+                ${severityBadge(f.severity)}
+            </div>
+            <label class="flex items-center gap-2 mt-2 text-sm">
+                <input type="checkbox" class="ack-cb rounded" data-key="${f.key}">
+                <span>ฉันรับทราบและยืนยันการจ่ายยา</span>
+            </label>
+        </div>`;
+
+    const html = `
+        <div id="${modalId}" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+            <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] flex flex-col">
+                <div class="p-5 border-b">
+                    <h3 class="text-lg font-bold text-red-600">⚠️ พบปัญหาความปลอดภัย</h3>
+                    <p class="text-sm text-gray-600 mt-1">โปรดทบทวนทุกรายการก่อนจ่ายยา</p>
+                </div>
+                <div class="flex-1 overflow-y-auto p-5">
+                    ${blocking.length > 0 ? `<div class="mb-4"><h4 class="font-semibold text-red-700 mb-2">ต้องรับทราบเพื่อจ่ายต่อ (${blocking.length})</h4>${blocking.map(rowHtml).join('')}</div>` : ''}
+                    ${advisory.length > 0 ? `<div><h4 class="font-semibold text-yellow-700 mb-2">ข้อมูลเพื่อทราบ (${advisory.length})</h4>${advisory.map(rowHtml).join('')}</div>` : ''}
+                </div>
+                <div class="p-5 border-t flex gap-3 justify-end">
+                    <button id="${modalId}_cancel" class="px-4 py-2 rounded bg-gray-100 text-gray-700 hover:bg-gray-200">ยกเลิก</button>
+                    <button id="${modalId}_confirm" class="px-4 py-2 rounded bg-teal-600 text-white hover:bg-teal-700 disabled:bg-gray-300" disabled>ยืนยันและจ่ายยา</button>
+                </div>
+            </div>
+        </div>`;
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    document.body.appendChild(wrapper);
+
+    const modal = document.getElementById(modalId);
+    const confirmBtn = document.getElementById(modalId + '_confirm');
+    const cancelBtn = document.getElementById(modalId + '_cancel');
+
+    function recompute() {
+        const required = blocking.map(f => f.key);
+        const ticked = Array.from(modal.querySelectorAll('.ack-cb:checked')).map(cb => cb.dataset.key);
+        const allRequiredAcked = required.every(k => ticked.includes(k));
+        confirmBtn.disabled = !allRequiredAcked;
+    }
+    modal.querySelectorAll('.ack-cb').forEach(cb => cb.addEventListener('change', recompute));
+    recompute();
+
+    cancelBtn.addEventListener('click', () => { wrapper.remove(); });
+    confirmBtn.addEventListener('click', () => {
+        const ticked = Array.from(modal.querySelectorAll('.ack-cb:checked')).map(cb => cb.dataset.key);
+        wrapper.remove();
+        onConfirm(ticked);
+    });
 }
 
 function rejectCase() {
