@@ -1,486 +1,729 @@
-# Chat Monitoring System — Spec
+# Chat Monitoring System — Standalone Project Spec
 
 **เริ่มงาน:** 2026-05-02
-**Branch:** `claude/chat-monitoring-system-cRHsb`
-**Author:** chat-ops / inbox quality
-**Goal:** ตรวจ + แจ้งเตือน chat LINE ที่ยังไม่ได้รับการตอบ และ chat ที่มีแนวโน้มเป็นปัญหา พร้อม report SLA / complaint
-**Constraint (สำคัญที่สุด):** ระบบเก็บได้เฉพาะ **ฝั่งขาเข้า (incoming)** จากลูกค้า — ไม่สามารถยึดเวลา outgoing เป็น ground truth ของการตอบกลับได้
+**Stack:** **PHP 8.1+** (standalone), MySQL 8 / MariaDB 10.6+, jQuery + Chart.js (light theme)
+**Branch ของสเปค:** `claude/chat-monitoring-system-cRHsb` (ใน repo `odoo`)
+**Repo เป้าหมายของโปรเจคจริง:** **แยก repo ใหม่** — ชื่อตัวอย่าง `chat-sla-monitor`
+**Constraint:** เก็บข้อมูลได้เฉพาะ **inbound** (ฝั่งที่ลูกค้าทักเข้ามา)
+
+> **หมายเหตุสำคัญ:** โปรเจคนี้ **ไม่ใช้ table / service / webhook ของระบบเดิม** ใน `cny.re-ya.com` — แต่ **ยืม pattern การออกแบบ** (ชั้น service, multi-tenant scoping, safety flags, light-theme dashboard, sentiment regex, BusinessHoursCalculator) เพื่อความ consistent กับวิธีทำงานของทีม
 
 ---
 
-## 1. โจทย์ (Requirements)
+## 1. ทำไมต้องแยก
 
-| # | Requirement | Source signal |
-|---|---|---|
-| R1 | ตรวจและแจ้งว่า "LINE ไหนยังไม่ได้รับการ respond" | inbound timestamp + read-receipt absent > threshold |
-| R2 | ตรวจและแจ้ง "chat ทำท่าจะมีปัญหา ต้องเฝ้าระวัง" | InboxSentinel sentiment (red / orange / yellow_urgent) บน inbound |
-| R3 | Report — `respond_time` (median / p95 / avg) | `messages.is_read_on_line` flip time − inbound `created_at` |
-| R4 | Report — สรุปจำนวน chat ทั้งหมด (ราย OA / ราย day / ราย agent) | `messages` aggregate |
-| R5 | Report — `% chat ตอบช้าเกิน N นาที` | configurable `chat_monitor_settings.slow_threshold_minutes` |
-| R6 | Report — จำนวน complaint | InboxSentinel red count |
-| R7 | Report อื่นๆ ที่แนะนำ | ดูข้อ §7 |
+| เหตุผล | ผลที่ได้ |
+|---|---|
+| ระบบเดิมใหญ่ (104 admin pages, 60 APIs) — แตะ webhook.php มี risk | โปรเจคใหม่ deploy/rollback ได้อิสระ |
+| Customer ต่างคนต่างต้องการ monitor หลายเจ้า | multi-tenant ตั้งแต่ day-1 — ไม่ผูก `cny.re-ya.com` |
+| ปลอดภัยจาก migration / schema lock ของระบบเดิม | DB คนละก้อน, downtime ไม่กระทบกัน |
+| ทดสอบ + ขายเป็น product แยกได้ | repo, billing, support แยกกัน |
 
----
-
-## 2. ข้อจำกัด — "Inbound-only" และวิธีอนุมาน "ตอบแล้ว"
-
-โจทย์บอกว่า **เก็บได้แค่ขาเข้า** เพราะ staff หลายคนตอบผ่าน **LINE Official Account Manager** หรือ **LINE Chat app** โดยตรง — ข้อความขาออกอาจไม่ผ่าน webhook ของเรา ดังนั้น `messages.direction='outgoing'` row อาจไม่มาเลย
-
-### Signal ที่เชื่อถือได้ (มีอยู่แล้วในระบบ)
-
-| Signal | Source | ตีความ |
-|---|---|---|
-| `messages.is_read_on_line = 1` | ตั้งโดย [`api/inbox-v2.php`](../../api/inbox-v2.php) เมื่อ admin เปิดอ่านใน inbox-v2 หรือเรียก LINE Mark-as-Read API ([`LineAPI::markAsRead`](../../classes/LineAPI.php)) | "staff เห็นข้อความแล้ว" — ใช้เป็น **proxy ของ first response** |
-| `messages.mark_as_read_token` | webhook `event.message.markAsReadToken` ([`webhook.php:793`](../../webhook.php)) | token ที่ใช้เรียก LINE API เพื่อ mark read |
-| ข้อความ inbound ถัดไปจาก user เดียวกัน | `messages` direction='incoming' | conversation ดำเนินต่อ → เคสปิดโดยพฤตินัย (fallback) |
-| Admin ack ปุ่ม "ทำเครื่องหมายว่าตอบแล้ว" (ใหม่) | UI action → `chat_monitor_acks` (ตารางใหม่) | manual override โดย staff |
-
-### Definition of "responded"
-
-```
-respond_at = COALESCE(
-    เวลาที่ flip is_read_on_line=1 ครั้งแรกหลัง inbound,
-    เวลาที่ admin กด ack manual,
-    เวลาที่ outgoing message ถูกบันทึก (ถ้ามี),
-    เวลาที่ inbound ใหม่ของ user เดียวกันมาถึง  -- soft fallback, มี flag
-)
-```
-
-ใช้ลำดับนี้เป็น strict precedence; ค่า `respond_source` ('read_receipt' / 'manual_ack' / 'outgoing' / 'next_inbound') จะถูกบันทึกเพื่อ audit ความแม่นยำของ KPI
-
-> **ข้อควรระวัง:** `is_read_on_line` เปลี่ยนเป็น 1 เฉพาะเมื่อมีคน **เปิดอ่านในระบบเรา** หรือเรียก LINE API ตามนั้น ถ้า staff ตอบผ่าน LINE Chat ตรงๆ โดยไม่เปิด inbox-v2 → flag ไม่เปลี่ยน → จะถูก count เป็น "ยังไม่ตอบ" จริงๆ ทั้งที่อาจตอบไปแล้ว
->
-> **Mitigation:** ดู §11 — ใช้ LINE Insight API หรือ "next-inbound after long gap" เป็น sanity check เสริม
+> **ระบบเดิมไม่ต้องแก้แม้แต่บรรทัดเดียว** ใน `webhook.php` หรือ `inbox-v2.php` ของ `cny.re-ya.com`
 
 ---
 
-## 3. Architecture (re-use existing layers)
+## 2. โจทย์ (Requirements) — ย้ำ
 
-```
-LINE Webhook  ────────►  webhook.php (existing)
-                            │
-                            ├─► messages (existing) — incoming + markAsReadToken
-                            ├─► InboxSentinel::classify (existing) — bulk-classify on insert
-                            └─► chat_monitor_pending (NEW) — open-conversation tracker
-
-CRON (every 5 min) ─────►  cron/chat_monitor_scan.php (NEW)
-                            ├─► reads messages + chat_monitor_pending
-                            ├─► flags overdue: now - inbound_at > slow_threshold AND is_read_on_line=0
-                            └─► dispatches via NotificationRouter (Telegram primary, LINE secondary)
-
-CRON (every 15 min existing) ─► cron/inbox-response-time-collector.php (extend)
-                            └─► writes message_analytics.response_time_seconds (existing, business-hours adjusted)
-
-CRON (nightly 00:30) ───►  cron/chat_monitor_aggregate.php (NEW)
-                            └─► writes chat_monitor_daily_kpi (NEW) — pre-aggregated for dashboard
-
-Dashboard ─────────────►  chat-monitor.php (NEW) — admin page
-                            ├─► KPI strip + slow-response watchlist
-                            ├─► sentiment watchlist (P0/P1/P2)
-                            ├─► drill-down → existing inbox-v2.php?user_id=X
-                            └─► reads via api/chat-monitor-data.php (NEW)
-
-Settings ──────────────►  chat-monitor-settings.php (NEW, super_admin only)
-                            └─► thresholds + recipients (writes chat_monitor_settings)
-```
-
-### Layer mapping (reuse table)
-
-| Concern | Reuse | New |
-|---|---|---|
-| Storage of inbound messages | `messages` ✅ | — |
-| Sentiment classification | `Classes\CRM\InboxSentinel` ✅ | — |
-| Response time calc (business hours) | `cron/inbox-response-time-collector.php` ✅ extend | — |
-| Multi-account scoping | `line_accounts.id` everywhere ✅ | — |
-| Singleton DB | `Database::getInstance()` ✅ | — |
-| Notifications | `Classes\NotificationRouter` ✅ (Telegram + LINE) | — |
-| Open-chat tracker | — | `chat_monitor_pending` |
-| Daily KPI rollup | — | `chat_monitor_daily_kpi` |
-| Settings (thresholds, recipients) | — | `chat_monitor_settings` |
-| Manual ack audit | — | `chat_monitor_acks` |
-| Alert dedup | — | `chat_monitor_alerts_sent` |
+| # | Requirement |
+|---|---|
+| R1 | ตรวจ + แจ้งเตือนว่า LINE chat ไหน "ยังไม่ได้รับการ respond" |
+| R2 | ตรวจ + แจ้งว่า chat ไหน "ทำท่าจะมีปัญหา" ต้องเฝ้าระวัง |
+| R3 | Report — `respond time` (median / p95 / avg) |
+| R4 | Report — สรุปจำนวน chat ทั้งหมด |
+| R5 | Report — % chat ตอบช้าเกิน N นาที (config ได้) |
+| R6 | Report — จำนวน complaint |
+| R7 | Report เสริมตามคำแนะนำ |
+| C1 | **Constraint:** เก็บได้แค่ inbound — ต้องอนุมาน "ตอบแล้ว" จาก signal ทางอ้อม |
 
 ---
 
-## 4. Database Schema (migration `database/migration_chat_monitor.sql`)
+## 3. Inbound-only — นิยาม "ตอบแล้ว"
+
+โปรเจคใหม่รับ webhook ของ LINE ตรง (ไม่ผ่าน webhook.php เดิม) แต่ก็ยัง **ไม่มี outgoing event** เพราะ:
+- staff ส่วนใหญ่ตอบผ่าน **LINE Official Account Manager** หรือ **LINE Chat app** → outgoing ไม่ผ่าน webhook ของใคร
+- API ของ LINE **ไม่เปิด** ให้ดึง outgoing history ย้อนหลัง
+
+### Signal ที่ใช้แทน "ตอบแล้ว" (priority chain)
+
+| Priority | Signal | วิธีได้ | Source ใน LINE |
+|---|---|---|---|
+| 1 | LINE Mark-as-Read API | ระบบเรียก `markAsRead` เมื่อ admin เปิดอ่านใน dashboard | webhook ส่ง `event.message.markAsReadToken` มากับทุก message event ([LINE doc](https://developers.line.biz/en/reference/messaging-api/#message-event)) |
+| 2 | Manual ack ใน UI | ปุ่ม "ทำเครื่องหมายว่าตอบแล้ว" ใน watchlist | DB row ใน `acks` |
+| 3 | Outgoing ที่ผ่าน Push API ของระบบ (ถ้ามี) | optional — ถ้าลูกค้าใช้ระบบเรา push reply ด้วย | webhook ของเราเอง |
+| 4 | Inbound ใหม่ของ user เดียวกันหลังเงียบไป N นาที | soft fallback | timestamp diff |
+
+ทุก row บันทึก `respond_source` (`read_receipt` / `manual_ack` / `our_push` / `next_inbound_stale`) เพื่อ audit ความน่าเชื่อถือของ KPI
+
+> **คำเตือน UI:** dashboard ต้องแสดง disclaimer ชัดเจน — "ระบบนี้นับ respond จากเวลาที่ admin เปิดอ่านใน dashboard นี้ หรือกดปุ่ม Mark as Read; การตอบผ่าน LINE Chat โดยตรงจะไม่ถูกนับ"
+
+---
+
+## 4. Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  LINE Platform (ของลูกค้า — แต่ละ tenant 1+ OA)                 │
+│      │                                                           │
+│      │  webhook (HTTPS, HMAC signed)                             │
+│      ▼                                                           │
+│  POST /webhook/line?tenant_id={id}                               │
+└──────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────────────┐
+│  chat-sla-monitor (PHP 8.1)                                      │
+│                                                                  │
+│  public/                                                         │
+│    webhook/line.php       ← ingest inbound, store, classify,    │
+│                             upsert pending tracker               │
+│    api/*.php              ← dashboard JSON (KPI, watchlist)     │
+│    *.php                  ← admin pages (login, dashboard,      │
+│                             tenants, settings, reports)          │
+│                                                                  │
+│  classes/  (PSR-4 \App\)                                         │
+│    Core/{Database,Config,Auth,Router}.php                        │
+│    Ingest/LineWebhookController.php                              │
+│    Ingest/MessageStore.php                                       │
+│    Sla/PendingTracker.php                                        │
+│    Sla/OverdueScanner.php                                        │
+│    Sla/BusinessHoursCalculator.php                               │
+│    Sentiment/InboxSentinel.php  (ported regex)                   │
+│    Reports/KpiAggregator.php                                     │
+│    Notify/NotificationRouter.php                                 │
+│    Notify/TelegramChannel.php                                    │
+│    Notify/LineChannel.php          ← push API ใช้ token tenant  │
+│                                                                  │
+│  cron/                                                           │
+│    scan_overdue.php       (every 5 min)                          │
+│    aggregate_kpi.php      (nightly 00:30)                        │
+│    cleanup.php            (weekly Sun 03:00)                     │
+│    poll_read_state.php    (every 10 min, optional)               │
+│                                                                  │
+│  database/migrations/*.sql                                       │
+│  composer.json | tests/ (PHPUnit)                                │
+└──────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+                  ┌──────────┐
+                  │  MySQL   │
+                  └──────────┘
+```
+
+### Pattern ที่ "ยืม" จากทีม (ไม่ใช่ import code)
+
+| Pattern จาก `cny.re-ya.com` | นำมาใช้ใน chat-sla-monitor |
+|---|---|
+| Singleton DB (`Database::getInstance()->getConnection()`) | `App\Core\Database::pdo()` |
+| Multi-account scoping (`line_account_id`) | `tenant_id` + `oa_id` (composite) |
+| Settings single-row + `system_enabled` + `soft_launch` flags | `monitor_settings` แบบเดียวกัน |
+| InboxSentinel regex (red/orange/yellow/yellow_urgent/green) | port code ตรง — ระบุ origin commit ใน docblock |
+| BusinessHoursCalculator (skip 18:00–08:00 + Sunday) | implementation ใหม่ตาม logic เดิม |
+| Light-theme admin dashboard + tab nav | reuse layout pattern (Bootstrap 5 + jQuery) |
+| Cron schedule: scanner (5m) + aggregator (nightly) | identical pattern |
+| Conventional Commits | `feat(sla):`, `fix(sentiment):` |
+| Property-based tests (`tests/`) | PHPUnit + same approach |
+
+---
+
+## 5. Multi-Tenant Model
+
+โปรเจคใหม่ถูกออกแบบเป็น **SaaS-ready** — รองรับลูกค้าหลายเจ้าตั้งแต่แรก
+
+```
+tenant (บริษัทลูกค้า)              ── 1 : N ──> oa_account (LINE OA)
+    │                                                  │
+    │                                                  ├─ 1 : N ──> chat_user (LINE userId)
+    │                                                  │                  │
+    └─ 1 : N ──> admin_user (login)                    └─ 1 : N ──> message_inbound
+                                                                          │
+                                                                          └─ 1 : 1 ──> sla_tracking
+```
+
+**Tenant isolation:** ทุก query MUST scope `WHERE tenant_id = ?`; ไม่มี global table ที่ไม่ scope
+
+---
+
+## 6. Database Schema (`database/migrations/001_initial.sql`)
 
 ```sql
--- 4.1 Settings (single-row config, ตามแบบ churn_settings)
-CREATE TABLE IF NOT EXISTS `chat_monitor_settings` (
-  `id` TINYINT UNSIGNED NOT NULL DEFAULT 1,
-  `system_enabled` TINYINT(1) NOT NULL DEFAULT 0  COMMENT 'master switch',
-  `soft_launch` TINYINT(1) NOT NULL DEFAULT 1     COMMENT 'shadow mode — log แต่ไม่แจ้งเตือน',
-  `slow_threshold_minutes` SMALLINT UNSIGNED NOT NULL DEFAULT 15,
-  `critical_threshold_minutes` SMALLINT UNSIGNED NOT NULL DEFAULT 60,
-  `business_hours_start` TINYINT UNSIGNED NOT NULL DEFAULT 8,
-  `business_hours_end` TINYINT UNSIGNED NOT NULL DEFAULT 18,
-  `business_days` VARCHAR(20) NOT NULL DEFAULT 'mon,tue,wed,thu,fri,sat',
-  `notification_recipients` JSON NOT NULL COMMENT '[{channel:telegram|line, target_id, role}]',
-  `alert_cooldown_minutes` SMALLINT UNSIGNED NOT NULL DEFAULT 30,
-  `sentiment_alert_enabled` TINYINT(1) NOT NULL DEFAULT 1,
-  `slow_alert_enabled` TINYINT(1) NOT NULL DEFAULT 1,
+-- ============================================================
+-- 6.1 Tenants & OA accounts
+-- ============================================================
+CREATE TABLE `tenants` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(120) NOT NULL,
+  `status` ENUM('active','suspended','trial') NOT NULL DEFAULT 'trial',
+  `timezone` VARCHAR(40) NOT NULL DEFAULT 'Asia/Bangkok',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  CONSTRAINT `chk_singleton_row` CHECK (`id` = 1)
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT IGNORE INTO `chat_monitor_settings` (id, notification_recipients)
-VALUES (1, JSON_ARRAY());
+CREATE TABLE `oa_accounts` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `display_name` VARCHAR(120) NOT NULL,
+  `channel_id` VARCHAR(40) NOT NULL,
+  `channel_secret` VARCHAR(80) NOT NULL  COMMENT 'encrypted at rest (AES-256-GCM)',
+  `channel_access_token` TEXT NOT NULL    COMMENT 'encrypted at rest',
+  `webhook_secret_path` VARCHAR(40) NOT NULL UNIQUE COMMENT 'opaque path token; webhook URL = /webhook/line/{token}',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant_active` (`tenant_id`, `is_active`),
+  CONSTRAINT `fk_oa_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4.2 Open-conversation tracker (one row per "user has unread inbound")
-CREATE TABLE IF NOT EXISTS `chat_monitor_pending` (
-  `user_id` INT NOT NULL,
-  `line_account_id` INT NOT NULL,
-  `first_inbound_message_id` INT NOT NULL,
+-- ============================================================
+-- 6.2 LINE users (chat partners)
+-- ============================================================
+CREATE TABLE `chat_users` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `oa_id` INT UNSIGNED NOT NULL,
+  `line_user_id` VARCHAR(64) NOT NULL  COMMENT 'LINE userId (Uxxxxx)',
+  `display_name` VARCHAR(120) DEFAULT NULL,
+  `picture_url` VARCHAR(500) DEFAULT NULL,
+  `first_seen_at` DATETIME NOT NULL,
+  `last_inbound_at` DATETIME NOT NULL,
+  `total_inbound_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `total_complaint_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_user_oa` (`oa_id`, `line_user_id`),
+  KEY `idx_tenant_last` (`tenant_id`, `last_inbound_at`),
+  CONSTRAINT `fk_user_oa` FOREIGN KEY (`oa_id`) REFERENCES `oa_accounts` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 6.3 Inbound messages — main ingestion table
+-- ============================================================
+CREATE TABLE `messages_inbound` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `oa_id` INT UNSIGNED NOT NULL,
+  `chat_user_id` BIGINT UNSIGNED NOT NULL,
+  `line_message_id` VARCHAR(40) NOT NULL,
+  `message_type` ENUM('text','image','sticker','video','audio','file','location','other') NOT NULL,
+  `content_text` TEXT DEFAULT NULL,
+  `content_meta` JSON DEFAULT NULL  COMMENT 'sticker_id, file_url, etc.',
+  `mark_as_read_token` VARCHAR(255) DEFAULT NULL,
+  `received_at` DATETIME(3) NOT NULL  COMMENT 'event.timestamp from LINE',
+  `ingested_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `sentiment` ENUM('red','orange','yellow_urgent','yellow','green','neutral') DEFAULT 'neutral',
+  `sentiment_matched_term` VARCHAR(80) DEFAULT NULL,
+  `read_at` DATETIME DEFAULT NULL  COMMENT 'when LINE Mark-as-Read returned 200',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_line_msg` (`oa_id`, `line_message_id`)  COMMENT 'webhook idempotency',
+  KEY `idx_user_received` (`chat_user_id`, `received_at` DESC),
+  KEY `idx_oa_received` (`oa_id`, `received_at` DESC),
+  KEY `idx_tenant_received` (`tenant_id`, `received_at` DESC),
+  KEY `idx_sentiment_received` (`sentiment`, `received_at` DESC),
+  CONSTRAINT `fk_msg_user` FOREIGN KEY (`chat_user_id`) REFERENCES `chat_users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 6.4 SLA pending tracker — one row per "user has unresponded inbound"
+-- ============================================================
+CREATE TABLE `sla_pending` (
+  `chat_user_id` BIGINT UNSIGNED NOT NULL,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `oa_id` INT UNSIGNED NOT NULL,
   `first_inbound_at` DATETIME NOT NULL,
+  `first_inbound_msg_id` BIGINT UNSIGNED NOT NULL,
   `latest_inbound_at` DATETIME NOT NULL,
   `inbound_count` INT UNSIGNED NOT NULL DEFAULT 1,
-  `worst_sentiment` ENUM('red','orange','yellow_urgent','yellow','green') DEFAULT NULL,
+  `worst_sentiment` ENUM('red','orange','yellow_urgent','yellow','green','neutral') NOT NULL DEFAULT 'neutral',
+  `business_seconds_waited` INT UNSIGNED NOT NULL DEFAULT 0  COMMENT 'recomputed by scanner',
   `is_overdue_slow` TINYINT(1) NOT NULL DEFAULT 0,
   `is_overdue_critical` TINYINT(1) NOT NULL DEFAULT 0,
   `last_alert_at` DATETIME DEFAULT NULL,
   `closed_at` DATETIME DEFAULT NULL,
-  `closed_via` ENUM('read_receipt','manual_ack','outgoing','next_inbound_stale','expired') DEFAULT NULL,
-  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`user_id`, `line_account_id`),
+  `closed_via` ENUM('read_receipt','manual_ack','our_push','next_inbound_stale','expired') DEFAULT NULL,
+  `respond_seconds_business` INT UNSIGNED DEFAULT NULL  COMMENT 'set on close',
+  PRIMARY KEY (`chat_user_id`),
   KEY `idx_open_overdue` (`closed_at`, `is_overdue_slow`, `first_inbound_at`),
-  KEY `idx_account_open` (`line_account_id`, `closed_at`, `first_inbound_at`),
-  KEY `idx_sentiment` (`worst_sentiment`, `closed_at`)
+  KEY `idx_tenant_open` (`tenant_id`, `closed_at`, `first_inbound_at`),
+  KEY `idx_sentiment_open` (`worst_sentiment`, `closed_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4.3 Manual ack audit
-CREATE TABLE IF NOT EXISTS `chat_monitor_acks` (
-  `id` INT NOT NULL AUTO_INCREMENT,
-  `user_id` INT NOT NULL,
-  `line_account_id` INT NOT NULL,
-  `acked_by` INT NOT NULL COMMENT 'admin user id',
+-- ============================================================
+-- 6.5 Manual acks (audit)
+-- ============================================================
+CREATE TABLE `acks` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `chat_user_id` BIGINT UNSIGNED NOT NULL,
+  `acked_by_admin_id` INT UNSIGNED NOT NULL,
   `acked_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `inbound_message_id` INT DEFAULT NULL,
   `note` VARCHAR(500) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_user_time` (`user_id`, `acked_at`),
-  KEY `idx_admin_time` (`acked_by`, `acked_at`)
+  KEY `idx_tenant_time` (`tenant_id`, `acked_at`),
+  KEY `idx_user` (`chat_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4.4 Alert dedup
-CREATE TABLE IF NOT EXISTS `chat_monitor_alerts_sent` (
-  `id` INT NOT NULL AUTO_INCREMENT,
-  `user_id` INT NOT NULL,
-  `line_account_id` INT NOT NULL,
+-- ============================================================
+-- 6.6 Alerts dispatched (dedup)
+-- ============================================================
+CREATE TABLE `alerts_sent` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `chat_user_id` BIGINT UNSIGNED NOT NULL,
   `alert_type` ENUM('slow','critical','sentiment_red','sentiment_orange','sentiment_urgent') NOT NULL,
-  `channel` ENUM('telegram','line','email') NOT NULL,
+  `channel` ENUM('telegram','line_push','email','webhook') NOT NULL,
   `recipient_target` VARCHAR(255) NOT NULL,
   `sent_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `success` TINYINT(1) NOT NULL DEFAULT 1,
   `error_message` VARCHAR(500) DEFAULT NULL,
   PRIMARY KEY (`id`),
-  KEY `idx_dedup` (`user_id`, `alert_type`, `sent_at`),
-  KEY `idx_account_time` (`line_account_id`, `sent_at`)
+  KEY `idx_dedup` (`chat_user_id`, `alert_type`, `sent_at`),
+  KEY `idx_tenant_time` (`tenant_id`, `sent_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 4.5 Daily KPI rollup
-CREATE TABLE IF NOT EXISTS `chat_monitor_daily_kpi` (
+-- ============================================================
+-- 6.7 Daily KPI rollup (per tenant + per OA)
+-- ============================================================
+CREATE TABLE `kpi_daily` (
   `kpi_date` DATE NOT NULL,
-  `line_account_id` INT NOT NULL,
-  `total_chats` INT UNSIGNED NOT NULL DEFAULT 0       COMMENT 'distinct user_id with ≥1 inbound',
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `oa_id` INT UNSIGNED NOT NULL,
+  `total_chats` INT UNSIGNED NOT NULL DEFAULT 0,
   `total_inbound_messages` INT UNSIGNED NOT NULL DEFAULT 0,
-  `responded_count` INT UNSIGNED NOT NULL DEFAULT 0   COMMENT 'chats with respond_at within day',
-  `slow_count` INT UNSIGNED NOT NULL DEFAULT 0        COMMENT 'response > slow_threshold',
+  `responded_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `slow_count` INT UNSIGNED NOT NULL DEFAULT 0,
   `critical_count` INT UNSIGNED NOT NULL DEFAULT 0,
-  `unanswered_eod_count` INT UNSIGNED NOT NULL DEFAULT 0  COMMENT 'still open at end of day',
-  `complaint_count` INT UNSIGNED NOT NULL DEFAULT 0   COMMENT 'sentiment=red',
-  `dissatisfied_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'sentiment=orange',
-  `urgent_followup_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT 'sentiment=yellow_urgent',
-  `respond_time_p50_seconds` INT UNSIGNED DEFAULT NULL,
-  `respond_time_p95_seconds` INT UNSIGNED DEFAULT NULL,
-  `respond_time_avg_seconds` INT UNSIGNED DEFAULT NULL,
-  `slow_pct` DECIMAL(5,2) DEFAULT NULL                COMMENT '% slow / responded',
-  `complaint_pct` DECIMAL(5,2) DEFAULT NULL           COMMENT '% red / total_chats',
+  `unanswered_eod_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `complaint_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `dissatisfied_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `urgent_followup_count` INT UNSIGNED NOT NULL DEFAULT 0,
+  `respond_p50_sec` INT UNSIGNED DEFAULT NULL,
+  `respond_p95_sec` INT UNSIGNED DEFAULT NULL,
+  `respond_avg_sec` INT UNSIGNED DEFAULT NULL,
+  `slow_pct` DECIMAL(5,2) DEFAULT NULL,
+  `complaint_pct` DECIMAL(5,2) DEFAULT NULL,
   `computed_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`kpi_date`, `line_account_id`),
-  KEY `idx_date` (`kpi_date`)
+  PRIMARY KEY (`kpi_date`, `tenant_id`, `oa_id`),
+  KEY `idx_tenant_date` (`tenant_id`, `kpi_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 6.8 Settings (per tenant)
+-- ============================================================
+CREATE TABLE `monitor_settings` (
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `system_enabled` TINYINT(1) NOT NULL DEFAULT 0,
+  `soft_launch` TINYINT(1) NOT NULL DEFAULT 1,
+  `slow_threshold_minutes` SMALLINT UNSIGNED NOT NULL DEFAULT 15,
+  `critical_threshold_minutes` SMALLINT UNSIGNED NOT NULL DEFAULT 60,
+  `business_hours_start` TINYINT UNSIGNED NOT NULL DEFAULT 8,
+  `business_hours_end` TINYINT UNSIGNED NOT NULL DEFAULT 18,
+  `business_days` VARCHAR(20) NOT NULL DEFAULT 'mon,tue,wed,thu,fri,sat',
+  `holiday_dates` JSON NOT NULL  COMMENT '["2026-04-13","2026-04-14"]',
+  `notification_recipients` JSON NOT NULL  COMMENT '[{channel,target,role}]',
+  `alert_cooldown_minutes` SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+  `sentiment_alert_enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `slow_alert_enabled` TINYINT(1) NOT NULL DEFAULT 1,
+  `auto_mark_as_read_on_view` TINYINT(1) NOT NULL DEFAULT 1  COMMENT 'call LINE markAsRead when admin opens chat',
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`tenant_id`),
+  CONSTRAINT `fk_settings_tenant` FOREIGN KEY (`tenant_id`) REFERENCES `tenants` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 6.9 Admin users (login + RBAC)
+-- ============================================================
+CREATE TABLE `admin_users` (
+  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tenant_id` INT UNSIGNED NOT NULL,
+  `email` VARCHAR(120) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `display_name` VARCHAR(120) NOT NULL,
+  `role` ENUM('owner','admin','viewer') NOT NULL DEFAULT 'viewer',
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `last_login_at` DATETIME DEFAULT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_tenant_email` (`tenant_id`, `email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ============================================================
+-- 6.10 Webhook event log (forensics; auto-prune > 30 day)
+-- ============================================================
+CREATE TABLE `webhook_events_raw` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `oa_id` INT UNSIGNED NOT NULL,
+  `event_type` VARCHAR(40) NOT NULL,
+  `payload` JSON NOT NULL,
+  `signature_valid` TINYINT(1) NOT NULL,
+  `received_at` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `idx_oa_received` (`oa_id`, `received_at`),
+  KEY `idx_event_type` (`event_type`, `received_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 ```
 
-> **เหตุผลที่ไม่แตะ `messages` schema:** ตารางนี้ใหญ่ (>6,900 rows live + heavy index) — ทุกอย่างที่ต้องการคำนวณได้แล้วจาก columns เดิม การเพิ่ม column ใหม่จะเสี่ยง lock ตอน migrate
+---
+
+## 7. Webhook Endpoint — `public/webhook/line.php`
+
+URL pattern: `https://<host>/webhook/line/{webhook_secret_path}`
+(แต่ละ OA ได้ path opaque ของตัวเอง — ไม่ต้องส่ง tenant_id ใน query)
+
+### Flow
+
+```
+1. Read raw body + X-Line-Signature
+2. Extract webhook_secret_path from URL
+3. Lookup oa_account → get channel_secret (decrypt)
+4. HMAC-SHA256 verify signature  → ถ้า fail: 200 + log + return
+5. INSERT webhook_events_raw (forensics)
+6. Foreach event:
+   - if event.type == "message" and source.type == "user":
+       a. Upsert chat_users
+       b. INSERT messages_inbound (ON DUPLICATE KEY = idempotent)
+       c. Run InboxSentinel::classify() → update sentiment
+       d. Call LINE markAsRead (async via queue OR sync if soft_launch=0 + auto_mark=0)
+            ↓ stored read_at when 200 OK
+       e. Upsert sla_pending (this is the "new conversation cycle")
+   - if event.type == "follow"  → update chat_users
+   - if event.type == "unfollow" → mark chat_users.is_followed=0
+7. Return HTTP 200 within 1 sec (LINE retry on 5xx)
+```
+
+### Security
+
+- Signature verify เป็น **HARD requirement** — fail = drop event
+- Path token (`webhook_secret_path`) เป็น **secondary defense** กัน enumeration (ไม่ใช่ replacement signature)
+- Body size limit 1 MB (LINE max ~ 100 KB)
+- Rate limit per oa_id: 100 events/sec (ใส่ token bucket ใน `App\Core\RateLimit`)
 
 ---
 
-## 5. Service Classes (`classes/ChatMonitor/`, PSR-4 namespace `Classes\ChatMonitor`)
+## 8. Service Classes (`classes/`, namespace `App\`)
 
 | Class | Responsibility |
 |---|---|
-| `PendingTracker.php` | upsert `chat_monitor_pending` เมื่อมี inbound; close เมื่อ `is_read_on_line` flip |
-| `OverdueScanner.php` | เลือก row ที่ `closed_at IS NULL` + `now − first_inbound_at > threshold` (business-hour adjusted) |
-| `KpiAggregator.php` | สร้าง `chat_monitor_daily_kpi` จาก `messages` + `message_analytics` + `chat_monitor_pending` |
-| `AlertDispatcher.php` | ใช้ `NotificationRouter` ส่ง Telegram + LINE; เช็ค `chat_monitor_alerts_sent` กัน duplicate ผ่าน cooldown |
-| `BusinessHoursCalculator.php` | reuse logic จาก [`cron/inbox-response-time-collector.php`](../../cron/inbox-response-time-collector.php) (extract เป็น class) |
-| `MonitorSettingsRepository.php` | read/write `chat_monitor_settings` |
+| `Core\Database` | PDO singleton; force `+07:00` timezone; `utf8mb4` |
+| `Core\Config` | load `.env` + `config.php` |
+| `Core\Auth` | session-based login + RBAC (owner/admin/viewer) |
+| `Core\Crypto` | AES-256-GCM for OA secrets at rest |
+| `Ingest\LineWebhookController` | webhook endpoint logic |
+| `Ingest\MessageStore` | upsert chat_users + insert messages_inbound (idempotent) |
+| `Ingest\LineApi` | thin wrapper: markAsRead, getProfile, push (optional) |
+| `Sla\PendingTracker` | onInbound() / onRead() / onAck() / onPush() |
+| `Sla\OverdueScanner` | scan open rows + tag overdue + emit alerts |
+| `Sla\BusinessHoursCalculator` | compute business seconds between 2 timestamps |
+| `Sentiment\InboxSentinel` | port of regex classifier (red/orange/yellow_urgent/yellow/green) |
+| `Reports\KpiAggregator` | rebuild kpi_daily for date range (idempotent) |
+| `Reports\WatchlistQuery` | dashboard read queries |
+| `Notify\NotificationRouter` | dispatch via channels with cooldown |
+| `Notify\TelegramChannel` | bot API |
+| `Notify\LineChannel` | push API (uses tenant's OA token) |
+| `Notify\EmailChannel` | SMTP (optional) |
 
-> **กฎ:** ไม่ลอก code จาก `inbox-response-time-collector.php` — extract เป็น `BusinessHoursCalculator` แล้วให้ทั้ง cron เก่าและ class ใหม่เรียกใช้ (DRY); ถ้าทำไม่ได้ใน Phase 1 → ก๊อป + comment ชี้ว่าจะ unify ใน Phase 4
-
----
-
-## 6. Webhook Hook (minimal — keep `webhook.php` lean)
-
-ใน [`webhook.php`](../../webhook.php) message-event handler (≈ line 369–425):
-
-```php
-// AFTER existing INSERT INTO messages
-if (file_exists(__DIR__ . '/classes/ChatMonitor/PendingTracker.php')) {
-    require_once __DIR__ . '/classes/ChatMonitor/PendingTracker.php';
-    try {
-        \Classes\ChatMonitor\PendingTracker::onInbound(
-            $db, $lineAccountId, $dbUserId, $messageId,
-            $event['timestamp'] ?? null,
-            $textContent
-        );
-    } catch (\Throwable $e) {
-        logWebhookException($db, 'chat_monitor', $e);  // ห้ามทำให้ webhook fail
-    }
-}
-```
-
-ใน [`api/inbox-v2.php`](../../api/inbox-v2.php) (จุดที่ flip `is_read_on_line=1`) ให้เรียก `PendingTracker::onRead($userId, $lineAccountId, 'read_receipt')` หลัง UPDATE สำเร็จ
-
-> ทุก hook ต้อง **try/catch** และ swallow error — ห้ามทำให้ flow webhook/inbox เดิม fail
+> **InboxSentinel — port not fork:** ระบุใน docblock ว่ามาจาก commit `2a5fdd4` ของ `cny.re-ya.com` (verified บน 23,291 messages, 157 P1 + 15 P0); ถ้าต้นทางอัพเดท regex → ทำ `composer require` ผ่าน private package เพื่อกัน drift (Phase 6)
 
 ---
 
-## 7. Reports (R3–R7)
+## 9. Reports
 
-### 7.1 Report ที่โจทย์ขอตรง
+### 9.1 Reports หลักตามโจทย์
 
 | Report | สูตร | Source |
 |---|---|---|
-| ระยะเวลา respond time | `p50 / p95 / avg` ของ `message_analytics.response_time_seconds` แยก OA + day | existing table |
-| สรุปจำนวน chat ทั้งหมด | `COUNT(DISTINCT user_id)` จาก `messages` direction=incoming ต่อวัน/OA | `chat_monitor_daily_kpi.total_chats` |
-| % chat ตอบช้าเกิน N นาที | `slow_count / responded_count * 100`; N = `slow_threshold_minutes` | `chat_monitor_daily_kpi.slow_pct` |
-| จำนวน complaint | `COUNT(DISTINCT user_id)` ที่ InboxSentinel = `red` ต่อวัน | `chat_monitor_daily_kpi.complaint_count` |
+| `respond time` (p50/p95/avg) | `sla_pending.respond_seconds_business` ของ row ที่ closed_at IN (date range) | aggregated → `kpi_daily.respond_p*_sec` |
+| สรุปจำนวน chat ทั้งหมด | `COUNT(DISTINCT chat_user_id)` ที่มี inbound ใน range | `kpi_daily.total_chats` |
+| % chat ตอบช้าเกิน N นาที | `slow_count / responded_count * 100` | `kpi_daily.slow_pct` |
+| จำนวน complaint | `COUNT(DISTINCT chat_user_id)` ที่ worst_sentiment='red' | `kpi_daily.complaint_count` |
 
-### 7.2 Report เสริมที่แนะนำ
+### 9.2 Reports เสริมที่แนะนำ
 
-| Report | เหตุผล |
+| Report | คุณค่า |
 |---|---|
-| **Unanswered at end-of-day** (รายวัน) | เห็น backlog สะสมที่ขาดหาย ไม่ใช่แค่ slow |
-| **First-response time distribution histogram** (รายสัปดาห์) | จับ outlier — chat ที่ตอบเร็วมาก vs ช้ามาก |
-| **Sentiment trend** (รายสัปดาห์) | ratio red/orange/yellow_urgent ต่อ total — แนวโน้ม service quality |
-| **Peak-hour heatmap** (วัน × ชั่วโมง) | บอกว่า staffing พอไหม ช่วงไหนต้องเพิ่มคน |
-| **Top-N customers by complaint count** (รายเดือน) | ลูกค้าที่บ่นบ่อย → ต่อ churn dashboard ผ่าน `odoo_partner_id` (existing bridge) |
-| **Repeat-inbound before response** (count ของ inbound ที่ลูกค้าทักซ้ำก่อนได้คำตอบ) | proxy ของความหงุดหงิดและ effort ของลูกค้า |
-| **Per-account leaderboard** | ถ้า super_admin ดูหลาย OA — จัดอันดับ SLA |
+| **Unanswered EOD** ต่อวัน | backlog ที่หลุดออกจากสายตา ไม่ใช่แค่ slow |
+| **Response-time histogram** (10 buckets, รายสัปดาห์) | จับ outlier; เห็น distribution shape |
+| **Sentiment trend** (% red/orange/yellow_urgent ต่อ total, รายสัปดาห์) | service-quality direction |
+| **Heatmap วัน × ชั่วโมง** | บอก staffing — peak hour ไหน slow บ่อย |
+| **Top-N customers by complaint** (รายเดือน) | repeat complainers → ส่งต่อให้ทีม CS |
+| **Repeat-inbound count before response** | proxy ความหงุดหงิด — ลูกค้าทักซ้ำกี่ครั้งก่อนได้คำตอบ |
+| **Per-OA leaderboard** (ถ้า tenant มีหลาย OA) | benchmark ภายในของลูกค้าเอง |
+| **Webhook health** (% events accepted vs rejected) | ระบบ infra เอง |
 
-> **ไม่แนะนำ** report ที่ต้อง split per agent — เพราะเรา **ไม่มีข้อมูล outgoing reliable** (โจทย์ข้อจำกัด) → ระบุ agent ตอบไม่ได้
-
----
-
-## 8. API Endpoints (`api/chat-monitor-*.php`)
-
-| Endpoint | Method | Output |
-|---|---|---|
-| `api/chat-monitor-data.php?action=kpi&date_from=&date_to=&line_account_id=` | GET | KPI strip + chart data |
-| `api/chat-monitor-data.php?action=watchlist_overdue&line_account_id=` | GET | open chats currently slow/critical |
-| `api/chat-monitor-data.php?action=watchlist_sentiment&days=7` | GET | red/orange ใน N วันล่าสุด |
-| `api/chat-monitor-data.php?action=histogram&date=` | GET | response-time histogram (10 buckets) |
-| `api/chat-monitor-data.php?action=heatmap&week_start=` | GET | day×hour matrix |
-| `api/chat-monitor-ack.php` | POST | `{user_id, line_account_id, note?}` → `chat_monitor_acks` + close pending |
-| `api/chat-monitor-settings-update.php` | POST | super_admin only — update thresholds |
-
-ทั้งหมด: auth ผ่าน `auth_check.php` (existing), JSON output, `Cache-Control: private, max-age=30`
+> **ไม่ทำ:** "per-agent SLA" — เพราะไม่มี outgoing reliable, ระบุ agent ตอบไม่ได้
 
 ---
 
-## 9. Cron Jobs
+## 10. Cron Jobs
 
 | File | Schedule | งาน |
 |---|---|---|
-| `cron/chat_monitor_scan.php` | every 5 min | scan `chat_monitor_pending` หา overdue + dispatch alert |
-| `cron/chat_monitor_aggregate.php` | nightly 00:30 | rebuild `chat_monitor_daily_kpi` ของ "เมื่อวาน" + recompute 7 วันล่าสุด (idempotent) |
-| `cron/chat_monitor_cleanup.php` | weekly Sun 03:00 | ปิด `pending` ที่ค้างเกิน 7 วัน → `closed_via='expired'` |
-| `cron/inbox-response-time-collector.php` (existing) | every 15 min | **คงเดิม** — ใช้ผลของมันใน aggregator |
+| `cron/scan_overdue.php` | every 5 min | scan `sla_pending` หา overdue (business-hour adjusted) → tag + dispatch alert |
+| `cron/aggregate_kpi.php` | nightly 00:30 | rebuild `kpi_daily` ของ "เมื่อวาน" + recompute 7 วันล่าสุด |
+| `cron/cleanup.php` | weekly Sun 03:00 | close pending > 7 วัน เป็น `expired`; prune `webhook_events_raw` > 30 วัน |
+| `cron/poll_read_state.php` (optional) | every 10 min | ถ้า settings เปิด — poll LINE Insight API แทน real-time markAsRead |
 
-ทุก cron: `set_time_limit(120)`, log ที่ `logs/chat_monitor_*.log`, fail-safe (no exception leaks)
+ทุก cron: `set_time_limit(180)`, log เป็น JSON line ใน `logs/<file>.log`, fail-safe
 
 ---
 
-## 10. Notifications (alert payload format)
+## 11. Notifications (Alert Format)
 
-ใช้ `Classes\NotificationRouter` (existing). Telegram = primary (ทีมใช้ 24/7), LINE OA push = secondary
+Channel: Telegram primary, LINE Push secondary (ใช้ token ของ tenant), Email tertiary
 
 ```
 🚨 Chat Overdue (CRITICAL)
-OA: CNY Wholesale (#3)
+Tenant: ACME Pharmacy
+OA: ACME Main (#7)
 ลูกค้า: คุณ X (LINE: U1234…)
 รอตอบ: 67 นาที (เกิน critical 60 นาที)
 ข้อความล่าสุด: "ของยังไม่ได้รับเลยค่ะ"
 Sentiment: 🔴 ร้องเรียน
-👉 https://cny.re-ya.com/inbox-v2.php?user_id=42&line_account_id=3
+👉 https://chat-sla.example.com/conversation/4521
 ```
 
-**Cooldown:** ลูกค้าเดียวกัน + alert_type เดียวกัน → ไม่ส่งซ้ำใน `alert_cooldown_minutes` (default 30) — เก็บใน `chat_monitor_alerts_sent`
-
+**Cooldown:** ลูกค้าเดียว + alert_type เดียว → ไม่ส่งซ้ำใน `alert_cooldown_minutes`
 **Escalation ladder:**
-1. `slow_threshold` (15m) → Telegram channel "ops"
-2. `critical_threshold` (60m) → Telegram channel "ops" + manager DM
-3. `sentiment=red` → Telegram channel "ops" ทันที (ไม่รอ overdue)
+1. `slow_threshold` (15m) → Telegram ops channel
+2. `critical_threshold` (60m) → Telegram ops + manager DM
+3. `sentiment=red` ทันทีที่ inbound → Telegram ops (ไม่รอ overdue)
 
 ---
 
-## 11. Edge Cases / Limitations (ต้องเขียนกำกับ UI)
+## 12. Admin UI
 
-| เคส | ผลกระทบ | Mitigation |
-|---|---|---|
-| Staff ตอบใน LINE Chat ตรงๆ ไม่เคยเปิด inbox-v2 | ระบบนับว่ายังไม่ตอบ | ปุ่ม "manual ack" + เตือนทีมว่าให้เปิด inbox อย่างน้อย 1 ครั้ง |
-| User ทักนอกเวลา business hours | ไม่ควรนับเป็น slow | `BusinessHoursCalculator` skip — เริ่มนับเมื่อเปิดเวลาทำการ |
-| User unsend ข้อความ | inbound ยังอยู่ใน DB | เพิ่ม listener event `unsend` → mark `closed_via='unsend'` |
-| User ทักหลายข้อความติดกัน | รอบเดียว ไม่ใช่ N | `chat_monitor_pending` เป็น 1 row / user; `inbound_count` += 1 |
-| Multi-account: user เดียว แต่หลาย OA | row แยกต่อ `(user_id, line_account_id)` | unique key composite — schema ใน §4.2 ถูกต้องแล้ว |
-| InboxSentinel false-positive (เช่น "หมดอายุเมื่อไรคะ") | alert ผิด | ใช้ class existing — เคยทดสอบบน 23k messages แล้ว |
+### 12.1 Login (`public/login.php`)
+- Email + password (`password_hash` / `password_verify`)
+- Session via PHP native; CSRF token ทุก POST
+- Rate limit: 5 fail attempts / 15 min
 
----
-
-## 12. UI Pages
-
-### 12.1 `chat-monitor.php` (admin dashboard, role: super_admin/admin/staff)
-
-Layout เลียนแบบ [`customer-churn.php`](../../customer-churn.php) (light theme + tab nav):
+### 12.2 Dashboard (`public/dashboard.php`)
 
 ```
-[ Tab: 📨 Inbox SLA ] [ 📊 Reports ] [ ⚠️ Watchlist ] [ ⚙️ Settings (admin only) ]
-
-🚨 Critical Overdue (top card) — N ราย รอตอบเกิน 60 นาที + ปุ่ม "เปิด inbox"
-📊 KPI Strip — Total chats / Responded / Slow% / Complaint / Avg respond
-📈 Response-time chart (last 14 days) — p50 / p95 line
-📋 Watchlist table — sortable, ทั้ง overdue + sentiment red/orange
-   columns: user, OA, รอ (mm:ss), sentiment pill, last message preview, [📬 Inbox] [✓ Ack]
-🌡️ Heatmap (day × hour) — last 7 days
-📅 Daily KPI table — last 30 days
+┌──────────────────────────────────────────────────────────────┐
+│ Tabs: [📨 Inbox SLA] [📊 Reports] [⚠️ Watchlist] [⚙️ Settings] │
+├──────────────────────────────────────────────────────────────┤
+│ 🚨 CRITICAL OVERDUE  — N chats > 60min wait                  │
+├──────────────────────────────────────────────────────────────┤
+│ KPI Strip                                                     │
+│  Total | Responded | Slow% | Complaint | Avg Respond | EOD   │
+├──────────────────────────────────────────────────────────────┤
+│ 📈 Response-time chart (14d, p50/p95)                        │
+├──────────────────────────────────────────────────────────────┤
+│ 📋 Watchlist table — sortable                                 │
+│  Cols: User | OA | Wait | Sentiment | Last msg | [📬] [✓]    │
+├──────────────────────────────────────────────────────────────┤
+│ 🌡️ Heatmap (day × hour, 7d)                                   │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-**Cache busting:** `<script src="assets/js/chat-monitor.js?v=<?= filemtime(...) ?>">`
-**Deep link out:** ไปที่ `inbox-v2.php?user_id=X&line_account_id=Y` (existing)
+- Polling: 60s (`document.hidden` guard ตามแบบทีม)
+- Cache busting: `?v=<filemtime>` ทุก asset
+- ไม่ใช้ `innerHTML` กับ user content (XSS-safe DOM construction)
 
-### 12.2 `chat-monitor-settings.php` (super_admin only)
+### 12.3 Conversation viewer (`public/conversation.php?user_id=`)
 
-| Setting | Field |
+แสดง inbound messages timeline 30d — bubble + day divider + sentiment tint
+ปุ่ม: `Mark as Read` (เรียก LINE API), `Manual Ack` (สำหรับเคสที่ตอบนอกระบบไปแล้ว)
+
+### 12.4 Settings (`public/settings.php`, role: admin/owner)
+
+ตามฟิลด์ใน `monitor_settings` (§6.8) — threshold, business hours, recipients, holiday list
+
+### 12.5 Tenant onboarding (`public/onboarding.php`, role: owner)
+
+| Step | Action |
 |---|---|
-| System enabled | toggle |
-| Soft launch (shadow mode) | toggle |
-| Slow threshold | minutes input |
-| Critical threshold | minutes input |
-| Business hours | start/end + days checkbox |
-| Notification recipients | repeater {channel, target_id, role} |
-| Alert cooldown | minutes |
+| 1 | สร้าง LINE OA Channel + Messaging API |
+| 2 | กรอก `channel_id`, `channel_secret`, `channel_access_token` |
+| 3 | ระบบสร้าง `webhook_secret_path` random | ให้ user copy webhook URL ไปวางใน LINE Developers Console |
+| 4 | Test event → ระบบรอ verify event ภายใน 5 นาที |
+| 5 | เปิด `system_enabled=1` หลัง verify ผ่าน |
 
 ---
 
-## 13. Phases / Milestones
+## 13. API Endpoints (JSON, auth required)
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/kpi.php?date_from=&date_to=&oa_id=` | GET | KPI strip + chart |
+| `/api/watchlist.php?type=overdue|sentiment` | GET | watchlist tables |
+| `/api/conversation.php?user_id=&days=` | GET | timeline messages |
+| `/api/ack.php` | POST | manual ack a chat |
+| `/api/mark-read.php` | POST | trigger LINE Mark-as-Read |
+| `/api/settings.php` | GET/POST | read/update monitor_settings |
+| `/api/oa.php` | GET/POST/DELETE | manage OA accounts (owner only) |
+| `/api/admin-users.php` | GET/POST/DELETE | manage admin team (owner only) |
+| `/api/health.php` | GET | uptime + queue depth + last cron run |
+
+ทั้งหมด: `Cache-Control: private, max-age=30`, JSON response, error envelope `{ok: false, error: {code, message}}`
+
+---
+
+## 14. Project Layout
+
+```
+chat-sla-monitor/
+├── composer.json              # PSR-4: App\ → classes/
+├── README.md
+├── .env.example               # DB_DSN, APP_KEY, encryption key
+├── docker-compose.yml         # php-fpm + nginx + mysql + redis (optional)
+├── Dockerfile
+├── public/                    # web root
+│   ├── index.php              # router → dashboard or login
+│   ├── login.php
+│   ├── logout.php
+│   ├── dashboard.php
+│   ├── conversation.php
+│   ├── settings.php
+│   ├── onboarding.php
+│   ├── webhook/
+│   │   └── line.php
+│   ├── api/
+│   │   └── *.php
+│   └── assets/
+│       ├── css/app.css
+│       └── js/dashboard.js
+├── classes/                   # PSR-4 App\
+│   ├── Core/
+│   ├── Ingest/
+│   ├── Sla/
+│   ├── Sentiment/
+│   ├── Reports/
+│   └── Notify/
+├── cron/
+│   ├── scan_overdue.php
+│   ├── aggregate_kpi.php
+│   ├── cleanup.php
+│   └── poll_read_state.php
+├── database/
+│   └── migrations/
+│       └── 001_initial.sql
+├── tests/                     # PHPUnit
+│   ├── bootstrap.php
+│   ├── Sla/
+│   ├── Sentiment/
+│   ├── Reports/
+│   └── Ingest/
+├── config/
+│   └── config.php             # gitignored; .env loaded
+└── logs/                      # gitignored
+```
+
+---
+
+## 15. Phases / Milestones
 
 | Phase | ขอบเขต | DoD |
 |---|---|---|
-| **P0 — DB + tracker** | migration, `PendingTracker`, webhook hook | inbound → row appears; read → row closes; tests pass |
-| **P1 — Aggregator + KPI** | `KpiAggregator`, nightly cron, `chat_monitor_daily_kpi` populated | 14-day backfill; numbers tally manually with `messages` |
-| **P2 — Dashboard read-only** | `chat-monitor.php` + `api/chat-monitor-data.php` (KPI + watchlist + chart) | 4 reports จากโจทย์ทำงานครบ |
-| **P3 — Alerts (soft-launch)** | scanner cron + `AlertDispatcher`, **soft_launch=1** → log only | alert ปรากฏใน `chat_monitor_alerts_sent` แต่ไม่มี outbound |
-| **P4 — Settings UI + manual ack** | `chat-monitor-settings.php` + ack button | super_admin แก้ค่าได้, ack ทำงานครบ |
-| **P5 — Go-live** | `system_enabled=1`, `soft_launch=0`, recipients ตั้งค่าจริง | 7-day soft-launch review pass |
-| **P6 — Reports เสริม** | histogram + heatmap + repeat-inbound + leaderboard | §7.2 ครบทุกข้อ |
+| **P0 — Bootstrap** | repo skeleton + composer + DB migration + auth + 1 tenant + 1 OA seed | login ได้, schema apply, webhook URL พร้อม |
+| **P1 — Webhook ingest** | LineWebhookController + signature verify + MessageStore + InboxSentinel port | inbound message สร้าง row ใน `messages_inbound` + `chat_users` + `sla_pending`; idempotent |
+| **P2 — Dashboard read-only** | dashboard.php + watchlist + conversation viewer + KPI display (live calc, ไม่มี cron) | 4 reports หลักของโจทย์แสดงผลครบ |
+| **P3 — KPI cron** | aggregate_kpi.php + kpi_daily backfill | 30-day backfill numbers tally manual SQL ±2% |
+| **P4 — SLA + alerts (soft-launch)** | scan_overdue.php + NotificationRouter + alerts_sent dedup; **soft_launch=1** → log only | alert ปรากฏใน DB แต่ไม่ส่งจริง |
+| **P5 — Settings UI + manual ack** | settings.php + ack button + tenant onboarding wizard | owner ตั้งค่าจาก UI ได้ครบ |
+| **P6 — Go-live** | `system_enabled=1`, `soft_launch=0`, recipients ตั้งค่าจริง | 7-day soft-launch review pass |
+| **P7 — Reports เสริม** | histogram + heatmap + repeat-inbound + leaderboard | §9.2 ครบ |
+| **P8 — Multi-tenant onboarding self-serve** | สมัครเอง + ใส่ OA token เอง + verify อัตโนมัติ | 0 manual ops จาก team |
 
 ---
 
-## 14. Acceptance Criteria
+## 16. Acceptance Criteria
 
-- [ ] Webhook hook ไม่เพิ่ม latency เกิน 50 ms (measure ก่อน/หลัง)
-- [ ] `chat_monitor_pending` มี row สำหรับ inbound ทุกข้อความใน sample 100 รายการ
-- [ ] `respond_at` ถูกต้องเทียบกับ `is_read_on_line` flip time ในการทดสอบ 50 case
-- [ ] KPI 30-day backfill match (±2%) กับ manual SQL count บน `messages`
-- [ ] Slow alert ส่งใน ≤ 6 นาที หลัง `slow_threshold` ตัด
-- [ ] No duplicate alerts ใน 30 นาที สำหรับ user เดียวกัน + alert_type เดียวกัน
-- [ ] Dashboard load < 1s (ใช้ pre-aggregated table)
-- [ ] Tests: ≥ 80% coverage ของ `Classes\ChatMonitor\*` (PHPUnit, property-based ตามแบบ `tests/CRM/`)
+- [ ] Webhook signature verify ผ่าน 100% (replay test, tampered body test)
+- [ ] Webhook ingest latency p95 < 200 ms (raw body → 200 OK)
+- [ ] Idempotency: ส่ง event เดิม 5 ครั้ง → DB มี 1 row
+- [ ] InboxSentinel ผลตรงกับต้นฉบับ บน fixture 23k message (ลอกจาก golden test ของ `cny.re-ya.com`)
+- [ ] `respond_seconds_business` ตรงกับ manual calc บน 50 case
+- [ ] KPI 30-day backfill match (±2%) กับ manual SQL count
+- [ ] Slow alert ส่งภายใน ≤ 6 นาที หลัง threshold ตัด
+- [ ] No duplicate alerts ใน cooldown window
+- [ ] Dashboard load < 1 sec (pre-aggregated)
+- [ ] Multi-tenant: ลูกค้า A ไม่เห็นข้อมูลลูกค้า B (penetration test)
+- [ ] Tests: ≥ 80% coverage ของ `classes/Sla`, `classes/Sentiment`, `classes/Reports`
 
 ---
 
-## 15. Tests (`tests/ChatMonitor/`)
-
-ตามแบบ `tests/CRM/` — property-based + fixtures sqlite
+## 17. Tests (`tests/`, PHPUnit)
 
 | File | ครอบคลุม |
 |---|---|
-| `PendingTrackerTest.php` | onInbound idempotent / onRead closes / multi-account scoping |
-| `BusinessHoursCalculatorTest.php` | edge: ข้าม weekend, ข้าม EOD, holiday list |
-| `OverdueScannerTest.php` | threshold boundary (slow vs critical), business-hour adjustment |
-| `KpiAggregatorTest.php` | numeric correctness บน fixture 100 messages |
-| `AlertDispatcherTest.php` | cooldown ทำงาน, route ตามค่า settings |
-| `ChatMonitorIntegrationTest.php` | end-to-end: webhook event → pending → overdue → alert log |
+| `Ingest/LineWebhookControllerTest.php` | signature verify, idempotency, multi-tenant scoping |
+| `Ingest/MessageStoreTest.php` | upsert chat_users, sentinel call ordering |
+| `Sla/PendingTrackerTest.php` | onInbound/onRead/onAck idempotent |
+| `Sla/BusinessHoursCalculatorTest.php` | weekend, EOD spillover, holiday |
+| `Sla/OverdueScannerTest.php` | threshold boundary, business-hour adjustment |
+| `Sentiment/InboxSentinelTest.php` | golden file 23k message, false-positive guards |
+| `Reports/KpiAggregatorTest.php` | numeric correctness on 100-msg fixture |
+| `Notify/NotificationRouterTest.php` | cooldown, multi-channel, failure logging |
+| `Core/AuthTest.php` | RBAC, session, CSRF |
+| `Integration/EndToEndTest.php` | webhook → pending → overdue → alert (in-memory sqlite ไม่ได้ ใช้ MySQL test DB) |
 
 ---
 
-## 16. Safety Guards (CRITICAL — เลียน churn pattern)
+## 18. Safety Guards (CRITICAL)
 
 | Guard | Default | ผล |
 |---|---|---|
-| `chat_monitor_settings.system_enabled` | **0** | scanner cron no-op |
-| `chat_monitor_settings.soft_launch` | **1** | log alert ใน DB แต่ไม่ส่งจริง |
-| `chat_monitor_settings.notification_recipients` | `[]` | ไม่มีคนรับ |
-| Crontab | **0 lines** until P5 | ไม่ scheduled |
-| Webhook hook | swallow error always | ไม่กระทบ flow LINE หลัก |
-
-**ห้ามเปิด `system_enabled=1` จนกว่า:** stakeholder ยืนยัน recipients + ผ่าน 7-day soft-launch review
-
----
-
-## 17. Open Questions (รอ stakeholder)
-
-- [ ] Slow threshold เริ่มที่กี่นาที? (default ในสเปค = 15m, critical = 60m)
-- [ ] Business hours ของ CNY คือ 08:00–18:00 จันทร์–เสาร์ ใช่ไหม? (default)
-- [ ] ใครรับ Telegram alert? (ops channel + manager DM?)
-- [ ] รวมวันหยุดนักขัตฤกษ์ไทยใน `BusinessHoursCalculator` หรือไม่?
-- [ ] Alert cooldown ที่ 30 นาที พอไหม หรือควรสั้น/ยาวกว่า?
-- [ ] Manual ack ให้ role ไหนบ้าง? (default: admin + staff)
-- [ ] เก็บ history `chat_monitor_pending` (closed) นานแค่ไหนก่อน archive?
+| `monitor_settings.system_enabled` | **0** | scanner cron no-op |
+| `monitor_settings.soft_launch` | **1** | log alert ใน DB แต่ไม่ส่งจริง |
+| `monitor_settings.notification_recipients` | `[]` | ไม่มี recipient |
+| Crontab | **0 lines** until P6 | ไม่ scheduled |
+| OA secrets | encrypted at rest (AES-256-GCM, key ใน `.env`) | leak DB ≠ leak token |
+| Webhook `webhook_secret_path` opaque random 40 char | rotate ได้ผ่าน UI | กัน enumeration |
+| Webhook `try/catch` swallow + return 200 | LINE จะไม่ retry storm | resilient |
 
 ---
 
-## 18. Cross-References (existing assets)
+## 19. Open Questions (รอ stakeholder)
 
-| Asset | Path | ใช้อย่างไร |
-|---|---|---|
-| Messages table | `database/install_complete_latest.sql` | source of truth ของ inbound |
-| Webhook | [`webhook.php`](../../webhook.php) | hook point §6 |
-| InboxSentinel | [`classes/CRM/InboxSentinel.php`](../../classes/CRM/InboxSentinel.php) | sentiment classification |
-| Response-time cron | [`cron/inbox-response-time-collector.php`](../../cron/inbox-response-time-collector.php) | คงเดิม, เป็น input ของ aggregator |
-| Inbox v2 | [`api/inbox-v2.php`](../../api/inbox-v2.php) + [`inbox-v2.php`](../../inbox-v2.php) | จุด flip is_read_on_line + deep-link target |
-| LINE markAsRead | [`classes/LineAPI.php`](../../classes/LineAPI.php) line 1126 | trigger ของ read_receipt signal |
-| NotificationRouter | [`classes/NotificationRouter.php`](../../classes/NotificationRouter.php) | dispatch alerts |
-| Auth helpers | `includes/header.php` | role checks (`isSuperAdmin`, `isAdmin`, `isStaff`) |
-| Churn pattern (สเปคใกล้เคียง) | [`docs/plans/2026-04-27-customer-churn-tracker.md`](./2026-04-27-customer-churn-tracker.md) | template ของ safety guards + soft-launch |
-
----
-
-## 19. Server / Deploy
-
-- **Production:** `root@47.82.233.152:/www/wwwroot/cny.re-ya.com`
-- **Pull:** `cd /www/wwwroot/cny.re-ya.com && git pull origin main --ff-only`
-- **Migration:** `mysql -u cny_re_ya_com -pcny_re_ya_com cny_re_ya_com < database/migration_chat_monitor.sql`
-- **Cron entries (เพิ่มเมื่อถึง P5):**
-  ```
-  */5 * * * *  /www/server/php/83/bin/php cron/chat_monitor_scan.php >> logs/chat_monitor_scan.log 2>&1
-  30 0 * * *   /www/server/php/83/bin/php cron/chat_monitor_aggregate.php >> logs/chat_monitor_aggregate.log 2>&1
-  0 3 * * 0    /www/server/php/83/bin/php cron/chat_monitor_cleanup.php >> logs/chat_monitor_cleanup.log 2>&1
-  ```
+- [ ] Slow threshold default = 15m, critical = 60m — ใช่ไหม?
+- [ ] Business hours default = 08:00–18:00, จันทร์–เสาร์ — ใช่ไหม?
+- [ ] รวมวันหยุดนักขัตฤกษ์ไทย? ดึงจากไหน (manual list ใน settings, หรือ API)?
+- [ ] Notification — Telegram bot ใช้บัญชีกลางของ chat-sla หรือลูกค้าตั้งเอง?
+- [ ] Manual ack ให้ role ไหน? (default: admin + viewer NO; owner + admin YES)
+- [ ] เก็บ `messages_inbound` กี่วัน? (default 90; หลังจากนั้น aggregate-only)
+- [ ] OA limit ต่อ tenant? (default unlimited; pricing tier ตอน commercialize)
+- [ ] แยก deploy หรือ multi-tenant ก้อนเดียว? (default — ก้อนเดียว, scale horizontal เมื่อโต)
+- [ ] SLA goal — ระบบเองตอบ 99.9% uptime ใช่ไหม?
+- [ ] LINE markAsRead — เรียกอัตโนมัติเมื่อ admin เปิด chat (auto) หรือต้องกดปุ่ม (manual)?
+- [ ] Holiday list = ของไทยอย่างเดียว หรือแยกตาม tenant?
 
 ---
 
-## 20. Conventions (จาก CLAUDE.md)
+## 20. Conventions (ยืมจากทีม `cny.re-ya.com`)
 
-- Singleton DB: `Database::getInstance()->getConnection()`
-- Multi-account: ทุก query ต้อง scope ด้วย `line_account_id`
+- PHP 8.1+, `declare(strict_types=1)` ทุกไฟล์
+- PSR-4 autoload (`App\` → `classes/`), PSR-12 code style (`composer lint`)
+- PHPStan level 5+ (เข้มกว่า monolith เดิม level 0 — โปรเจคใหม่ ตั้ง bar สูง)
+- Singleton DB, multi-tenant scoping ทุก query
 - Charset `utf8mb4_unicode_ci`, timezone `Asia/Bangkok` / MySQL `+07:00`
-- Commit: Conventional Commits — `feat(chat-monitor):`, `fix(chat-monitor):`, etc.
-- Tests: property-based, bootstrap `tests/bootstrap.php`
-- ไม่ hardcode threshold — อ่านจาก `chat_monitor_settings`
-- Cache buster: `?v=filemtime` ใน admin page assets
+- Conventional Commits — `feat(sla):`, `fix(webhook):`, `docs(readme):`
+- ไม่ hardcode threshold — อ่านจาก `monitor_settings`
+- Tests property-based + fixture, bootstrap `tests/bootstrap.php`
+- Cache buster: `?v=<filemtime>`
+- ไม่ commit secret — `.env` + `config/config.php` gitignored
+- CI/CD: GitHub Actions (lint + test + phpstan + sql syntax check)
+
+---
+
+## 21. Cross-References
+
+- **Pattern source:** [`cny.re-ya.com` repo](https://github.com/reyatelehealth2026-crypto/odoo) (private)
+  - InboxSentinel logic: `classes/CRM/InboxSentinel.php` commit `2a5fdd4`
+  - Soft-launch pattern: `classes/CRM/AutoActionService.php` + `customer-churn.php`
+  - Light theme + tab nav: `customer-churn.php`
+  - Business-hour calc: `cron/inbox-response-time-collector.php`
+- **Spec ของ churn (template):** [`docs/plans/2026-04-27-customer-churn-tracker.md`](./2026-04-27-customer-churn-tracker.md) (gitignored, local-only)
+- **LINE Messaging API doc:** https://developers.line.biz/en/reference/messaging-api/
+
+---
+
+## 22. Decision Log
+
+| Date | Decision | Rationale |
+|---|---|---|
+| 2026-05-02 | สร้างเป็น standalone PHP project ไม่ใช่ feature ใน `cny.re-ya.com` | ลด blast radius ระบบเดิม + เปิดทางเป็น product แยก |
+| 2026-05-02 | Stack = PHP 8.1 (ไม่ใช่ Node/TS) | ทีมคุ้น, ports knowledge มาตรง, ลด onboarding cost |
+| 2026-05-02 | Multi-tenant ตั้งแต่แรก | ออกแบบครั้งเดียว ดีกว่า refactor ตอน scale |
+| 2026-05-02 | LINE webhook = แยก channel ของลูกค้า ไม่ forward จาก `cny.re-ya.com` | ไม่มี coupling แม้แต่บรรทัดเดียว |
+| 2026-05-02 | InboxSentinel — port code, ไม่ import package | ทดสอบบน corpus จริง 23k แล้ว มูลค่า > drift risk |
 
