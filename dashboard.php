@@ -38,12 +38,19 @@ if (!in_array($activeTab, $validTabs)) {
     $activeTab = 'executive';
 }
 
-// Trigger scheduled broadcasts in background
-$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
-$baseUrl = $protocol . $_SERVER['HTTP_HOST'] . dirname($_SERVER['PHP_SELF']);
-$triggerUrl = $baseUrl . '/api/process_scheduled_broadcasts.php';
-$context = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 1]]);
-@file_get_contents($triggerUrl, false, $context);
+// Trigger scheduled broadcasts — fire-and-forget, non-blocking
+// Replaces blocking file_get_contents (added up to 1s latency to every dashboard load)
+$_bgHost = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$_bgIsHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? 0) == 443);
+$_bgPort = $_bgIsHttps ? 443 : 80;
+$_bgScheme = $_bgIsHttps ? 'ssl://' : '';
+$_bgPath = rtrim(dirname($_SERVER['PHP_SELF']), '/') . '/api/process_scheduled_broadcasts.php';
+$_bgFp = @fsockopen($_bgScheme . $_bgHost, $_bgPort, $_bgErrNo, $_bgErrStr, 0.2);
+if ($_bgFp) {
+    @stream_set_blocking($_bgFp, false);
+    @fwrite($_bgFp, "GET {$_bgPath} HTTP/1.1\r\nHost: {$_bgHost}\r\nConnection: Close\r\n\r\n");
+    @fclose($_bgFp);
+}
 
 // Set page title based on active tab
 $pageTitles = [

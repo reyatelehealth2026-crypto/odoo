@@ -544,23 +544,10 @@ if ($action === 'customer_profile_fast') {
             $lineUserIdForCredit = $luRow2['line_user_id'] ?? null;
         } catch (Exception $e) {}
     }
-    if ($lineUserIdForCredit && !empty($credit)) {
-        try {
-            require_once __DIR__ . '/../classes/OdooAPIClient.php';
-            $odooApi = new OdooAPIClient($db, 3);
-            $creditResp = $odooApi->getCreditStatus($lineUserIdForCredit);
-            if (!empty($creditResp['success']) && !empty($creditResp['data'])) {
-                $cd = $creditResp['data'];
-                $credit['credit_limit']     = (float) ($cd['credit_limit']     ?? $credit['credit_limit']);
-                $credit['credit_used']      = (float) ($cd['credit_used']      ?? $credit['credit_used']);
-                $credit['credit_remaining'] = (float) ($cd['credit_available'] ?? $credit['credit_remaining']);
-                $credit['overdue_amount']   = (float) ($cd['overdue_amount']   ?? $credit['overdue_amount']);
-                if (!empty($cd['payment_term'])) $credit['payment_term'] = $cd['payment_term'];
-            }
-        } catch (Exception $e) {
-            // Odoo API unavailable — keep projection values
-        }
-    }
+    // Removed live Odoo API enrichment — was a blocking synchronous curl that
+    // defeated the <500ms fast-path target. Credit values now come from
+    // odoo_customer_projection cache only. For real-time credit, use the heavy
+    // endpoint odoo-dashboard-api.php (action=customer_profile).
     $_result = [
         'success' => true,
         'data' => [

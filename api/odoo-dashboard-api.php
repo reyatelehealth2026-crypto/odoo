@@ -47,7 +47,8 @@ header('Access-Control-Allow-Headers: Content-Type');
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/odoo-dashboard-functions.php';
-require_once __DIR__ . '/../classes/BdoSlipContract.php';
+// BdoSlipContract is loaded on-demand inside getOverviewSlipsSummary() only —
+// most requests don't need it, deferring saves parse cost when OPcache is cold.
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -338,6 +339,7 @@ function getStats($db)
             {$retriedSelect}
             MAX({$processedAtExpr}) as last_webhook
         FROM odoo_webhooks_log
+        WHERE {$processedAtExpr} >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
     ")->fetch(PDO::FETCH_ASSOC);
 
     // Today metrics: scoped range scan — allows MySQL to use index on the timestamp column.
@@ -1813,12 +1815,23 @@ function getDailySummaryPreview($db)
         'delivery.cancelled'     => 'ยกเลิกการส่ง',
     ];
     
+    // Batch-load display names to avoid N+1 queries
+    $allUserIds = array_keys($userOrders);
+    $displayNameMap = [];
+    if (!empty($allUserIds)) {
+        $placeholders = implode(',', array_fill(0, count($allUserIds), '?'));
+        $nameStmt = $db->prepare("SELECT line_user_id, display_name FROM users WHERE line_user_id IN ({$placeholders})");
+        $nameStmt->execute($allUserIds);
+        foreach ($nameStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $displayNameMap[$row['line_user_id']] = $row['display_name'];
+        }
+    }
+
     $results = [];
     foreach ($userOrders as $userId => $orders) {
         $activeOrders = [];
-        
+
         foreach ($orders as $orderRef => $order) {
-            // Process events for timeline display
             $processedEvents = [];
             foreach ($order['events'] as $event) {
                 $eventType = $event['event_type'];
@@ -1830,7 +1843,7 @@ function getDailySummaryPreview($db)
                     'time' => $event['time']
                 ];
             }
-            
+
             $lastEvent = $order['last_event'];
             $activeOrders[] = [
                 'order_ref' => $orderRef,
@@ -1841,16 +1854,11 @@ function getDailySummaryPreview($db)
                 'timeline' => $processedEvents
             ];
         }
-        
+
         if (!empty($activeOrders)) {
-            // Get user display name from users table if available
-            $stmt = $db->prepare("SELECT display_name FROM users WHERE line_user_id = ? LIMIT 1");
-            $stmt->execute([$userId]);
-            $displayName = $stmt->fetchColumn() ?: 'Customer';
-            
             $results[] = [
                 'line_user_id' => $userId,
-                'display_name' => $displayName,
+                'display_name' => $displayNameMap[$userId] ?? 'Customer',
                 'sent_today' => in_array($userId, $sentUsers),
                 'orders' => array_values($activeOrders)
             ];
@@ -3177,6 +3185,9 @@ function getOverviewSlipsSummary($db)
         return $out;
     }
     try {
+        if (!class_exists('BdoSlipContract', false)) {
+            require_once __DIR__ . '/../classes/BdoSlipContract.php';
+        }
         $openStatuses = BdoSlipContract::getOpenSlipStatuses();
         $openPlaceholders = implode(', ', array_fill(0, count($openStatuses), '?'));
         $countStmt = $db->prepare("SELECT COUNT(*) FROM odoo_slip_uploads WHERE status IN ({$openPlaceholders})");

@@ -562,36 +562,39 @@ class OdooWebhookHandler {
             $stmt->execute($params);
             $bdoIds = $stmt->fetchAll(\PDO::FETCH_COLUMN);
 
-            foreach ($bdoIds as $bdoId) {
-                $bdoId = (int) $bdoId;
+            // Batch-load all matching BDOs in one query (avoid N+1)
+            if (empty($bdoIds)) return;
+            $bdoIdsInt = array_map('intval', $bdoIds);
+            $placeholders = implode(',', array_fill(0, count($bdoIdsInt), '?'));
+            $loadStmt = $this->db->prepare("
+                SELECT bdo_id, amount_net_to_pay, financial_summary_json
+                FROM odoo_bdos WHERE bdo_id IN ({$placeholders})
+            ");
+            $loadStmt->execute($bdoIdsInt);
+            $rows = $loadStmt->fetchAll(\PDO::FETCH_ASSOC);
 
-                // Subtract paid invoice amount from stored net_to_pay
-                $bdoStmt = $this->db->prepare('
-                    SELECT amount_net_to_pay, financial_summary_json
-                    FROM odoo_bdos WHERE bdo_id = ? LIMIT 1
-                ');
-                $bdoStmt->execute([$bdoId]);
-                $bdoRow = $bdoStmt->fetch(\PDO::FETCH_ASSOC);
-                if (!$bdoRow) continue;
+            // Reuse two prepared statements across iterations
+            $updWithState = $this->db->prepare('
+                UPDATE odoo_bdos
+                SET amount_net_to_pay = ?, payment_state = ?, updated_at = NOW()
+                WHERE bdo_id = ?
+            ');
+            $updNetOnly = $this->db->prepare('
+                UPDATE odoo_bdos
+                SET amount_net_to_pay = ?, updated_at = NOW()
+                WHERE bdo_id = ?
+            ');
 
+            foreach ($rows as $bdoRow) {
+                $bdoId = (int) $bdoRow['bdo_id'];
                 $currentNet = (float) ($bdoRow['amount_net_to_pay'] ?? 0);
                 $newNet = max(0, $currentNet - $paidAmount);
-
-                // Update amount_net_to_pay; if fully paid set payment_state = in_payment
                 $newPaymentState = ($newNet <= 0) ? 'in_payment' : null;
 
                 if ($newPaymentState) {
-                    $this->db->prepare('
-                        UPDATE odoo_bdos
-                        SET amount_net_to_pay = ?, payment_state = ?, updated_at = NOW()
-                        WHERE bdo_id = ?
-                    ')->execute([$newNet, $newPaymentState, $bdoId]);
+                    $updWithState->execute([$newNet, $newPaymentState, $bdoId]);
                 } else {
-                    $this->db->prepare('
-                        UPDATE odoo_bdos
-                        SET amount_net_to_pay = ?, updated_at = NOW()
-                        WHERE bdo_id = ?
-                    ')->execute([$newNet, $bdoId]);
+                    $updNetOnly->execute([$newNet, $bdoId]);
                 }
             }
         } catch (\Exception $e) {
@@ -911,12 +914,9 @@ try {
         exit;
     }
     
-    // Initialize database
-    $db = new PDO("mysql:host={$dbConfig['host']};dbname={$dbConfig['dbname']};charset=utf8mb4", 
-                  $dbConfig['user'], $dbConfig['pass'], [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-    ]);
+    // Use singleton DB connection (avoid duplicate PDO per webhook request).
+    // Database singleton already enforces utf8mb4, ERRMODE_EXCEPTION, and Asia/Bangkok TZ.
+    $db = Database::getInstance()->getConnection();
     
     // Process webhook
     $handler = new OdooWebhookHandler($db);
